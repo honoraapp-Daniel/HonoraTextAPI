@@ -16,24 +16,35 @@ async def extract_pdf(file: UploadFile = File(...)):
     pdf_path = f"{TEMP_DIR}/{file_id}.pdf"
     json_path = f"{TEMP_DIR}/{file_id}.json"
 
+    # Save the PDF
     with open(pdf_path, "wb") as f:
         f.write(await file.read())
 
+    # Extract pages
     pages = extract_raw_pages(pdf_path)
 
+    # Save extracted JSON
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(pages, f, ensure_ascii=False, indent=2)
 
+    # Return a DIRECT download url
     return {
         "status": "ok",
         "file_id": file_id,
-        "json_url": f"/download/{file_id}"
+        "download_url": f"/download/{file_id}"
     }
+
 
 @app.get("/download/{file_id}")
 def download_json(file_id: str):
     json_path = f"{TEMP_DIR}/{file_id}.json"
-    if not os.path.exists(json_path):
-        return JSONResponse({"error": "file not found"}, status_code=404)
-    return FileResponse(json_path, media_type="application/json", filename=f"{file_id}.json")
+
+    if not os.path.isfile(json_path):
+        return JSONResponse({"error": "Extracted JSON file not found"}, status_code=404)
+
+    return FileResponse(
+        path=json_path,
+        media_type="application/json",
+        filename=f"{file_id}.json"
+    )
 
