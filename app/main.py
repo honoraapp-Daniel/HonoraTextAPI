@@ -297,13 +297,15 @@ async def create_book(payload: dict):
     metadata = extract_book_metadata(first_pages_text)
     title = metadata.get("title", "Unknown")
     author = metadata.get("author", "Unknown")
+    language = metadata.get("language", "en")
     
     # Create book in Supabase
-    book_id = create_book_in_supabase(title, author)
+    book_id = create_book_in_supabase(title, author, language)
     
     return {
         "status": "ok",
         "book_id": book_id,
         "title": title,
-        "author": author
+        "author": author,
+        "language": language
     }

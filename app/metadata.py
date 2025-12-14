@@ -13,15 +13,18 @@ METADATA_SYSTEM_PROMPT = """
 You are a book metadata extractor. Given text from the first pages of a book, extract:
 1. The book title
 2. The author name(s)
+3. The language of the book (as ISO 639-1 code, e.g. "en", "da", "de", "fr")
 
 Return ONLY valid JSON in this exact format:
 {
   "title": "Book Title Here",
-  "author": "Author Name Here"
+  "author": "Author Name Here",
+  "language": "en"
 }
 
 If there are multiple authors, separate them with commas.
 If you cannot find the title or author, use "Unknown" as the value.
+If you cannot determine the language, default to "en".
 Do not include subtitles unless they are essential to the title.
 """
 
@@ -55,20 +58,20 @@ def extract_json_from_text(text: str) -> dict:
 
 def extract_book_metadata(first_pages_text: str) -> dict:
     """
-    Uses GPT to extract title and author from the first pages of a book.
+    Uses GPT to extract title, author, and language from the first pages of a book.
     
     Args:
         first_pages_text: Combined text from the first few pages of the PDF
         
     Returns:
-        dict with "title" and "author" keys
+        dict with "title", "author", and "language" keys
     """
     prompt = f"""
-Extract the book title and author from this text:
+Extract the book title, author, and language from this text:
 
 {first_pages_text}
 
-Return JSON with "title" and "author" keys only.
+Return JSON with "title", "author", and "language" keys.
 """
 
     response = client.chat.completions.create(
@@ -86,7 +89,8 @@ Return JSON with "title" and "author" keys only.
     if result:
         return {
             "title": result.get("title", "Unknown"),
-            "author": result.get("author", "Unknown")
+            "author": result.get("author", "Unknown"),
+            "language": result.get("language", "en")
         }
     
-    return {"title": "Unknown", "author": "Unknown"}
+    return {"title": "Unknown", "author": "Unknown", "language": "en"}

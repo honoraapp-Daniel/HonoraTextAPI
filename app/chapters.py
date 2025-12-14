@@ -18,13 +18,14 @@ def get_supabase():
     return _supabase_client
 
 
-def create_book_in_supabase(title: str, author: str) -> str:
+def create_book_in_supabase(title: str, author: str, language: str = "en") -> str:
     """
     Creates a new book entry in the 'books' table.
     
     Args:
         title: Book title
         author: Book author
+        language: Language code (default: "en")
         
     Returns:
         book_id (UUID string) of the created book
@@ -32,7 +33,8 @@ def create_book_in_supabase(title: str, author: str) -> str:
     supabase = get_supabase()
     result = supabase.table("books").insert({
         "title": title,
-        "author": author
+        "author": author,
+        "language": language
     }).execute()
     
     # Return the generated UUID
