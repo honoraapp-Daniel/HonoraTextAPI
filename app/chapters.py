@@ -46,6 +46,36 @@ CHAPTER_REGEX = re.compile(
     re.IGNORECASE
 )
 
+
+def extract_chapter_name(line: str) -> str:
+    """
+    Extracts just the chapter name from a line like "Chapter eleven. Rhythm."
+    Returns just "Rhythm" (or the full line if no name found).
+    """
+    # Try to extract name after period: "Chapter eleven. Rhythm." -> "Rhythm"
+    parts = line.split(".")
+    if len(parts) >= 2:
+        # Get the part after "Chapter X."
+        name = parts[1].strip()
+        if name:
+            return name.rstrip(".")
+    
+    # Try to extract name after colon: "Chapter 11: Rhythm" -> "Rhythm"
+    if ":" in line:
+        name = line.split(":", 1)[1].strip()
+        if name:
+            return name
+    
+    # Try to extract name after dash: "Chapter 11 - Rhythm" -> "Rhythm"
+    if " - " in line:
+        name = line.split(" - ", 1)[1].strip()
+        if name:
+            return name
+    
+    # No name found, return None (just use the chapter number)
+    return None
+
+
 def extract_chapters_from_text(full_text: str):
     lines = full_text.split("\n")
     chapters = []
@@ -60,7 +90,7 @@ def extract_chapters_from_text(full_text: str):
             continue
 
         if CHAPTER_REGEX.match(line):
-            if current_title:
+            if current_title is not None:
                 chapters.append({
                     "chapter_index": chapter_index,
                     "title": current_title,
@@ -69,9 +99,11 @@ def extract_chapters_from_text(full_text: str):
                 current_text = []
 
             chapter_index += 1
-            current_title = line
+            # Extract just the chapter name, not "Chapter X. Name"
+            current_title = extract_chapter_name(line)
         else:
             current_text.append(line)
+
 
     if current_title and current_text:
         chapters.append({
