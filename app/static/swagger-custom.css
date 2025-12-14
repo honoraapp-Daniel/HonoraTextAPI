@@ -1,0 +1,189 @@
+/* Honora Dark Purple Theme for Swagger UI */
+
+:root {
+  --honora-purple: #8B5CF6;
+  --honora-purple-dark: #6D28D9;
+  --honora-purple-light: #A78BFA;
+  --honora-bg: #0D0D0D;
+  --honora-bg-secondary: #1A1A2E;
+  --honora-text: #E5E5E5;
+}
+
+/* Dark background */
+body {
+  background-color: var(--honora-bg) !important;
+}
+
+.swagger-ui {
+  background-color: var(--honora-bg) !important;
+}
+
+/* Top bar */
+.swagger-ui .topbar {
+  background-color: var(--honora-bg-secondary) !important;
+  border-bottom: 2px solid var(--honora-purple) !important;
+  padding: 15px 0 !important;
+}
+
+.swagger-ui .topbar-wrapper {
+  justify-content: center !important;
+}
+
+.swagger-ui .topbar-wrapper img {
+  content: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="50" font-size="50" fill="%238B5CF6">🔥</text></svg>') !important;
+  height: 50px !important;
+}
+
+/* Info section */
+.swagger-ui .info {
+  margin: 30px 0 !important;
+}
+
+.swagger-ui .info .title {
+  color: var(--honora-purple-light) !important;
+  font-size: 2.5em !important;
+}
+
+.swagger-ui .info .description {
+  color: var(--honora-text) !important;
+}
+
+.swagger-ui .info .description p {
+  color: var(--honora-text) !important;
+}
+
+.swagger-ui .info .description h2,
+.swagger-ui .info .description h3 {
+  color: var(--honora-purple-light) !important;
+}
+
+/* Endpoints */
+.swagger-ui .opblock {
+  background: var(--honora-bg-secondary) !important;
+  border: 1px solid var(--honora-purple-dark) !important;
+  border-radius: 8px !important;
+  margin-bottom: 10px !important;
+}
+
+.swagger-ui .opblock .opblock-summary {
+  border-bottom: 1px solid var(--honora-purple-dark) !important;
+}
+
+.swagger-ui .opblock .opblock-summary-method {
+  border-radius: 4px !important;
+  font-weight: bold !important;
+}
+
+/* POST - Purple */
+.swagger-ui .opblock.opblock-post {
+  border-color: var(--honora-purple) !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: var(--honora-purple) !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary {
+  border-color: var(--honora-purple) !important;
+}
+
+/* GET - Light purple */
+.swagger-ui .opblock.opblock-get {
+  border-color: var(--honora-purple-light) !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: var(--honora-purple-dark) !important;
+}
+
+/* Text colors */
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-description {
+  color: var(--honora-text) !important;
+}
+
+.swagger-ui .opblock-body {
+  background: var(--honora-bg) !important;
+}
+
+.swagger-ui .opblock-description-wrapper,
+.swagger-ui .opblock-section-header {
+  background: var(--honora-bg-secondary) !important;
+}
+
+.swagger-ui .opblock-section-header h4 {
+  color: var(--honora-purple-light) !important;
+}
+
+/* Parameters */
+.swagger-ui .parameters-col_description,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type {
+  color: var(--honora-text) !important;
+}
+
+.swagger-ui table tbody tr td {
+  color: var(--honora-text) !important;
+  border-color: var(--honora-purple-dark) !important;
+}
+
+/* Buttons */
+.swagger-ui .btn {
+  border-radius: 4px !important;
+}
+
+.swagger-ui .btn.execute {
+  background-color: var(--honora-purple) !important;
+  border-color: var(--honora-purple) !important;
+}
+
+.swagger-ui .btn.execute:hover {
+  background-color: var(--honora-purple-dark) !important;
+}
+
+/* Models */
+.swagger-ui section.models {
+  border: 1px solid var(--honora-purple-dark) !important;
+  border-radius: 8px !important;
+  background: var(--honora-bg-secondary) !important;
+}
+
+.swagger-ui section.models h4 {
+  color: var(--honora-purple-light) !important;
+}
+
+/* Response */
+.swagger-ui .responses-inner {
+  background: var(--honora-bg) !important;
+}
+
+.swagger-ui .response-col_status {
+  color: var(--honora-purple-light) !important;
+}
+
+/* Filter/Search */
+.swagger-ui .filter-container input {
+  background: var(--honora-bg-secondary) !important;
+  border: 1px solid var(--honora-purple-dark) !important;
+  color: var(--honora-text) !important;
+  border-radius: 4px !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--honora-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--honora-purple-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--honora-purple);
+}

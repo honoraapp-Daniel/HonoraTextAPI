@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, UploadFile, File, Request
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.openapi.docs import get_swagger_ui_html
 import uuid
 import os
 import json
@@ -11,7 +12,99 @@ from app.chapters import extract_chapters_from_text, write_chapters_to_supabase,
 from app.metadata import extract_book_metadata
 
 
-app = FastAPI()
+# Custom Swagger UI with Honora branding
+app = FastAPI(
+    title="Honora Book API",
+    description="""
+## 🔥 Honora Audiobook Processing Pipeline
+
+Transform PDFs into structured audiobook content.
+
+### Pipeline Flow:
+1. **Extract PDF** → Upload and extract text
+2. **Create Book** → Auto-detect title, author, language
+3. **Clean Book** → AI-powered text cleaning for TTS
+4. **Extract Chapters** → Split into chapters for Supabase
+
+---
+*Powered by Honora*
+    """,
+    version="1.0.0",
+    docs_url=None,  # Disable default docs
+    redoc_url=None,  # Disable redoc
+)
+
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+# Mount static files for custom CSS
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+
+# Custom Swagger UI with dark purple theme
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui():
+    custom_css = """
+    <style>
+        :root { --honora-purple: #8B5CF6; --honora-purple-dark: #6D28D9; --honora-bg: #0D0D0D; --honora-bg-secondary: #1A1A2E; --honora-text: #E5E5E5; }
+        body { background-color: var(--honora-bg) !important; }
+        .swagger-ui { background-color: var(--honora-bg) !important; }
+        .swagger-ui .topbar { background-color: var(--honora-bg-secondary) !important; border-bottom: 2px solid var(--honora-purple) !important; }
+        .swagger-ui .info .title { color: #A78BFA !important; }
+        .swagger-ui .info .description, .swagger-ui .info .description p { color: var(--honora-text) !important; }
+        .swagger-ui .info .description h2, .swagger-ui .info .description h3 { color: #A78BFA !important; }
+        .swagger-ui .opblock { background: var(--honora-bg-secondary) !important; border: 1px solid var(--honora-purple-dark) !important; border-radius: 8px !important; }
+        .swagger-ui .opblock.opblock-post .opblock-summary-method { background: var(--honora-purple) !important; }
+        .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--honora-purple-dark) !important; }
+        .swagger-ui .opblock .opblock-summary-path, .swagger-ui .opblock .opblock-summary-description { color: var(--honora-text) !important; }
+        .swagger-ui .opblock-body, .swagger-ui .responses-inner { background: var(--honora-bg) !important; }
+        .swagger-ui .opblock-description-wrapper, .swagger-ui .opblock-section-header { background: var(--honora-bg-secondary) !important; }
+        .swagger-ui .opblock-section-header h4, .swagger-ui .response-col_status { color: #A78BFA !important; }
+        .swagger-ui .parameters-col_description, .swagger-ui .parameter__name, .swagger-ui .parameter__type { color: var(--honora-text) !important; }
+        .swagger-ui table tbody tr td { color: var(--honora-text) !important; }
+        .swagger-ui .btn.execute { background-color: var(--honora-purple) !important; border-color: var(--honora-purple) !important; }
+        .swagger-ui section.models { border: 1px solid var(--honora-purple-dark) !important; background: var(--honora-bg-secondary) !important; }
+        .swagger-ui section.models h4 { color: #A78BFA !important; }
+        .swagger-ui .model-box { background: var(--honora-bg) !important; }
+        .swagger-ui .filter-container input { background: var(--honora-bg-secondary) !important; border: 1px solid var(--honora-purple-dark) !important; color: var(--honora-text) !important; }
+    </style>
+    """
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Honora Book API</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+        {custom_css}
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+        <script>
+            SwaggerUIBundle({{
+                url: '/openapi.json',
+                dom_id: '#swagger-ui',
+                presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+                layout: "BaseLayout",
+                docExpansion: "list",
+                filter: true,
+                tryItOutEnabled: true,
+                syntaxHighlight: {{ theme: "monokai" }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
+
+
+# OpenAPI JSON endpoint
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi():
+    return app.openapi()
 
 TEMP_DIR = "/tmp/honora"
 os.makedirs(TEMP_DIR, exist_ok=True)
