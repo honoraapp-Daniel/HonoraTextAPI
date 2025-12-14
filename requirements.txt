@@ -3,3 +3,4 @@ uvicorn[standard]
 pymupdf
 python-multipart
 openai>=1.0.0
+supabase
