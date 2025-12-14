@@ -7,7 +7,8 @@ from typing import Optional
 
 from app.extractor import extract_raw_pages
 from app.cleaner import clean_page_text
-from app.chapters import extract_chapters_from_text, write_chapters_to_supabase
+from app.chapters import extract_chapters_from_text, write_chapters_to_supabase, create_book_in_supabase
+from app.metadata import extract_book_metadata
 
 
 app = FastAPI()
@@ -71,30 +72,49 @@ async def clean_page(payload: dict):
 @app.post("/clean_book")
 async def clean_book(payload: dict):
     """
-    payload format:
+    payload format (Option 1 - file_id mode):
     {
       "file_id": "uuid-from-extract_pdf",
       "start_page": 1,            # optional (1-indexed)
       "end_page": 999,            # optional (inclusive, 1-indexed)
       "save_full_text": true      # optional (default true)
     }
+
+    payload format (Option 2 - direct items mode):
+    {
+      "book_id": "optional-identifier",
+      "language": "optional-language-hint",
+      "items": [{"page": 1, "items": [{"text": "...", "bbox": [...]}]}, ...],
+      "save_full_text": true      # optional (default true)
+    }
     """
 
     file_id = payload.get("file_id")
-    if not file_id:
-        return JSONResponse({"error": "Missing 'file_id' in request body"}, status_code=400)
+    direct_items = payload.get("items")
 
-    raw_json_path = f"{TEMP_DIR}/{file_id}.json"
-    if not os.path.isfile(raw_json_path):
-        return JSONResponse({"error": f"Raw JSON not found for file_id={file_id}"}, status_code=404)
+    # Validate: must provide either file_id OR items, not both, not neither
+    if file_id and direct_items:
+        return JSONResponse({"error": "Provide either 'file_id' or 'items', not both"}, status_code=400)
+
+    if not file_id and not direct_items:
+        return JSONResponse({"error": "Missing 'file_id' or 'items' in request body"}, status_code=400)
 
     start_page = payload.get("start_page", 1)
     end_page = payload.get("end_page", None)
     save_full_text = payload.get("save_full_text", True)
 
-    # Load raw pages
-    with open(raw_json_path, "r", encoding="utf-8") as f:
-        pages = json.load(f)
+    # Load pages from either source
+    if file_id:
+        raw_json_path = f"{TEMP_DIR}/{file_id}.json"
+        if not os.path.isfile(raw_json_path):
+            return JSONResponse({"error": f"Raw JSON not found for file_id={file_id}"}, status_code=404)
+        with open(raw_json_path, "r", encoding="utf-8") as f:
+            pages = json.load(f)
+    else:
+        # Direct items mode
+        if not isinstance(direct_items, list):
+            return JSONResponse({"error": "'items' must be an array"}, status_code=400)
+        pages = direct_items
 
     # Validate page range
     if not isinstance(start_page, int) or start_page < 1:
@@ -230,4 +250,60 @@ async def extract_chapters(payload: dict):
     return {
         "status": "ok",
         "chapters_created": len(chapters)
+    }
+
+# -----------------------------------------------------------
+# 7) Create book entry with auto-extracted metadata
+# -----------------------------------------------------------
+@app.post("/create_book")
+async def create_book(payload: dict):
+    """
+    Extracts title and author from the PDF and creates a book in Supabase.
+    
+    payload:
+    {
+      "file_id": "uuid-from-extract_pdf"
+    }
+    
+    Returns:
+    {
+      "status": "ok",
+      "book_id": "supabase-uuid",
+      "title": "...",
+      "author": "..."
+    }
+    """
+    file_id = payload.get("file_id")
+    
+    if not file_id:
+        return JSONResponse({"error": "Missing 'file_id' in request body"}, status_code=400)
+    
+    # Load raw extracted JSON
+    raw_json_path = f"{TEMP_DIR}/{file_id}.json"
+    if not os.path.isfile(raw_json_path):
+        return JSONResponse({"error": f"Raw JSON not found for file_id={file_id}"}, status_code=404)
+    
+    with open(raw_json_path, "r", encoding="utf-8") as f:
+        pages = json.load(f)
+    
+    # Get text from first 3 pages for metadata extraction
+    first_pages_text = ""
+    for page_obj in pages[:3]:
+        items = page_obj.get("items", [])
+        page_text = " ".join([item["text"] for item in items])
+        first_pages_text += page_text + "\n\n"
+    
+    # Extract metadata using GPT
+    metadata = extract_book_metadata(first_pages_text)
+    title = metadata.get("title", "Unknown")
+    author = metadata.get("author", "Unknown")
+    
+    # Create book in Supabase
+    book_id = create_book_in_supabase(title, author)
+    
+    return {
+        "status": "ok",
+        "book_id": book_id,
+        "title": title,
+        "author": author
     }

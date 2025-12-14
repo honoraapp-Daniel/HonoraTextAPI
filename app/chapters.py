@@ -6,7 +6,38 @@ from supabase import create_client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Lazy initialization - only create client when needed
+_supabase_client = None
+
+def get_supabase():
+    global _supabase_client
+    if _supabase_client is None:
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase_client
+
+
+def create_book_in_supabase(title: str, author: str) -> str:
+    """
+    Creates a new book entry in the 'books' table.
+    
+    Args:
+        title: Book title
+        author: Book author
+        
+    Returns:
+        book_id (UUID string) of the created book
+    """
+    supabase = get_supabase()
+    result = supabase.table("books").insert({
+        "title": title,
+        "author": author
+    }).execute()
+    
+    # Return the generated UUID
+    return result.data[0]["id"]
+
 
 CHAPTER_REGEX = re.compile(
     r"^(CHAPTER|BOOK|PART)\s+([A-Z]+|\d+|one|two|three|four|five|six|seven|eight|nine|ten)",
@@ -51,6 +82,7 @@ def extract_chapters_from_text(full_text: str):
 
 
 def write_chapters_to_supabase(book_id: str, chapters: list):
+    supabase = get_supabase()
     for chapter in chapters:
         supabase.table("chapters").insert({
             "book_id": book_id,
