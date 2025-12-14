@@ -4,6 +4,7 @@ Uses GPT to extract book title and author from PDF text.
 """
 import json
 import os
+import re
 from openai import OpenAI
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -23,6 +24,33 @@ If there are multiple authors, separate them with commas.
 If you cannot find the title or author, use "Unknown" as the value.
 Do not include subtitles unless they are essential to the title.
 """
+
+
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON from potentially messy LLM response."""
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    
+    # Try to extract from markdown code block
+    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    
+    # Try to find raw JSON object
+    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    
+    return None
 
 
 def extract_book_metadata(first_pages_text: str) -> dict:
@@ -48,14 +76,17 @@ Return JSON with "title" and "author" keys only.
         messages=[
             {"role": "system", "content": METADATA_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        response_format={"type": "json_object"}
     )
 
-    try:
-        result = json.loads(response.choices[0].message.content)
+    content = response.choices[0].message.content
+    result = extract_json_from_text(content)
+    
+    if result:
         return {
             "title": result.get("title", "Unknown"),
             "author": result.get("author", "Unknown")
         }
-    except:
-        return {"title": "Unknown", "author": "Unknown"}
+    
+    return {"title": "Unknown", "author": "Unknown"}
