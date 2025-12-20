@@ -18,7 +18,7 @@ Return ONLY valid JSON in this exact format:
   "author": "Author Name Here",
   "language": "en",
   "original_language": "en",
-  "publisher": "Publisher Name",
+  "publisher": "Original Publisher Name",
   "publishing_year": 1925,
   "synopsis": "A compelling 2-3 sentence summary of the book's plot and themes.",
   "book_of_the_day_quote": "A memorable, inspiring quote from the book that captures its essence.",
@@ -32,6 +32,12 @@ RULES:
 - Synopsis should be engaging and suitable for audiobook marketing.
 - book_of_the_day_quote should be a real quote from the text if available, otherwise a thematic quote.
 - Category should be one of: Fiction, Non-Fiction, Mystery, Romance, Fantasy, Science Fiction, Biography, Self-Help, History, Philosophy, Business, Classic Literature, Children, Young Adult, Poetry, Religion, Science
+
+IMPORTANT FOR PUBLISHER:
+- Find the ORIGINAL publisher from the book's FIRST EDITION, not the PDF creator or digital publisher.
+- Ignore publishers like "YOGeBooks", "Project Gutenberg", "eBook publisher" etc.
+- For classic books, research the original publisher (e.g., "The Yogi Publication Society" for The Kybalion in 1908).
+- If you cannot determine the original publisher, use null.
 """
 
 
