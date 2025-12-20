@@ -38,8 +38,8 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a creative DALL-E prompt for book cover artwork.
-    The prompt is intentionally open to artistic interpretation.
+    Generates a DALL-E prompt for book cover artwork.
+    Includes title and concrete visual elements representing the book's content.
     
     Args:
         metadata: dict with title, author, category, synopsis
@@ -48,44 +48,58 @@ def generate_cover_art_prompt(metadata: dict) -> str:
         str: DALL-E prompt
     """
     title = metadata.get("title", "Untitled")
+    author = metadata.get("author", "Unknown")
     category = metadata.get("category", "Fiction")
     synopsis = metadata.get("synopsis", "")
     
-    # Determine visual mood based on category
-    category_moods = {
-        "Fiction": "evocative, narrative, atmospheric",
-        "Mystery": "dark, enigmatic, shadowy with hints of intrigue",
-        "Romance": "warm, emotional, soft and dreamy",
-        "Fantasy": "mystical, magical, ethereal and otherworldly",
-        "Science Fiction": "futuristic, cosmic, technological wonder",
-        "Biography": "dignified, personal, intimate portraiture style",
-        "Self-Help": "uplifting, transformative, inspiring light",
-        "History": "timeless, epic, classical grandeur",
-        "Philosophy": "contemplative, abstract, thought-provoking",
-        "Business": "dynamic, professional, forward-moving",
-        "Classic Literature": "elegant, timeless, artistic sophistication",
-        "Children": "whimsical, colorful, joyful and imaginative",
+    # Determine visual style based on category
+    category_styles = {
+        "Fiction": "cinematic, narrative imagery with depth",
+        "Mystery": "dark, moody atmosphere with shadowy elements",
+        "Romance": "warm, romantic lighting with soft tones",
+        "Fantasy": "magical, otherworldly landscapes and mystical symbols",
+        "Science Fiction": "futuristic, cosmic imagery with technology",
+        "Biography": "dignified portrait style with personal elements",
+        "Self-Help": "uplifting, bright imagery with growth symbolism",
+        "History": "historical imagery, period-appropriate visuals",
+        "Philosophy": "contemplative, symbolic imagery with depth",
+        "Business": "professional, dynamic imagery of success",
+        "Classic Literature": "elegant, timeless artistic style",
+        "Children": "colorful, whimsical, playful imagery",
         "Young Adult": "bold, energetic, emotionally resonant",
         "Poetry": "lyrical, artistic, emotionally evocative",
-        "Religion": "sacred, peaceful, spiritually uplifting",
-        "Science": "precise, fascinating, wonder of discovery",
-        "Non-Fiction": "authentic, compelling, visually engaging"
+        "Religion": "sacred, peaceful, spiritually uplifting imagery",
+        "Science": "scientific imagery, wonder of discovery",
+        "Non-Fiction": "authentic, documentary-style imagery"
     }
     
-    mood = category_moods.get(category, "evocative, narrative, atmospheric")
+    style = category_styles.get(category, "cinematic, narrative imagery with depth")
     
-    # Create an open, artistic prompt
-    prompt = f"""Create a stunning, artistic cover image that captures the essence of "{title}".
+    # Create prompt with title and concrete imagery
+    prompt = f"""Design a professional book cover for "{title}" by {author}.
 
-The artwork should be {mood}.
+LAYOUT REQUIREMENTS (CRITICAL):
+- The book title "{title}" must be prominently displayed in elegant, readable typography
+- Place the title in the VERTICAL CENTER of the image (middle third)
+- Keep ALL important elements (title, main imagery) within the CENTER 60% of the image width
+- The outer 20% on each side should be background only (no text or key elements) as it will be cropped
 
-Visual inspiration from the book's theme: {synopsis[:200] if synopsis else 'A profound journey of discovery and meaning.'}
+VISUAL CONTENT:
+- The imagery should clearly represent the book's subject matter and themes
+- Based on the synopsis: {synopsis[:300] if synopsis else 'Create visuals that match the title'}
+- Style: {style}
+- Include recognizable visual elements that indicate what the book is about (landmarks, symbols, objects, scenes relevant to the content)
 
-Style: High-quality digital art, visually striking, suitable as a book cover. The image should be symbolic and evocative, not literal. No text, no letters, no words - pure visual art only.
+DESIGN STYLE:
+- Professional book cover design quality
+- High contrast, readable title
+- Rich, detailed background imagery
+- The overall composition should look like a premium audiobook cover
 
-The composition should work beautifully both as a square format and when cropped vertically."""
+Format: Square composition with all key elements centered."""
 
     return prompt
+
 
 
 def generate_cover_image(metadata: dict) -> dict:
