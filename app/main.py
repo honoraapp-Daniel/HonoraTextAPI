@@ -52,32 +52,159 @@ if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
-# Custom Swagger UI with dark purple theme
+# Custom Swagger UI - Clean dark theme
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui():
     custom_css = """
     <style>
-        :root { --honora-purple: #8B5CF6; --honora-purple-dark: #6D28D9; --honora-bg: #0D0D0D; --honora-bg-secondary: #1A1A2E; --honora-text: #E5E5E5; }
-        body { background-color: var(--honora-bg) !important; }
-        .swagger-ui { background-color: var(--honora-bg) !important; }
-        .swagger-ui .topbar { background-color: var(--honora-bg-secondary) !important; border-bottom: 2px solid var(--honora-purple) !important; }
-        .swagger-ui .info .title { color: #A78BFA !important; }
-        .swagger-ui .info .description, .swagger-ui .info .description p { color: var(--honora-text) !important; }
-        .swagger-ui .info .description h2, .swagger-ui .info .description h3 { color: #A78BFA !important; }
-        .swagger-ui .opblock { background: var(--honora-bg-secondary) !important; border: 1px solid var(--honora-purple-dark) !important; border-radius: 8px !important; }
-        .swagger-ui .opblock.opblock-post .opblock-summary-method { background: var(--honora-purple) !important; }
-        .swagger-ui .opblock.opblock-get .opblock-summary-method { background: var(--honora-purple-dark) !important; }
-        .swagger-ui .opblock .opblock-summary-path, .swagger-ui .opblock .opblock-summary-description { color: var(--honora-text) !important; }
-        .swagger-ui .opblock-body, .swagger-ui .responses-inner { background: var(--honora-bg) !important; }
-        .swagger-ui .opblock-description-wrapper, .swagger-ui .opblock-section-header { background: var(--honora-bg-secondary) !important; }
-        .swagger-ui .opblock-section-header h4, .swagger-ui .response-col_status { color: #A78BFA !important; }
-        .swagger-ui .parameters-col_description, .swagger-ui .parameter__name, .swagger-ui .parameter__type { color: var(--honora-text) !important; }
-        .swagger-ui table tbody tr td { color: var(--honora-text) !important; }
-        .swagger-ui .btn.execute { background-color: var(--honora-purple) !important; border-color: var(--honora-purple) !important; }
-        .swagger-ui section.models { border: 1px solid var(--honora-purple-dark) !important; background: var(--honora-bg-secondary) !important; }
-        .swagger-ui section.models h4 { color: #A78BFA !important; }
-        .swagger-ui .model-box { background: var(--honora-bg) !important; }
-        .swagger-ui .filter-container input { background: var(--honora-bg-secondary) !important; border: 1px solid var(--honora-purple-dark) !important; color: var(--honora-text) !important; }
+        /* Clean dark theme with good readability */
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #3d3d3d;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --accent-orange: #f59e0b;
+            --border-color: #404040;
+        }
+        
+        body { 
+            background-color: var(--bg-primary) !important; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+        
+        .swagger-ui { background-color: var(--bg-primary) !important; }
+        
+        /* Header */
+        .swagger-ui .topbar { 
+            background-color: var(--bg-secondary) !important; 
+            border-bottom: 1px solid var(--border-color) !important;
+            padding: 10px 0 !important;
+        }
+        
+        /* Info section */
+        .swagger-ui .info .title { 
+            color: var(--text-primary) !important; 
+            font-size: 2rem !important;
+            font-weight: 600 !important;
+        }
+        .swagger-ui .info .description, 
+        .swagger-ui .info .description p { 
+            color: var(--text-secondary) !important; 
+            font-size: 1rem !important;
+            line-height: 1.6 !important;
+        }
+        .swagger-ui .info .description h2, 
+        .swagger-ui .info .description h3 { 
+            color: var(--text-primary) !important; 
+            margin-top: 1.5rem !important;
+        }
+        
+        /* Operation blocks */
+        .swagger-ui .opblock { 
+            background: var(--bg-secondary) !important; 
+            border: 1px solid var(--border-color) !important; 
+            border-radius: 8px !important;
+            margin-bottom: 12px !important;
+        }
+        .swagger-ui .opblock.opblock-post .opblock-summary-method { 
+            background: var(--accent-green) !important; 
+            color: white !important;
+            font-weight: 600 !important;
+        }
+        .swagger-ui .opblock.opblock-get .opblock-summary-method { 
+            background: var(--accent-blue) !important; 
+            color: white !important;
+            font-weight: 600 !important;
+        }
+        .swagger-ui .opblock.opblock-delete .opblock-summary-method { 
+            background: #ef4444 !important; 
+        }
+        .swagger-ui .opblock .opblock-summary-path { 
+            color: var(--text-primary) !important; 
+            font-size: 1rem !important;
+            font-weight: 500 !important;
+        }
+        .swagger-ui .opblock .opblock-summary-description { 
+            color: var(--text-secondary) !important; 
+        }
+        
+        /* Expanded block content */
+        .swagger-ui .opblock-body { background: var(--bg-primary) !important; }
+        .swagger-ui .opblock-description-wrapper { 
+            background: var(--bg-secondary) !important; 
+            color: var(--text-secondary) !important;
+            padding: 15px !important;
+        }
+        .swagger-ui .opblock-section-header { 
+            background: var(--bg-tertiary) !important; 
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .swagger-ui .opblock-section-header h4 { 
+            color: var(--text-primary) !important; 
+            font-size: 0.9rem !important;
+        }
+        
+        /* Parameters and responses */
+        .swagger-ui .parameters-col_description,
+        .swagger-ui .parameter__name { 
+            color: var(--text-primary) !important; 
+        }
+        .swagger-ui .parameter__type { 
+            color: var(--accent-blue) !important; 
+        }
+        .swagger-ui table tbody tr td { 
+            color: var(--text-secondary) !important; 
+            border-color: var(--border-color) !important;
+        }
+        .swagger-ui .response-col_status { 
+            color: var(--accent-green) !important; 
+            font-weight: 600 !important;
+        }
+        .swagger-ui .responses-inner { background: var(--bg-primary) !important; }
+        
+        /* Execute button */
+        .swagger-ui .btn.execute { 
+            background-color: var(--accent-blue) !important; 
+            border-color: var(--accent-blue) !important; 
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+        }
+        .swagger-ui .btn.execute:hover { 
+            background-color: #2563eb !important; 
+        }
+        
+        /* Models section */
+        .swagger-ui section.models { 
+            border: 1px solid var(--border-color) !important; 
+            background: var(--bg-secondary) !important; 
+            border-radius: 8px !important;
+        }
+        .swagger-ui section.models h4 { color: var(--text-primary) !important; }
+        .swagger-ui .model-box { background: var(--bg-primary) !important; }
+        .swagger-ui .model { color: var(--text-secondary) !important; }
+        
+        /* Filter input */
+        .swagger-ui .filter-container input { 
+            background: var(--bg-secondary) !important; 
+            border: 1px solid var(--border-color) !important; 
+            color: var(--text-primary) !important;
+            border-radius: 6px !important;
+            padding: 8px 12px !important;
+        }
+        
+        /* Code blocks */
+        .swagger-ui .highlight-code { background: var(--bg-tertiary) !important; }
+        .swagger-ui pre { 
+            background: var(--bg-tertiary) !important; 
+            color: var(--text-primary) !important;
+            border-radius: 6px !important;
+        }
+        
+        /* Links */
+        .swagger-ui a { color: var(--accent-blue) !important; }
     </style>
     """
     
@@ -101,13 +228,14 @@ async def custom_swagger_ui():
                 docExpansion: "list",
                 filter: true,
                 tryItOutEnabled: true,
-                syntaxHighlight: {{ theme: "monokai" }}
+                syntaxHighlight: {{ theme: "agate" }}
             }});
         </script>
     </body>
     </html>
     """
     return HTMLResponse(content=html)
+
 
 
 # OpenAPI JSON endpoint
