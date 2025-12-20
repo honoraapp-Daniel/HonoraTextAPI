@@ -176,12 +176,15 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
     
     # Try to load a nice font, fallback to default
     try:
-        # Try common font paths
+        # Get the directory where this file is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        fonts_dir = os.path.join(current_dir, "fonts")
+        
+        # Try bundled Cinzel font first (elegant serif, perfect for Honora)
         font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",  # Linux
-            "/System/Library/Fonts/Georgia.ttf",  # macOS
-            "/System/Library/Fonts/Supplemental/Georgia.ttf",  # macOS newer
-            "C:/Windows/Fonts/georgia.ttf",  # Windows
+            os.path.join(fonts_dir, "Cinzel-Bold.ttf"),  # Bundled Cinzel
+            os.path.join(fonts_dir, "Cinzel-Regular.ttf"),  # Bundled Cinzel Regular
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",  # Linux fallback
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",  # Linux alt
         ]
         
@@ -190,12 +193,14 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
         
         for path in font_paths:
             if os.path.exists(path):
+                print(f"[COVER ART] Loading font from: {path}")
                 title_font = ImageFont.truetype(path, 72)
                 author_font = ImageFont.truetype(path, 36)
                 break
         
         if title_font is None:
-            # Fallback to default font with larger size
+            # Fallback to default font
+            print("[COVER ART] WARNING: No fonts found, using default")
             title_font = ImageFont.load_default()
             author_font = ImageFont.load_default()
             
