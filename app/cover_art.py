@@ -61,52 +61,78 @@ CATEGORY_FONTS = {
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a DALL-E prompt for PURE ARTWORK - no text.
+    Generates a DALL-E prompt following Honora's unique aesthetic:
+    Dark conceptual illustration, sacred manuscript aesthetics, symbolic minimalism.
     """
     title = metadata.get("title", "Untitled")
     category = metadata.get("category", "Fiction")
     synopsis = metadata.get("synopsis", "")
     
-    # Visual styles based on category
-    category_styles = {
-        "Fiction": "cinematic, narrative imagery with depth and atmosphere",
-        "Mystery": "dark, moody, shadowy atmosphere with hints of intrigue",
-        "Romance": "warm, romantic lighting with soft, dreamy tones",
-        "Fantasy": "magical, otherworldly landscapes with mystical elements",
-        "Science Fiction": "futuristic, cosmic imagery with technology",
-        "Biography": "dignified, personal, evocative portrait elements",
-        "Self-Help": "uplifting, bright imagery symbolizing growth and transformation",
-        "History": "historical imagery with period-appropriate grandeur",
-        "Philosophy": "contemplative, symbolic imagery with ancient wisdom motifs",
-        "Business": "professional, dynamic imagery of success and innovation",
-        "Classic Literature": "elegant, timeless artistic style with rich detail",
-        "Children": "colorful, whimsical, playful and imaginative",
-        "Young Adult": "bold, energetic, emotionally resonant",
-        "Poetry": "lyrical, artistic, emotionally evocative",
-        "Religion": "sacred, peaceful, spiritually uplifting",
-        "Science": "scientific wonder, discovery, precision",
-        "Non-Fiction": "authentic, documentary-style, compelling"
+    # Thematic guidance based on category - abstract, never literal
+    category_themes = {
+        "Fiction": "narrative fragments, emotional residue, atmospheric depth",
+        "Mystery": "hidden revelations, obscured truths, shadowed knowledge",
+        "Romance": "emotional resonance, connection, ineffable bonds",
+        "Fantasy": "otherworldly geometry, impossible forms, mythic abstraction",
+        "Science Fiction": "cosmic abstraction, technological metaphor, infinite scale",
+        "Biography": "essence distilled, human traces, memory artifacts",
+        "Self-Help": "transformation symbols, emergence from darkness, inner light",
+        "History": "temporal weight, civilizational echoes, forgotten power",
+        "Philosophy": "conceptual forms, wisdom glyphs, contemplative geometry",
+        "Business": "power structures, system diagrams, strategic abstraction",
+        "Classic Literature": "timeless forms, literary essence, cultural weight",
+        "Children": "wonder symbols, imagination glyphs, playful geometry",
+        "Young Adult": "transition symbols, identity formation, emotional intensity",
+        "Poetry": "lyrical abstraction, emotional geometry, verse essence",
+        "Religion": "sacred geometry, divine abstraction, spiritual weight",
+        "Science": "discovery symbols, natural laws, pattern revelation",
+        "Non-Fiction": "truth markers, knowledge artifacts, documented essence"
     }
     
-    style = category_styles.get(category, "cinematic, narrative imagery")
+    theme = category_themes.get(category, "conceptual depth, symbolic weight")
     
-    # Create prompt for PURE ARTWORK - NO TEXT
-    prompt = f"""Create stunning visual artwork for a book called "{title}".
+    # Build the Honora-style prompt
+    prompt = f"""Create artwork for Honora audiobook platform. Subject: "{title}".
 
-CRITICAL: NO TEXT, NO LETTERS, NO WORDS, NO TYPOGRAPHY in the image. Pure visual art only.
+HONORA STYLE MANDATE:
 
-VISUAL CONTENT:
-- The imagery should represent the book's themes: {synopsis[:250] if synopsis else 'inspired by the title'}
-- Style: {style}
-- Include symbolic visual elements that represent the book's subject matter
-- Rich, detailed, high-quality digital art
+CORE AESTHETIC:
+- Dark conceptual illustration with sacred manuscript feel
+- Symbolic minimalism and esoteric glyph language
+- Must feel like a timeless artifact, not a book cover
+- Ancient, forbidden, ritualistic, contemplative mood
+- Darkness should feel meaningful, not horror-styled
+
+VISUAL APPROACH:
+- Single central symbolic concept: one strong form, shape, or ritual object
+- Represent the IDEAS and PHILOSOPHY of the book, never literal scenes
+- Theme guidance: {theme}
+- Book essence: {synopsis[:200] if synopsis else 'Capture the symbolic weight of the title'}
+
+STRICT CONSTRAINTS:
+❌ NO TEXT, letters, runes, or readable characters of any kind
+❌ NO people, faces, figures, or characters
+❌ NO literal scenes, locations, or recognizable landmarks
+❌ NO photorealism or cinematic lighting
+❌ NO clichés: wizards, crystal balls, hooded figures, obvious pyramids/eyes
+
+COLOR PALETTE:
+- 1-3 dominant tones maximum
+- Deep blacks, muted golds, bone/parchment whites
+- Dark reds, indigo, ash, rust acceptable
+- NO bright or saturated colors
 
 COMPOSITION:
-- Leave space in the lower third for text to be added later
-- The main visual elements should be in the upper two-thirds
-- The image should work as a beautiful background for a book cover
+- Minimal, high contrast, strong negative space
+- Centered or carefully balanced
+- Must work at small thumbnail sizes
+- Leave breathing room for text overlay in lower third
 
-Format: Square, 1024x1024, with visual focus in center-upper area."""
+FINAL IMPRESSION:
+The artwork must feel like a visual key, not a picture.
+Something you sense, not immediately understand.
+Modern yet ancient. Minimal but heavy with meaning.
+Like a page from a lost manuscript or a ritual diagram discovered."""
 
     return prompt
 
