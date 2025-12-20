@@ -565,3 +565,152 @@ async def create_paragraphs(payload: dict):
         "total_paragraphs_created": total_paragraphs,
         "details": details
     }
+
+# -----------------------------------------------------------
+# 10) Full Pipeline: PDF → Supabase (ready for TTS)
+# -----------------------------------------------------------
+@app.post("/process_book")
+async def process_book(file: UploadFile = File(...)):
+    """
+    Full automated pipeline: Upload PDF → Get TTS-ready data in Supabase.
+    
+    Steps:
+    1. Extract PDF text
+    2. Create book entry with auto-detected metadata
+    3. Clean text for TTS (GPT)
+    4. Extract chapters → Supabase
+    5. Chunk chapters into sections (250 chars for TTS)
+    6. Create paragraphs (natural breaks for app display)
+    
+    Returns book_id and summary when ready for TTS processing.
+    """
+    import logging
+    logger = logging.getLogger("honora.pipeline")
+    
+    result = {
+        "status": "processing",
+        "steps_completed": [],
+        "errors": []
+    }
+    
+    try:
+        # ===== STEP 1: Extract PDF =====
+        logger.info("Step 1: Extracting PDF...")
+        file_id = str(uuid.uuid4())
+        pdf_path = f"{TEMP_DIR}/{file_id}.pdf"
+        json_path = f"{TEMP_DIR}/{file_id}.json"
+        
+        with open(pdf_path, "wb") as f:
+            f.write(await file.read())
+        
+        pages = extract_raw_pages(pdf_path)
+        
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(pages, f, ensure_ascii=False, indent=2)
+        
+        result["steps_completed"].append("extract_pdf")
+        result["file_id"] = file_id
+        
+        # ===== STEP 2: Create Book =====
+        logger.info("Step 2: Creating book entry...")
+        first_pages_text = ""
+        for page_obj in pages[:3]:
+            items = page_obj.get("items", [])
+            page_text = " ".join([item["text"] for item in items])
+            first_pages_text += page_text + "\n\n"
+        
+        metadata = extract_book_metadata(first_pages_text)
+        title = metadata.get("title", "Unknown")
+        author = metadata.get("author", "Unknown")
+        language = metadata.get("language", "en")
+        
+        from app.chapters import create_book_in_supabase
+        book_id = create_book_in_supabase(title, author, language)
+        
+        result["steps_completed"].append("create_book")
+        result["book_id"] = book_id
+        result["title"] = title
+        result["author"] = author
+        result["language"] = language
+        
+        # ===== STEP 3: Clean Book =====
+        logger.info("Step 3: Cleaning text for TTS...")
+        cleaned_pages = []
+        
+        for page_obj in pages:
+            items = page_obj.get("items", [])
+            if items:
+                cleaned = clean_page_text(items)
+                cleaned_pages.append({
+                    "page": page_obj.get("page"),
+                    "cleaned_text": cleaned.get("cleaned_text", "")
+                })
+        
+        full_text = "\n\n".join([p["cleaned_text"] for p in cleaned_pages if p["cleaned_text"].strip()])
+        
+        # Save cleaned result
+        cleaned_id = str(uuid.uuid4())
+        cleaned_path = f"{TEMP_DIR}/{cleaned_id}.cleaned.json"
+        
+        with open(cleaned_path, "w", encoding="utf-8") as f:
+            json.dump({"full_text": full_text, "pages": cleaned_pages}, f, ensure_ascii=False, indent=2)
+        
+        result["steps_completed"].append("clean_book")
+        result["cleaned_file_id"] = cleaned_id
+        
+        # ===== STEP 4: Extract Chapters =====
+        logger.info("Step 4: Extracting chapters...")
+        from app.chapters import extract_chapters_from_text, write_chapters_to_supabase
+        
+        chapters = extract_chapters_from_text(full_text)
+        write_chapters_to_supabase(book_id, chapters)
+        
+        result["steps_completed"].append("extract_chapters")
+        result["chapters"] = len(chapters)
+        
+        # ===== STEP 5: Chunk Chapters (TTS sections) =====
+        logger.info("Step 5: Creating TTS sections...")
+        from app.chapters import get_chapters_for_book, chunk_chapter_text, write_sections_to_supabase
+        
+        db_chapters = get_chapters_for_book(book_id)
+        total_sections = 0
+        
+        for chapter in db_chapters:
+            chapter_text = chapter.get("text", "")
+            if chapter_text:
+                sections = chunk_chapter_text(chapter_text, max_chars=250)
+                write_sections_to_supabase(chapter["id"], sections)
+                total_sections += len(sections)
+        
+        result["steps_completed"].append("chunk_chapters")
+        result["sections"] = total_sections
+        
+        # ===== STEP 6: Create Paragraphs (app display) =====
+        logger.info("Step 6: Creating display paragraphs...")
+        from app.chapters import split_into_paragraphs_gpt, write_paragraphs_to_supabase
+        
+        total_paragraphs = 0
+        
+        for chapter in db_chapters:
+            chapter_text = chapter.get("text", "")
+            if chapter_text:
+                paragraphs = split_into_paragraphs_gpt(chapter_text)
+                write_paragraphs_to_supabase(chapter["id"], paragraphs)
+                total_paragraphs += len(paragraphs)
+        
+        result["steps_completed"].append("create_paragraphs")
+        result["paragraphs"] = total_paragraphs
+        
+        # ===== DONE =====
+        result["status"] = "ok"
+        result["ready_for_tts"] = True
+        
+        logger.info(f"Pipeline complete! Book ID: {book_id}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Pipeline error: {str(e)}")
+        result["status"] = "error"
+        result["errors"].append(str(e))
+        return JSONResponse(result, status_code=500)
