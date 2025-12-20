@@ -763,17 +763,23 @@ async def process_book(file: UploadFile = File(...)):
         
         # ===== STEP 3: Clean Book =====
         logger.info("Step 3: Cleaning text for TTS...")
+        print(f"[PIPELINE] Step 3: Cleaning {len(pages)} pages with GPT...")
         cleaned_pages = []
         
-        for page_obj in pages:
+        total_pages = len(pages)
+        result["total_pages"] = total_pages
+        
+        for i, page_obj in enumerate(pages):
             items = page_obj.get("items", [])
             if items:
+                print(f"[PIPELINE] Cleaning page {i+1}/{total_pages}...")
                 cleaned = clean_page_text(items)
                 cleaned_pages.append({
                     "page": page_obj.get("page"),
                     "cleaned_text": cleaned.get("cleaned_text", "")
                 })
         
+        print(f"[PIPELINE] Step 3 complete: {len(cleaned_pages)} pages cleaned")
         full_text = "\n\n".join([p["cleaned_text"] for p in cleaned_pages if p["cleaned_text"].strip()])
         
         # Save cleaned result
@@ -788,16 +794,19 @@ async def process_book(file: UploadFile = File(...)):
         
         # ===== STEP 4: Extract Chapters =====
         logger.info("Step 4: Extracting chapters...")
+        print(f"[PIPELINE] Step 4: Extracting chapters from text...")
         from app.chapters import extract_chapters_from_text, write_chapters_to_supabase
         
         chapters = extract_chapters_from_text(full_text)
         write_chapters_to_supabase(book_id, chapters)
+        print(f"[PIPELINE] Step 4 complete: {len(chapters)} chapters found")
         
         result["steps_completed"].append("extract_chapters")
         result["chapters"] = len(chapters)
         
         # ===== STEP 5: Chunk Chapters (TTS sections) =====
         logger.info("Step 5: Creating TTS sections...")
+        print(f"[PIPELINE] Step 5: Creating TTS sections (250 char chunks)...")
         from app.chapters import get_chapters_for_book, chunk_chapter_text, write_sections_to_supabase
         
         db_chapters = get_chapters_for_book(book_id)
@@ -810,22 +819,26 @@ async def process_book(file: UploadFile = File(...)):
                 write_sections_to_supabase(chapter["id"], sections)
                 total_sections += len(sections)
         
+        print(f"[PIPELINE] Step 5 complete: {total_sections} sections created")
         result["steps_completed"].append("chunk_chapters")
         result["sections"] = total_sections
         
         # ===== STEP 6: Create Paragraphs (app display) =====
         logger.info("Step 6: Creating display paragraphs...")
+        print(f"[PIPELINE] Step 6: Creating display paragraphs with GPT...")
         from app.chapters import split_into_paragraphs_gpt, write_paragraphs_to_supabase
         
         total_paragraphs = 0
         
-        for chapter in db_chapters:
+        for i, chapter in enumerate(db_chapters):
             chapter_text = chapter.get("text", "")
             if chapter_text:
+                print(f"[PIPELINE] Creating paragraphs for chapter {i+1}/{len(db_chapters)}...")
                 paragraphs = split_into_paragraphs_gpt(chapter_text)
                 write_paragraphs_to_supabase(chapter["id"], paragraphs)
                 total_paragraphs += len(paragraphs)
         
+        print(f"[PIPELINE] Step 6 complete: {total_paragraphs} paragraphs created")
         result["steps_completed"].append("create_paragraphs")
         result["paragraphs"] = total_paragraphs
         
@@ -833,12 +846,19 @@ async def process_book(file: UploadFile = File(...)):
         result["status"] = "ok"
         result["ready_for_tts"] = True
         
+        print(f"[PIPELINE] ✅ COMPLETE! Book ID: {book_id}")
         logger.info(f"Pipeline complete! Book ID: {book_id}")
         
         return result
         
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[PIPELINE] ❌ ERROR: {str(e)}")
+        print(f"[PIPELINE] Traceback: {error_details}")
         logger.error(f"Pipeline error: {str(e)}")
         result["status"] = "error"
         result["errors"].append(str(e))
+        result["traceback"] = error_details
         return JSONResponse(result, status_code=500)
+
