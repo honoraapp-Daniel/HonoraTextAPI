@@ -8,7 +8,16 @@ from typing import Optional
 
 from app.extractor import extract_raw_pages
 from app.cleaner import clean_page_text
-from app.chapters import extract_chapters_from_text, write_chapters_to_supabase, create_book_in_supabase
+from app.chapters import (
+    extract_chapters_from_text, 
+    write_chapters_to_supabase, 
+    create_book_in_supabase,
+    chunk_chapter_text,
+    write_sections_to_supabase,
+    get_chapters_for_book,
+    split_into_paragraphs_gpt,
+    write_paragraphs_to_supabase
+)
 from app.metadata import extract_book_metadata
 
 
@@ -401,4 +410,158 @@ async def create_book(payload: dict):
         "title": title,
         "author": author,
         "language": language
+    }
+
+# -----------------------------------------------------------
+# 8) Chunk chapters into sections for TTS
+# -----------------------------------------------------------
+@app.post("/chunk_chapters")
+async def chunk_chapters(payload: dict):
+    """
+    Chunks all chapters for a book into max 250-character sections.
+    
+    payload:
+    {
+      "book_id": "uuid-of-book",
+      "max_chars": 250  # optional, default 250
+    }
+    
+    Returns:
+    {
+      "status": "ok",
+      "book_id": "...",
+      "chapters_processed": 5,
+      "total_sections_created": 127,
+      "details": [
+        {"chapter_id": "...", "chapter_index": 1, "sections": 25},
+        ...
+      ]
+    }
+    """
+    book_id = payload.get("book_id")
+    max_chars = payload.get("max_chars", 250)
+    
+    if not book_id:
+        return JSONResponse({"error": "Missing 'book_id' in request body"}, status_code=400)
+    
+    if not isinstance(max_chars, int) or max_chars < 50 or max_chars > 500:
+        return JSONResponse({"error": "'max_chars' must be an integer between 50 and 500"}, status_code=400)
+    
+    # Fetch all chapters for this book
+    chapters = get_chapters_for_book(book_id)
+    
+    if not chapters:
+        return JSONResponse({"error": f"No chapters found for book_id={book_id}"}, status_code=404)
+    
+    details = []
+    total_sections = 0
+    
+    for chapter in chapters:
+        chapter_id = chapter["id"]
+        chapter_text = chapter.get("text", "")
+        chapter_index = chapter.get("chapter_index", 0)
+        
+        if not chapter_text:
+            details.append({
+                "chapter_id": chapter_id,
+                "chapter_index": chapter_index,
+                "sections": 0,
+                "note": "No text content"
+            })
+            continue
+        
+        # Chunk the chapter text
+        sections = chunk_chapter_text(chapter_text, max_chars)
+        
+        # Write sections to Supabase
+        write_sections_to_supabase(chapter_id, sections)
+        
+        details.append({
+            "chapter_id": chapter_id,
+            "chapter_index": chapter_index,
+            "sections": len(sections)
+        })
+        total_sections += len(sections)
+    
+    return {
+        "status": "ok",
+        "book_id": book_id,
+        "chapters_processed": len(chapters),
+        "total_sections_created": total_sections,
+        "details": details
+    }
+
+# -----------------------------------------------------------
+# 9) Create display paragraphs for app UI
+# -----------------------------------------------------------
+@app.post("/create_paragraphs")
+async def create_paragraphs(payload: dict):
+    """
+    Creates natural paragraphs for app display (time-synchronized transcripts).
+    Uses GPT to identify semantic breaks in text.
+    
+    payload:
+    {
+      "book_id": "uuid-of-book"
+    }
+    
+    Returns:
+    {
+      "status": "ok",
+      "book_id": "...",
+      "chapters_processed": 5,
+      "total_paragraphs_created": 89,
+      "details": [
+        {"chapter_id": "...", "chapter_index": 1, "paragraphs": 18},
+        ...
+      ]
+    }
+    """
+    book_id = payload.get("book_id")
+    
+    if not book_id:
+        return JSONResponse({"error": "Missing 'book_id' in request body"}, status_code=400)
+    
+    # Fetch all chapters for this book
+    chapters = get_chapters_for_book(book_id)
+    
+    if not chapters:
+        return JSONResponse({"error": f"No chapters found for book_id={book_id}"}, status_code=404)
+    
+    details = []
+    total_paragraphs = 0
+    
+    for chapter in chapters:
+        chapter_id = chapter["id"]
+        chapter_text = chapter.get("text", "")
+        chapter_index = chapter.get("chapter_index", 0)
+        
+        if not chapter_text:
+            details.append({
+                "chapter_id": chapter_id,
+                "chapter_index": chapter_index,
+                "paragraphs": 0,
+                "note": "No text content"
+            })
+            continue
+        
+        # Use GPT to split into natural paragraphs
+        paragraphs = split_into_paragraphs_gpt(chapter_text)
+        
+        # Write paragraphs to Supabase
+        write_paragraphs_to_supabase(chapter_id, paragraphs)
+        
+        details.append({
+            "chapter_id": chapter_id,
+            "chapter_index": chapter_index,
+            "paragraphs": len(paragraphs)
+        })
+        total_paragraphs += len(paragraphs)
+    
+    return {
+        "status": "ok",
+        "book_id": book_id,
+        "chapters_processed": len(chapters),
+        "total_paragraphs_created": total_paragraphs,
+        "details": details
     }
