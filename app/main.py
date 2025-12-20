@@ -765,11 +765,12 @@ async def process_book(file: UploadFile = File(...)):
         try:
             from app.cover_art import generate_cover_image, update_book_cover_url
             metadata["book_id"] = book_id
-            cover_url = generate_cover_image(metadata)
-            update_book_cover_url(book_id, cover_url)
-            result["cover_art_url"] = cover_url
+            cover_urls = generate_cover_image(metadata)
+            update_book_cover_url(book_id, cover_urls)
+            result["cover_art_url"] = cover_urls.get("cover_art_url")
+            result["cover_art_url_2x3"] = cover_urls.get("cover_art_url_2x3")
             result["steps_completed"].append("generate_cover")
-            print(f"[PIPELINE] Step 2.5 complete: Cover art generated")
+            print(f"[PIPELINE] Step 2.5 complete: Cover art generated (1:1 and 2:3)")
         except Exception as cover_error:
             print(f"[PIPELINE] ⚠️ Cover art failed (continuing): {str(cover_error)}")
             result["cover_art_error"] = str(cover_error)

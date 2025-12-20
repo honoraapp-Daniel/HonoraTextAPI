@@ -1,10 +1,12 @@
 """
 Cover art generation module for Honora.
-Generates photorealistic book cover images using DALL-E and uploads to Supabase Storage.
+Generates artistic book cover images using DALL-E and uploads to Supabase Storage.
 """
 import os
 import requests
 import uuid
+from io import BytesIO
+from PIL import Image
 from openai import OpenAI
 from supabase import create_client
 
@@ -36,7 +38,8 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a DALL-E prompt for creating a photorealistic book cover image.
+    Generates a creative DALL-E prompt for book cover artwork.
+    The prompt is intentionally open to artistic interpretation.
     
     Args:
         metadata: dict with title, author, category, synopsis
@@ -44,69 +47,70 @@ def generate_cover_art_prompt(metadata: dict) -> str:
     Returns:
         str: DALL-E prompt
     """
-    title = metadata.get("title", "Unknown Book")
-    author = metadata.get("author", "Unknown Author")
+    title = metadata.get("title", "Untitled")
     category = metadata.get("category", "Fiction")
     synopsis = metadata.get("synopsis", "")
     
-    # Determine mood/color based on category
+    # Determine visual mood based on category
     category_moods = {
-        "Fiction": "warm, inviting colors with soft lighting",
-        "Mystery": "dark, moody atmosphere with dramatic shadows",
-        "Romance": "soft pink and warm tones, romantic lighting",
-        "Fantasy": "mystical, ethereal colors with magical glow",
-        "Science Fiction": "cool blue and silver tones, futuristic lighting",
-        "Biography": "classic, dignified colors with natural lighting",
-        "Self-Help": "bright, optimistic colors with clean lighting",
-        "History": "sepia and earth tones, vintage atmosphere",
-        "Philosophy": "deep, contemplative tones, minimalist",
-        "Business": "professional blues and grays, clean modern",
-        "Classic Literature": "rich, timeless colors, elegant atmosphere",
-        "Children": "vibrant, playful colors with cheerful lighting",
-        "Young Adult": "dynamic, energetic colors with modern feel",
-        "Poetry": "soft, artistic colors with dreamy atmosphere",
-        "Religion": "sacred, peaceful tones with spiritual light",
-        "Science": "clean, precise colors with clinical lighting",
-        "Non-Fiction": "neutral, professional colors with clear lighting"
+        "Fiction": "evocative, narrative, atmospheric",
+        "Mystery": "dark, enigmatic, shadowy with hints of intrigue",
+        "Romance": "warm, emotional, soft and dreamy",
+        "Fantasy": "mystical, magical, ethereal and otherworldly",
+        "Science Fiction": "futuristic, cosmic, technological wonder",
+        "Biography": "dignified, personal, intimate portraiture style",
+        "Self-Help": "uplifting, transformative, inspiring light",
+        "History": "timeless, epic, classical grandeur",
+        "Philosophy": "contemplative, abstract, thought-provoking",
+        "Business": "dynamic, professional, forward-moving",
+        "Classic Literature": "elegant, timeless, artistic sophistication",
+        "Children": "whimsical, colorful, joyful and imaginative",
+        "Young Adult": "bold, energetic, emotionally resonant",
+        "Poetry": "lyrical, artistic, emotionally evocative",
+        "Religion": "sacred, peaceful, spiritually uplifting",
+        "Science": "precise, fascinating, wonder of discovery",
+        "Non-Fiction": "authentic, compelling, visually engaging"
     }
     
-    mood = category_moods.get(category, "warm, inviting colors with soft lighting")
+    mood = category_moods.get(category, "evocative, narrative, atmospheric")
     
-    prompt = f"""A photorealistic image of a beautiful hardcover book placed elegantly on a wooden table or surface. 
+    # Create an open, artistic prompt
+    prompt = f"""Create a stunning, artistic cover image that captures the essence of "{title}".
 
-The book has the title "{title}" by {author} embossed on the cover in elegant typography. 
+The artwork should be {mood}.
 
-The cover design reflects the {category.lower()} genre with {mood}.
+Visual inspiration from the book's theme: {synopsis[:200] if synopsis else 'A profound journey of discovery and meaning.'}
 
-The book is positioned at a slight angle, photographed with professional product photography lighting. Clean, minimalist composition with soft shadows. The background is slightly blurred, focusing attention on the book.
+Style: High-quality digital art, visually striking, suitable as a book cover. The image should be symbolic and evocative, not literal. No text, no letters, no words - pure visual art only.
 
-Style: High-end product photography, editorial quality, 8K resolution, photorealistic."""
+The composition should work beautifully both as a square format and when cropped vertically."""
 
     return prompt
 
 
-def generate_cover_image(metadata: dict) -> str:
+def generate_cover_image(metadata: dict) -> dict:
     """
-    Generates a book cover image using DALL-E and uploads to Supabase Storage.
+    Generates book cover artwork using DALL-E and uploads to Supabase Storage.
+    Creates two versions: 1:1 (square) and 2:3 (book format).
     
     Args:
         metadata: dict with book information
         
     Returns:
-        str: Public URL of the uploaded cover image
+        dict: {"cover_art_url": "...", "cover_art_url_2x3": "..."}
     """
     prompt = generate_cover_art_prompt(metadata)
     
-    print(f"[COVER ART] Generating cover for: {metadata.get('title')}")
+    print(f"[COVER ART] Generating artwork for: {metadata.get('title')}")
     
     client = get_openai()
     
-    # Generate image with DALL-E 3
+    # Generate image with DALL-E 3 (1024x1024 for best quality)
     response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
         size="1024x1024",
-        quality="standard",
+        quality="hd",
         n=1
     )
     
@@ -118,35 +122,70 @@ def generate_cover_image(metadata: dict) -> str:
     if image_response.status_code != 200:
         raise Exception(f"Failed to download image: {image_response.status_code}")
     
+    # Open image with PIL
+    original_image = Image.open(BytesIO(image_response.content))
+    
+    # Create 1:1 version (already 1024x1024)
+    square_image = original_image.copy()
+    
+    # Create 2:3 version by cropping from center (682x1024)
+    # From 1024x1024, we crop to 682 width centered
+    width_2x3 = int(1024 * 2 / 3)  # 682
+    left = (1024 - width_2x3) // 2  # Center crop
+    portrait_image = original_image.crop((left, 0, left + width_2x3, 1024))
+    
     # Upload to Supabase Storage
     supabase = get_supabase()
     book_id = metadata.get("book_id", str(uuid.uuid4()))
-    file_name = f"covers/{book_id}.png"
     
-    print(f"[COVER ART] Uploading to Supabase Storage: {file_name}")
+    print(f"[COVER ART] Uploading both versions to Supabase Storage...")
     
-    # Upload image bytes
+    # Upload 1:1 version
+    square_buffer = BytesIO()
+    square_image.save(square_buffer, format="PNG")
+    square_buffer.seek(0)
+    
+    file_name_1x1 = f"covers/{book_id}_1x1.png"
     supabase.storage.from_("audio").upload(
-        file_name,
-        image_response.content,
+        file_name_1x1,
+        square_buffer.getvalue(),
         {"content-type": "image/png"}
     )
+    url_1x1 = supabase.storage.from_("audio").get_public_url(file_name_1x1)
     
-    # Get public URL
-    public_url = supabase.storage.from_("audio").get_public_url(file_name)
-    print(f"[COVER ART] Upload complete: {public_url}")
+    # Upload 2:3 version
+    portrait_buffer = BytesIO()
+    portrait_image.save(portrait_buffer, format="PNG")
+    portrait_buffer.seek(0)
     
-    return public_url
+    file_name_2x3 = f"covers/{book_id}_2x3.png"
+    supabase.storage.from_("audio").upload(
+        file_name_2x3,
+        portrait_buffer.getvalue(),
+        {"content-type": "image/png"}
+    )
+    url_2x3 = supabase.storage.from_("audio").get_public_url(file_name_2x3)
+    
+    print(f"[COVER ART] Upload complete: 1:1 and 2:3 versions")
+    
+    return {
+        "cover_art_url": url_1x1,
+        "cover_art_url_2x3": url_2x3
+    }
 
 
-def update_book_cover_url(book_id: str, cover_url: str):
+def update_book_cover_url(book_id: str, cover_urls: dict):
     """
-    Updates the book record with the cover art URL.
+    Updates the book record with both cover art URLs.
     
     Args:
         book_id: UUID of the book
-        cover_url: Public URL of the cover image
+        cover_urls: dict with cover_art_url and cover_art_url_2x3
     """
     supabase = get_supabase()
-    supabase.table("books").update({"cover_art_url": cover_url}).eq("id", book_id).execute()
-    print(f"[COVER ART] Updated book {book_id} with cover URL")
+    supabase.table("books").update({
+        "cover_art_url": cover_urls.get("cover_art_url"),
+        "cover_art_url_2x3": cover_urls.get("cover_art_url_2x3")
+    }).eq("id", book_id).execute()
+    print(f"[COVER ART] Updated book {book_id} with both cover URLs")
+

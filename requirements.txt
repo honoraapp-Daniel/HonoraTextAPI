@@ -4,3 +4,5 @@ pymupdf
 python-multipart
 openai>=1.0.0
 supabase
+Pillow
+requests
