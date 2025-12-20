@@ -1,6 +1,6 @@
 """
 Metadata extraction module for Honora.
-Uses GPT to extract book title and author from PDF text.
+Uses GPT to extract book title, author, and additional metadata from PDF text.
 """
 import json
 import os
@@ -10,22 +10,28 @@ from openai import OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 METADATA_SYSTEM_PROMPT = """
-You are a book metadata extractor. Given text from the first pages of a book, extract:
-1. The book title
-2. The author name(s)
-3. The language of the book (as ISO 639-1 code, e.g. "en", "da", "de", "fr")
+You are a book metadata extractor for Honora audiobook platform. Given text from the first pages of a book, extract comprehensive metadata.
 
 Return ONLY valid JSON in this exact format:
 {
   "title": "Book Title Here",
   "author": "Author Name Here",
-  "language": "en"
+  "language": "en",
+  "original_language": "en",
+  "publisher": "Publisher Name",
+  "publishing_year": 1925,
+  "synopsis": "A compelling 2-3 sentence summary of the book's plot and themes.",
+  "book_of_the_day_quote": "A memorable, inspiring quote from the book that captures its essence.",
+  "category": "Genre Category"
 }
 
-If there are multiple authors, separate them with commas.
-If you cannot find the title or author, use "Unknown" as the value.
-If you cannot determine the language, default to "en".
-Do not include subtitles unless they are essential to the title.
+RULES:
+- If there are multiple authors, separate them with commas.
+- If you cannot find a field, use null (not "Unknown").
+- Language should be ISO 639-1 code (e.g. "en", "da", "de", "fr").
+- Synopsis should be engaging and suitable for audiobook marketing.
+- book_of_the_day_quote should be a real quote from the text if available, otherwise a thematic quote.
+- Category should be one of: Fiction, Non-Fiction, Mystery, Romance, Fantasy, Science Fiction, Biography, Self-Help, History, Philosophy, Business, Classic Literature, Children, Young Adult, Poetry, Religion, Science
 """
 
 
@@ -58,20 +64,20 @@ def extract_json_from_text(text: str) -> dict:
 
 def extract_book_metadata(first_pages_text: str) -> dict:
     """
-    Uses GPT to extract title, author, and language from the first pages of a book.
+    Uses GPT to extract comprehensive metadata from the first pages of a book.
     
     Args:
         first_pages_text: Combined text from the first few pages of the PDF
         
     Returns:
-        dict with "title", "author", and "language" keys
+        dict with all metadata fields
     """
     prompt = f"""
-Extract the book title, author, and language from this text:
+Extract comprehensive book metadata from this text:
 
-{first_pages_text}
+{first_pages_text[:8000]}  # Limit to avoid token limits
 
-Return JSON with "title", "author", and "language" keys.
+Return JSON with all metadata fields.
 """
 
     response = client.chat.completions.create(
@@ -88,9 +94,16 @@ Return JSON with "title", "author", and "language" keys.
     
     if result:
         return {
-            "title": result.get("title", "Unknown"),
-            "author": result.get("author", "Unknown"),
-            "language": result.get("language", "en")
+            "title": result.get("title") or "Unknown",
+            "author": result.get("author") or "Unknown",
+            "language": result.get("language") or "en",
+            "original_language": result.get("original_language"),
+            "publisher": result.get("publisher"),
+            "publishing_year": result.get("publishing_year"),
+            "synopsis": result.get("synopsis"),
+            "book_of_the_day_quote": result.get("book_of_the_day_quote"),
+            "category": result.get("category")
         }
     
     return {"title": "Unknown", "author": "Unknown", "language": "en"}
+

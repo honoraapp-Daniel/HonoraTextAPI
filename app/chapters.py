@@ -18,27 +18,40 @@ def get_supabase():
     return _supabase_client
 
 
-def create_book_in_supabase(title: str, author: str, language: str = "en") -> str:
+def create_book_in_supabase(metadata: dict) -> str:
     """
-    Creates a new book entry in the 'books' table.
+    Creates a new book entry in the 'books' table with full metadata.
     
     Args:
-        title: Book title
-        author: Book author
-        language: Language code (default: "en")
+        metadata: dict containing title, author, language, and optional fields
         
     Returns:
         book_id (UUID string) of the created book
     """
     supabase = get_supabase()
-    result = supabase.table("books").insert({
-        "title": title,
-        "author": author,
-        "language": language
-    }).execute()
+    
+    # Build insert data with only non-None values
+    insert_data = {
+        "title": metadata.get("title", "Unknown"),
+        "author": metadata.get("author", "Unknown"),
+        "language": metadata.get("language", "en"),
+    }
+    
+    # Add optional fields if present
+    optional_fields = [
+        "original_language", "publisher", "publishing_year",
+        "synopsis", "book_of_the_day_quote", "category"
+    ]
+    
+    for field in optional_fields:
+        if metadata.get(field) is not None:
+            insert_data[field] = metadata[field]
+    
+    result = supabase.table("books").insert(insert_data).execute()
     
     # Return the generated UUID
     return result.data[0]["id"]
+
 
 
 CHAPTER_REGEX = re.compile(

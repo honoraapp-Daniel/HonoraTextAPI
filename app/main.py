@@ -525,19 +525,18 @@ async def create_book(payload: dict):
     
     # Extract metadata using GPT
     metadata = extract_book_metadata(first_pages_text)
-    title = metadata.get("title", "Unknown")
-    author = metadata.get("author", "Unknown")
-    language = metadata.get("language", "en")
     
-    # Create book in Supabase
-    book_id = create_book_in_supabase(title, author, language)
+    # Create book in Supabase with full metadata
+    book_id = create_book_in_supabase(metadata)
     
     return {
         "status": "ok",
         "book_id": book_id,
-        "title": title,
-        "author": author,
-        "language": language
+        "title": metadata.get("title"),
+        "author": metadata.get("author"),
+        "language": metadata.get("language"),
+        "synopsis": metadata.get("synopsis"),
+        "category": metadata.get("category")
     }
 
 # -----------------------------------------------------------
@@ -748,18 +747,32 @@ async def process_book(file: UploadFile = File(...)):
             first_pages_text += page_text + "\n\n"
         
         metadata = extract_book_metadata(first_pages_text)
-        title = metadata.get("title", "Unknown")
-        author = metadata.get("author", "Unknown")
-        language = metadata.get("language", "en")
         
         from app.chapters import create_book_in_supabase
-        book_id = create_book_in_supabase(title, author, language)
+        book_id = create_book_in_supabase(metadata)
         
         result["steps_completed"].append("create_book")
         result["book_id"] = book_id
-        result["title"] = title
-        result["author"] = author
-        result["language"] = language
+        result["title"] = metadata.get("title")
+        result["author"] = metadata.get("author")
+        result["language"] = metadata.get("language")
+        result["synopsis"] = metadata.get("synopsis")
+        result["category"] = metadata.get("category")
+        
+        # ===== STEP 2.5: Generate Cover Art =====
+        logger.info("Step 2.5: Generating cover art...")
+        print(f"[PIPELINE] Step 2.5: Generating cover art with DALL-E...")
+        try:
+            from app.cover_art import generate_cover_image, update_book_cover_url
+            metadata["book_id"] = book_id
+            cover_url = generate_cover_image(metadata)
+            update_book_cover_url(book_id, cover_url)
+            result["cover_art_url"] = cover_url
+            result["steps_completed"].append("generate_cover")
+            print(f"[PIPELINE] Step 2.5 complete: Cover art generated")
+        except Exception as cover_error:
+            print(f"[PIPELINE] ⚠️ Cover art failed (continuing): {str(cover_error)}")
+            result["cover_art_error"] = str(cover_error)
         
         # ===== STEP 3: Clean Book =====
         logger.info("Step 3: Cleaning text for TTS...")
