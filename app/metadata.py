@@ -28,7 +28,7 @@ Return ONLY valid JSON in this exact format:
 RULES:
 - If there are multiple authors, separate them with commas.
 - If you cannot find a field, use null (not "Unknown").
-- Language should be ISO 639-1 code (e.g. "en", "da", "de", "fr").
+- Language and original_language should be FULL language names (e.g. "English", "Danish", "German", "French", "Spanish"), NOT ISO codes.
 - Synopsis should be engaging and suitable for audiobook marketing.
 - book_of_the_day_quote should be a real quote from the text if available, otherwise a thematic quote.
 - Category should be one of: Fiction, Non-Fiction, Mystery, Romance, Fantasy, Science Fiction, Biography, Self-Help, History, Philosophy, Business, Classic Literature, Children, Young Adult, Poetry, Religion, Science
