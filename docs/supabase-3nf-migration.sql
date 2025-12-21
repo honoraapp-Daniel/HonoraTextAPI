@@ -14,11 +14,20 @@ CREATE TABLE IF NOT EXISTS authors (
 );
 
 -- Categories table (17 fixed genres)
+-- First create table if not exists
 CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL UNIQUE
 );
+
+-- Add slug column if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'categories' AND column_name = 'slug') THEN
+        ALTER TABLE categories ADD COLUMN slug TEXT UNIQUE;
+    END IF;
+END $$;
 
 -- Languages table
 CREATE TABLE IF NOT EXISTS languages (
@@ -47,6 +56,7 @@ CREATE TABLE IF NOT EXISTS book_authors (
 -- 3. SEED CATEGORIES (17 genres)
 -- =====================================================
 
+-- Use upsert to handle existing data
 INSERT INTO categories (name, slug) VALUES
     ('Fiction', 'fiction'),
     ('Non-Fiction', 'non-fiction'),
@@ -65,7 +75,7 @@ INSERT INTO categories (name, slug) VALUES
     ('Poetry', 'poetry'),
     ('Religion', 'religion'),
     ('Science', 'science')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET slug = EXCLUDED.slug;
 
 -- 4. ADD FOREIGN KEY COLUMNS TO BOOKS
 -- =====================================================
