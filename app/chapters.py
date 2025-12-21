@@ -655,7 +655,7 @@ def split_into_paragraphs_gpt(text: str) -> list:
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": PARAGRAPH_SPLIT_PROMPT},
+            {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
             {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{text}"}
         ],
         response_format={"type": "json_object"}
