@@ -791,14 +791,23 @@ async def process_book(file: UploadFile = File(...)):
             items = page_obj.get("items", [])
             if items:
                 print(f"[PIPELINE] Cleaning page {i+1}/{total_pages}...")
-                cleaned = clean_page_text(items)
-                cleaned_pages.append({
-                    "page": page_obj.get("page"),
-                    "cleaned_text": cleaned.get("cleaned_text", "")
-                })
+                try:
+                    cleaned = clean_page_text(items)
+                    cleaned_pages.append({
+                        "page": page_obj.get("page"),
+                        "cleaned_text": cleaned.get("cleaned_text", "")
+                    })
+                except Exception as e:
+                    print(f"[PIPELINE] ⚠️ Warning: Failed to clean page {i+1}: {str(e)}")
+                    print(f"[PIPELINE] Falling back to raw text for page {i+1}")
+                    raw_text = " ".join([item.get("text", "") for item in items])
+                    cleaned_pages.append({
+                        "page": page_obj.get("page"),
+                        "cleaned_text": raw_text
+                    })
         
-        print(f"[PIPELINE] Step 3 complete: {len(cleaned_pages)} pages cleaned")
-        full_text = "\n\n".join([p["cleaned_text"] for p in cleaned_pages if p["cleaned_text"].strip()])
+        print(f"[PIPELINE] Step 3 complete: {len(cleaned_pages)} pages cleaned (with some fallbacks if errors occurred)")
+        full_text = "\n\n".join([p["cleaned_text"] for p in cleaned_pages if p["cleaned_text"] and p["cleaned_text"].strip()])
         
         # Save cleaned result
         cleaned_id = str(uuid.uuid4())
