@@ -335,7 +335,7 @@ def generate_cover_image(metadata: dict) -> dict:
     supabase.storage.from_("audio").upload(
         file_name,
         buffer.getvalue(),
-        {"content-type": "image/png"}
+        {"content-type": "image/png", "x-upsert": "true"}
     )
     url = supabase.storage.from_("audio").get_public_url(file_name)
     

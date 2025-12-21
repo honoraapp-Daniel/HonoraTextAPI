@@ -14,7 +14,8 @@ def get_supabase():
     if _supabase_client is None:
         if not SUPABASE_URL or not SUPABASE_KEY:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-        _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        url = SUPABASE_URL if SUPABASE_URL.endswith("/") else f"{SUPABASE_URL}/"
+        _supabase_client = create_client(url, SUPABASE_KEY)
     return _supabase_client
 
 
@@ -172,6 +173,7 @@ def create_book_in_supabase(metadata: dict) -> str:
     
     print(f"[SUPABASE] ✅ Created book with 3NF relations: {metadata.get('title')}")
     
+    return book_id
 
 
 # ============================================
