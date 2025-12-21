@@ -34,10 +34,16 @@ OUTPUT JSON:
 
 def extract_json_from_response(text: str) -> dict:
     """
-    Extracts JSON from LLM response, handling markdown code blocks
-    and other common issues.
+    Extracts JSON from LLM response.
+    With response_format={"type": "json_object"}, the model should return
+    pure JSON. This function handles potential whitespace or markdown wrapping.
     """
-    # Try direct parse first
+    if not text:
+        return None
+        
+    text = text.strip()
+    
+    # Try direct parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -50,23 +56,16 @@ def extract_json_from_response(text: str) -> dict:
             return json.loads(json_match.group(1))
         except json.JSONDecodeError:
             pass
-    
-    # Try to find raw JSON object in the text
-    json_match = re.search(r'\{[^{}]*"cleaned_text"[^{}]*\}', text, re.DOTALL)
-    if json_match:
+            
+    # Fallback: Find the first '{' and last '}'
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
         try:
-            return json.loads(json_match.group(0))
+            return json.loads(text[start:end+1])
         except json.JSONDecodeError:
             pass
-    
-    # Last resort: find anything that looks like JSON
-    json_match = re.search(r'\{.*\}', text, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group(0))
-        except json.JSONDecodeError:
-            pass
-    
+            
     return None
 
 
@@ -83,12 +82,13 @@ def clean_page_text(page_items):
     """
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": CLEANER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ],
-        response_format={"type": "json_object"}
+        response_format={"type": "json_object"},
+        max_tokens=4000  # Explicitly allow enough tokens for full page text
     )
 
     content = response.choices[0].message.content
@@ -96,10 +96,12 @@ def clean_page_text(page_items):
     
     if result is None:
         # Log the problematic response for debugging
-        print(f"Failed to parse LLM response: {content[:500]}")
+        print(f"[CLEANER] ❌ Failed to parse LLM response.")
+        print(f"[CLEANER] Start of response: {content[:200]}")
+        print(f"[CLEANER] End of response: {content[-200:]}")
         raise HTTPException(
             status_code=500, 
-            detail=f"Invalid JSON returned by LLM. Response started with: {content[:100]}"
+            detail=f"Invalid JSON returned by LLM. Length: {len(content)}"
         )
     
     # Ensure required fields exist
