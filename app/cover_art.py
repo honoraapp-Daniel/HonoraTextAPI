@@ -123,9 +123,9 @@ COLOR PALETTE:
 - NO bright or saturated colors
 
 COMPOSITION (CRITICAL - Canvas Extension Format):
-- Image will be generated at 1536x1024 (3:2 landscape)
-- ALL important visual elements MUST be in the CENTER 66% of the width
-- Left and right edges (17% each side) should contain only:
+- Image will be generated at 1792x1024 (7:4 landscape)
+- ALL important visual elements MUST be in the CENTER 57% of the width
+- Left and right edges (21% each side) should contain only:
   - Ambient gradients, soft textures, atmospheric fade
   - NO important symbols, objects, or focal points in edges
 - Minimal, high contrast, strong negative space
@@ -271,11 +271,11 @@ def generate_cover_image(metadata: dict) -> dict:
     client = get_openai()
     
     # Generate image with DALL-E 3 (pure artwork, no text)
-    # Using 1536x1024 for Canvas Extension - allows cropping to both 1:1 and 2:3
+    # Using 1792x1024 for Canvas Extension - allows cropping to both 1:1 and 2:3
     response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
-        size="1536x1024",  # Extended canvas for safe cropping
+        size="1792x1024",  # Extended canvas for safe cropping (DALL-E supported size)
         quality="hd",
         n=1
     )
