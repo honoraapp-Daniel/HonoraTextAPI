@@ -172,10 +172,220 @@ def create_book_in_supabase(metadata: dict) -> str:
     
     print(f"[SUPABASE] ✅ Created book with 3NF relations: {metadata.get('title')}")
     
-    return book_id
 
 
+# ============================================
+# GPT-POWERED BOOK STRUCTURE DETECTION
+# ============================================
 
+from openai import OpenAI
+
+_openai_client = None
+
+def get_openai():
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY must be set")
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+
+STRUCTURE_DETECTION_PROMPT = """
+You are a book structure analyzer. Given the first pages of a book (including any Contents/Table of Contents page), analyze and return the structure.
+
+IMPORTANT RULES:
+1. If the book is an ANTHOLOGY (multiple short stories/novellas), identify each STORY title
+2. Chapters belong to stories in anthologies (e.g., "Crazy Paella" has "Chapter 1", "Chapter 2")
+3. For regular novels, there are no stories - just chapters
+4. Look for the Contents/Table of Contents page to understand the structure
+5. Front matter (Introduction, About the Author, etc.) should be marked as "front_matter"
+
+Return ONLY valid JSON in this exact format:
+{
+  "book_type": "anthology" | "novel" | "textbook",
+  "title": "Detected book title if found",
+  "author": "Detected author if found",
+  "structure": [
+    {"type": "front_matter", "title": "About the Author"},
+    {"type": "story", "title": "Crazy Paella"},
+    {"type": "chapter", "title": "Getting Ready", "parent_story": "Crazy Paella"},
+    {"type": "chapter", "title": "The Lorry", "parent_story": "Crazy Paella"},
+    {"type": "story", "title": "A Very Unusual Excursion"},
+    {"type": "chapter", "title": "The Creature", "parent_story": "A Very Unusual Excursion"}
+  ]
+}
+
+For a regular novel, use:
+{
+  "book_type": "novel",
+  "title": "The Great Book",
+  "author": "John Doe",
+  "structure": [
+    {"type": "chapter", "title": "The Beginning"},
+    {"type": "chapter", "title": "The Middle"}
+  ]
+}
+"""
+
+
+def detect_book_structure(full_text: str) -> dict:
+    """
+    Use GPT to analyze book structure from first pages.
+    Returns detected structure including book type, stories, and chapters.
+    """
+    # Use first ~15000 chars (roughly first 10-15 pages)
+    sample_text = full_text[:15000]
+    
+    client = get_openai()
+    
+    print("[CHAPTERS] Detecting book structure with GPT...")
+    
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": STRUCTURE_DETECTION_PROMPT},
+            {"role": "user", "content": f"Analyze this book's structure:\n\n{sample_text}"}
+        ],
+        response_format={"type": "json_object"}
+    )
+    
+    content = response.choices[0].message.content
+    
+    try:
+        structure = json.loads(content)
+        print(f"[CHAPTERS] ✅ Detected: {structure.get('book_type', 'unknown')} with {len(structure.get('structure', []))} items")
+        return structure
+    except json.JSONDecodeError:
+        print("[CHAPTERS] ⚠️ Failed to parse structure, using fallback")
+        return {"book_type": "novel", "structure": []}
+
+
+def extract_chapters_smart(full_text: str) -> tuple:
+    """
+    Smart chapter extraction using GPT-detected structure.
+    Returns (stories_list, chapters_list) where stories_list may be empty for novels.
+    """
+    structure = detect_book_structure(full_text)
+    book_type = structure.get("book_type", "novel")
+    items = structure.get("structure", [])
+    
+    stories = []
+    chapters = []
+    
+    # Build story index mapping
+    story_titles = [item["title"] for item in items if item.get("type") == "story"]
+    story_index_map = {title: idx + 1 for idx, title in enumerate(story_titles)}
+    
+    # Track current story for chapters
+    current_story = None
+    chapter_index = 0
+    
+    for item in items:
+        item_type = item.get("type")
+        title = item.get("title", "Untitled")
+        
+        if item_type == "story":
+            current_story = title
+            story_idx = story_index_map.get(title, len(stories) + 1)
+            stories.append({
+                "story_index": story_idx,
+                "title": title
+            })
+            # Reset chapter index for new story
+            chapter_index = 0
+            
+        elif item_type == "chapter":
+            chapter_index += 1
+            parent_story = item.get("parent_story") or current_story
+            
+            chapters.append({
+                "chapter_index": chapter_index,
+                "title": title,
+                "parent_story": parent_story,
+                "text": ""  # Will be filled by text extraction
+            })
+        
+        elif item_type == "front_matter":
+            # Skip front matter for now
+            pass
+    
+    # Now extract actual text for each chapter using detected titles
+    chapters_with_text = extract_chapter_text(full_text, chapters, book_type)
+    
+    print(f"[CHAPTERS] Found {len(stories)} stories and {len(chapters_with_text)} chapters")
+    return stories, chapters_with_text
+
+
+def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list:
+    """
+    Extract actual text content for each detected chapter.
+    Uses chapter titles as markers to split text.
+    """
+    if not chapters:
+        # Fallback: treat entire book as one chapter
+        return [{
+            "chapter_index": 1,
+            "title": "Full Text",
+            "parent_story": None,
+            "text": full_text
+        }]
+    
+    # Build regex pattern from chapter titles
+    chapter_titles = [ch["title"] for ch in chapters]
+    
+    # Create markers for splitting
+    result_chapters = []
+    remaining_text = full_text
+    
+    for i, chapter in enumerate(chapters):
+        title = chapter["title"]
+        next_title = chapters[i + 1]["title"] if i + 1 < len(chapters) else None
+        
+        # Find where this chapter starts
+        # Look for "Chapter X" pattern OR the chapter title itself
+        chapter_patterns = [
+            rf"Chapter\s+\d+[:\.\s\-–]+{re.escape(title)}",  # "Chapter 1: Getting Ready"
+            rf"Chapter\s+\w+[:\.\s\-–]+{re.escape(title)}",  # "Chapter One – Getting Ready"
+            rf"(?:^|\n){re.escape(title)}(?:\n|$)",  # Just the title on its own line
+        ]
+        
+        start_pos = None
+        for pattern in chapter_patterns:
+            match = re.search(pattern, remaining_text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                start_pos = match.start()
+                break
+        
+        if start_pos is None:
+            # Chapter title not found, skip
+            continue
+        
+        # Find where this chapter ends (start of next chapter)
+        end_pos = len(remaining_text)
+        if next_title:
+            for pattern in chapter_patterns:
+                pattern = pattern.replace(re.escape(title), re.escape(next_title))
+                match = re.search(pattern, remaining_text[start_pos + 1:], re.IGNORECASE | re.MULTILINE)
+                if match:
+                    end_pos = start_pos + 1 + match.start()
+                    break
+        
+        # Extract chapter text
+        chapter_text = remaining_text[start_pos:end_pos].strip()
+        
+        result_chapters.append({
+            "chapter_index": chapter["chapter_index"],
+            "title": title,
+            "parent_story": chapter.get("parent_story"),
+            "text": chapter_text
+        })
+    
+    return result_chapters
+
+
+# Legacy function kept for backwards compatibility
 CHAPTER_REGEX = re.compile(
     r"^(CHAPTER|BOOK|PART)\s+([A-Z]+|\d+|one|two|three|four|five|six|seven|eight|nine|ten)",
     re.IGNORECASE
@@ -202,8 +412,8 @@ def extract_chapter_name(line: str) -> str:
             return name
     
     # Try to extract name after dash: "Chapter 11 - Rhythm" -> "Rhythm"
-    if " - " in line:
-        name = line.split(" - ", 1)[1].strip()
+    if " - " in line or " – " in line:
+        name = re.split(r" [-–] ", line, 1)[-1].strip()
         if name:
             return name
     
@@ -212,56 +422,69 @@ def extract_chapter_name(line: str) -> str:
 
 
 def extract_chapters_from_text(full_text: str):
-    lines = full_text.split("\n")
-    chapters = []
-
-    current_title = None
-    current_text = []
-    chapter_index = 0
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        if CHAPTER_REGEX.match(line):
-            if current_title is not None:
-                chapters.append({
-                    "chapter_index": chapter_index,
-                    "title": current_title,
-                    "text": "\n".join(current_text)
-                })
-                current_text = []
-
-            chapter_index += 1
-            # Extract just the chapter name, not "Chapter X. Name"
-            current_title = extract_chapter_name(line)
-        else:
-            current_text.append(line)
-
-
-    if current_title and current_text:
-        chapters.append({
-            "chapter_index": chapter_index,
-            "title": current_title,
-            "text": "\n".join(current_text)
-        })
-
+    """
+    Legacy function - uses smart extraction now.
+    Returns list of chapters (without story info for backwards compat).
+    """
+    stories, chapters = extract_chapters_smart(full_text)
     return chapters
 
 
-def write_chapters_to_supabase(book_id: str, chapters: list):
+def write_stories_to_supabase(book_id: str, stories: list) -> dict:
+    """
+    Writes stories to the 'stories' table for anthology books.
+    Returns mapping of story_title -> story_id for linking chapters.
+    """
+    if not stories:
+        return {}
+    
+    supabase = get_supabase()
+    story_id_map = {}
+    
+    for story in stories:
+        result = supabase.table("stories").insert({
+            "book_id": book_id,
+            "story_index": story["story_index"],
+            "title": story["title"]
+        }).execute()
+        
+        story_id = result.data[0]["id"]
+        story_id_map[story["title"]] = story_id
+        print(f"[SUPABASE] Created story: {story['title']}")
+    
+    return story_id_map
+
+
+def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None):
     """
     Writes chapters to the 'chapters' table, including chapter text.
+    Optionally links to stories for anthology books.
+    
+    Args:
+        book_id: UUID of the book
+        chapters: List of chapter dicts with chapter_index, title, text, parent_story
+        story_id_map: Dict mapping story title -> story_id (for anthologies)
     """
     supabase = get_supabase()
+    story_id_map = story_id_map or {}
+    
     for chapter in chapters:
-        supabase.table("chapters").insert({
+        parent_story = chapter.get("parent_story")
+        story_id = story_id_map.get(parent_story) if parent_story else None
+        
+        insert_data = {
             "book_id": book_id,
             "chapter_index": chapter["chapter_index"],
             "title": chapter["title"],
-            "text": chapter.get("text", "")  # Store chapter text for later chunking
-        }).execute()
+            "text": chapter.get("text", "")
+        }
+        
+        if story_id:
+            insert_data["story_id"] = story_id
+        
+        supabase.table("chapters").insert(insert_data).execute()
+        print(f"[SUPABASE] Created chapter: {chapter['title']}" + 
+              (f" (story: {parent_story})" if parent_story else ""))
 
 
 def chunk_chapter_text(text: str, max_chars: int = 250) -> list:

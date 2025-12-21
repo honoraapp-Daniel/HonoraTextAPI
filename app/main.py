@@ -10,7 +10,9 @@ from app.extractor import extract_raw_pages
 from app.cleaner import clean_page_text
 from app.chapters import (
     extract_chapters_from_text, 
-    write_chapters_to_supabase, 
+    extract_chapters_smart,
+    write_chapters_to_supabase,
+    write_stories_to_supabase,
     create_book_in_supabase,
     chunk_chapter_text,
     write_sections_to_supabase,
@@ -806,14 +808,23 @@ async def process_book(file: UploadFile = File(...)):
         result["steps_completed"].append("clean_book")
         result["cleaned_file_id"] = cleaned_id
         
-        # ===== STEP 4: Extract Chapters =====
-        logger.info("Step 4: Extracting chapters...")
-        print(f"[PIPELINE] Step 4: Extracting chapters from text...")
-        from app.chapters import extract_chapters_from_text, write_chapters_to_supabase
+        # ===== STEP 4: Extract Chapters (Smart GPT-powered) =====
+        logger.info("Step 4: Extracting chapters with GPT...")
+        print(f"[PIPELINE] Step 4: Detecting book structure and chapters with GPT...")
+        from app.chapters import extract_chapters_smart, write_stories_to_supabase, write_chapters_to_supabase
         
-        chapters = extract_chapters_from_text(full_text)
-        write_chapters_to_supabase(book_id, chapters)
-        print(f"[PIPELINE] Step 4 complete: {len(chapters)} chapters found")
+        stories, chapters = extract_chapters_smart(full_text)
+        
+        # Write stories first (for anthologies)
+        story_id_map = {}
+        if stories:
+            print(f"[PIPELINE] Book is an anthology with {len(stories)} stories")
+            story_id_map = write_stories_to_supabase(book_id, stories)
+            result["stories"] = len(stories)
+        
+        # Write chapters (linked to stories if applicable)
+        write_chapters_to_supabase(book_id, chapters, story_id_map)
+        print(f"[PIPELINE] Step 4 complete: {len(stories)} stories, {len(chapters)} chapters")
         
         result["steps_completed"].append("extract_chapters")
         result["chapters"] = len(chapters)
