@@ -7,6 +7,7 @@ import os
 import requests
 import uuid
 from io import BytesIO
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from openai import OpenAI
 from supabase import create_client
@@ -14,6 +15,7 @@ from supabase import create_client
 # Lazy initialization
 _openai_client = None
 _supabase_client = None
+_cached_fonts = {}  # Cache loaded fonts
 
 
 def get_openai():
@@ -37,11 +39,59 @@ def get_supabase():
     return _supabase_client
 
 
-# Genre-based font mapping (using system fonts available on most systems)
+def get_fonts_dir() -> Path:
+    """Get the fonts directory path using pathlib for cross-platform support."""
+    return Path(__file__).parent / "fonts"
+
+
+def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """
+    Load bundled Cinzel font with caching.
+    Falls back to default font if bundled fonts not found.
+    """
+    global _cached_fonts
+    cache_key = f"{'bold' if bold else 'regular'}_{size}"
+    
+    if cache_key in _cached_fonts:
+        return _cached_fonts[cache_key]
+    
+    fonts_dir = get_fonts_dir()
+    font_file = "Cinzel-Bold.ttf" if bold else "Cinzel-Regular.ttf"
+    font_path = fonts_dir / font_file
+    
+    print(f"[COVER ART] Looking for font at: {font_path}")
+    print(f"[COVER ART] Font path exists: {font_path.exists()}")
+    print(f"[COVER ART] Fonts dir contents: {list(fonts_dir.iterdir()) if fonts_dir.exists() else 'DIR NOT FOUND'}")
+    
+    try:
+        if font_path.exists():
+            font = ImageFont.truetype(str(font_path), size)
+            print(f"[COVER ART] ✅ Successfully loaded {font_file} at size {size}")
+            _cached_fonts[cache_key] = font
+            return font
+        else:
+            print(f"[COVER ART] ⚠️ Font file not found: {font_path}")
+    except Exception as e:
+        print(f"[COVER ART] ❌ Error loading font: {e}")
+    
+    # Fallback: try to use any available font
+    print("[COVER ART] Using default PIL font as fallback")
+    try:
+        # PIL 10.0+ has a larger default font option
+        font = ImageFont.load_default(size=size)
+    except TypeError:
+        # Older PIL versions don't support size parameter
+        font = ImageFont.load_default()
+    
+    _cached_fonts[cache_key] = font
+    return font
+
+
+# Genre-based font mapping (kept for future use)
 CATEGORY_FONTS = {
-    "Philosophy": "Georgia",      # Serif, classic
+    "Philosophy": "Georgia",
     "Fiction": "Georgia",
-    "Mystery": "Arial",           # Sans-serif, clean
+    "Mystery": "Arial",
     "Romance": "Georgia",
     "Fantasy": "Georgia",
     "Science Fiction": "Arial",
@@ -167,6 +217,7 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
     """
     Adds title and author text to the image using Pillow.
     Automatically chooses text color based on background brightness.
+    Uses bundled Cinzel font with robust path handling.
     """
     img = image.copy()
     draw = ImageDraw.Draw(img)
@@ -183,39 +234,9 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
         text_color = (255, 255, 255)
         shadow_color = (0, 0, 0, 150)
     
-    # Try to load a nice font, fallback to default
-    try:
-        # Get the directory where this file is located
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        fonts_dir = os.path.join(current_dir, "fonts")
-        
-        # Try bundled Cinzel font first (elegant serif, perfect for Honora)
-        font_paths = [
-            os.path.join(fonts_dir, "Cinzel-Bold.ttf"),  # Bundled Cinzel
-            os.path.join(fonts_dir, "Cinzel-Regular.ttf"),  # Bundled Cinzel Regular
-            "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",  # Linux fallback
-            "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",  # Linux alt
-        ]
-        
-        title_font = None
-        author_font = None
-        
-        for path in font_paths:
-            if os.path.exists(path):
-                print(f"[COVER ART] Loading font from: {path}")
-                title_font = ImageFont.truetype(path, 72)
-                author_font = ImageFont.truetype(path, 36)
-                break
-        
-        if title_font is None:
-            # Fallback to default font
-            print("[COVER ART] WARNING: No fonts found, using default")
-            title_font = ImageFont.load_default()
-            author_font = ImageFont.load_default()
-            
-    except Exception:
-        title_font = ImageFont.load_default()
-        author_font = ImageFont.load_default()
+    # Load fonts using robust helper function
+    title_font = load_font(72, bold=True)
+    author_font = load_font(36, bold=False)
     
     # Calculate text positions
     # Title in lower third, centered
@@ -252,6 +273,7 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
     # Draw author
     draw.text((author_x, author_y), author, font=author_font, fill=text_color)
     
+    print(f"[COVER ART] ✅ Text overlay added: '{title_upper}' by {author}")
     return img
 
 
@@ -259,7 +281,7 @@ def generate_cover_image(metadata: dict) -> dict:
     """
     Generates book cover artwork using DALL-E (pure artwork),
     then adds title/author with Pillow.
-    Creates two versions: 1:1 (square) and 2:3 (book format).
+    Creates 1:1 square cover only.
     """
     prompt = generate_cover_art_prompt(metadata)
     title = metadata.get("title", "Untitled")
@@ -271,100 +293,65 @@ def generate_cover_image(metadata: dict) -> dict:
     client = get_openai()
     
     # Generate image with DALL-E 3 (pure artwork, no text)
-    # Using 1792x1024 for Canvas Extension - allows cropping to both 1:1 and 2:3
+    # Using 1024x1024 for direct 1:1 - no cropping needed!
     response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
-        size="1792x1024",  # Extended canvas for safe cropping (DALL-E supported size)
+        size="1024x1024",  # Direct 1:1 square
         quality="hd",
         n=1
     )
     
     image_url = response.data[0].url
-    print(f"[COVER ART] Artwork generated (1536x1024), downloading...")
+    print(f"[COVER ART] Artwork generated (1024x1024), downloading...")
     
     # Download the image
     image_response = requests.get(image_url)
     if image_response.status_code != 200:
         raise Exception(f"Failed to download image: {image_response.status_code}")
     
-    # Open image with PIL - should be 1536x1024
+    # Open image with PIL
     artwork = Image.open(BytesIO(image_response.content)).convert("RGBA")
-    canvas_width, canvas_height = artwork.size
-    print(f"[COVER ART] Downloaded artwork size: {canvas_width}x{canvas_height}")
+    width, height = artwork.size
+    print(f"[COVER ART] Downloaded artwork size: {width}x{height}")
     
-    # === CROP FIRST, THEN ADD TEXT ===
-    # This ensures text is never cut off and both formats get proper text placement
-    
-    # 1:1 SQUARE (1024x1024) - crop center of the canvas
-    square_left = (canvas_width - 1024) // 2  # (1536-1024)/2 = 256
-    square_artwork = artwork.crop((square_left, 0, square_left + 1024, 1024))
-    print(f"[COVER ART] Cropped 1:1 version from center (x={square_left} to {square_left + 1024})")
-    
-    # 2:3 PORTRAIT (682x1024) - crop center of the canvas
-    portrait_width = int(1024 * 2 / 3)  # 682
-    portrait_left = (canvas_width - portrait_width) // 2  # (1536-682)/2 = 427
-    portrait_artwork = artwork.crop((portrait_left, 0, portrait_left + portrait_width, 1024))
-    print(f"[COVER ART] Cropped 2:3 version from center (x={portrait_left} to {portrait_left + portrait_width})")
-    
-    # Now add text overlay to EACH cropped version separately
-    print(f"[COVER ART] Adding title and author text to both versions...")
-    
-    # Add text to 1:1 version
-    square_with_text = add_text_overlay(square_artwork, title, author, category)
-    square_final = square_with_text.convert("RGB")
-    
-    # Add text to 2:3 version
-    portrait_with_text = add_text_overlay(portrait_artwork, title, author, category)
-    portrait_final = portrait_with_text.convert("RGB")
+    # Add text overlay
+    print(f"[COVER ART] Adding title and author text...")
+    artwork_with_text = add_text_overlay(artwork, title, author, category)
+    final_image = artwork_with_text.convert("RGB")
     
     # Upload to Supabase Storage
     supabase = get_supabase()
     book_id = metadata.get("book_id", str(uuid.uuid4()))
     
-    print(f"[COVER ART] Uploading both versions to Supabase Storage...")
+    print(f"[COVER ART] Uploading to Supabase Storage...")
     
     # Upload 1:1 version
-    square_buffer = BytesIO()
-    square_final.save(square_buffer, format="PNG")
-    square_buffer.seek(0)
+    buffer = BytesIO()
+    final_image.save(buffer, format="PNG")
+    buffer.seek(0)
     
-    file_name_1x1 = f"covers/{book_id}_1x1.png"
+    file_name = f"covers/{book_id}_1x1.png"
     supabase.storage.from_("audio").upload(
-        file_name_1x1,
-        square_buffer.getvalue(),
+        file_name,
+        buffer.getvalue(),
         {"content-type": "image/png"}
     )
-    url_1x1 = supabase.storage.from_("audio").get_public_url(file_name_1x1)
+    url = supabase.storage.from_("audio").get_public_url(file_name)
     
-    # Upload 2:3 version
-    portrait_buffer = BytesIO()
-    portrait_final.save(portrait_buffer, format="PNG")
-    portrait_buffer.seek(0)
-    
-    file_name_2x3 = f"covers/{book_id}_2x3.png"
-    supabase.storage.from_("audio").upload(
-        file_name_2x3,
-        portrait_buffer.getvalue(),
-        {"content-type": "image/png"}
-    )
-    url_2x3 = supabase.storage.from_("audio").get_public_url(file_name_2x3)
-    
-    print(f"[COVER ART] Upload complete! Both 1:1 and 2:3 versions with text overlay")
+    print(f"[COVER ART] ✅ Upload complete! 1:1 cover with text overlay")
     
     return {
-        "cover_art_url": url_1x1,
-        "cover_art_url_2x3": url_2x3
+        "cover_art_url": url
     }
 
 
 def update_book_cover_url(book_id: str, cover_urls: dict):
     """
-    Updates the book record with both cover art URLs.
+    Updates the book record with the cover art URL.
     """
     supabase = get_supabase()
     supabase.table("books").update({
-        "cover_art_url": cover_urls.get("cover_art_url"),
-        "cover_art_url_2x3": cover_urls.get("cover_art_url_2x3")
+        "cover_art_url": cover_urls.get("cover_art_url")
     }).eq("id", book_id).execute()
-    print(f"[COVER ART] Updated book {book_id} with both cover URLs")
+    print(f"[COVER ART] ✅ Updated book {book_id} with cover URL")
