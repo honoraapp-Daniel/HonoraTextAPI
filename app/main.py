@@ -41,8 +41,8 @@ Transform PDFs into structured audiobook content.
 *Powered by Honora*
     """,
     version="1.0.0",
-    docs_url="/docs",  # Re-enable default docs for debugging
-    redoc_url="/redoc",
+    docs_url=None,  # Disable default docs again
+    redoc_url=None,  # Disable redoc
 )
 
 from fastapi.staticfiles import StaticFiles
@@ -54,8 +54,8 @@ if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
-# Custom Swagger UI - Disabled for debugging
-# @app.get("/docs", include_in_schema=False)
+# Custom Swagger UI - Clean dark theme
+@app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui():
     custom_css = """
     <style>
@@ -210,19 +210,19 @@ async def custom_swagger_ui():
     </style>
     """
     
-    html = f"""
+    html = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Honora Book API</title>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
-        {custom_css}
+        REPLACE_CSS
     </head>
     <body>
         <div id="swagger-ui"></div>
         <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
         <script>
-            SwaggerUIBundle({{
+            SwaggerUIBundle({
                 url: '/openapi.json',
                 dom_id: '#swagger-ui',
                 presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
@@ -230,13 +230,15 @@ async def custom_swagger_ui():
                 docExpansion: "list",
                 filter: true,
                 tryItOutEnabled: true,
-                syntaxHighlight: {{ theme: "agate" }}
-            }});
+                syntaxHighlight: { theme: "agate" }
+            });
         </script>
     </body>
     </html>
-    """
+    """.replace("REPLACE_CSS", custom_css)
+    
     return HTMLResponse(content=html)
+
 
 
 
