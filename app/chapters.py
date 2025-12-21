@@ -638,12 +638,7 @@ Return ONLY the JSON array, no markdown, no explanations."""
 def split_into_paragraphs_gpt(text: str) -> list:
     """
     Uses GPT to split text into natural paragraphs for app display.
-    
-    Args:
-        text: Chapter text to split
-        
-    Returns:
-        List of paragraph strings (150-350 chars each)
+    Handles large texts by splitting into chunks to avoid token limits.
     """
     if not text or not text.strip():
         return []
@@ -652,33 +647,54 @@ def split_into_paragraphs_gpt(text: str) -> list:
     if len(text) <= 350:
         return [text.strip()]
     
+    # Chunking strategy: Split text into ~10k character chunks
+    # This ensures we stay well within the TPM limits even for large chapters.
+    chunk_size = 10000
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    
+    all_paragraphs = []
     client = get_openai()
     
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{text}"}
-        ],
-        response_format={"type": "json_object"}
-    )
+    print(f"[CHAPTERS] Splitting text into paragraphs using GPT-4o-mini ({len(chunks)} chunks)...")
     
-    content = response.choices[0].message.content
-    
-    try:
-        # GPT returns {"paragraphs": [...]} or just [...]
-        result = json.loads(content)
-        if isinstance(result, list):
-            return result
-        elif isinstance(result, dict):
-            # Try common keys
-            for key in ["paragraphs", "segments", "sections", "result"]:
-                if key in result and isinstance(result[key], list):
-                    return result[key]
-        return [text]  # Fallback
-    except json.JSONDecodeError:
-        # Fallback: split by paragraph breaks or sentences
-        return fallback_paragraph_split(text)
+    for i, chunk in enumerate(chunks):
+        # Add context from previous chunk if not the first
+        current_prompt = chunk
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini", # Use mini for speed, cost, and high rate limits
+                messages=[
+                    {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{current_prompt}"}
+                ],
+                response_format={"type": "json_object"}
+            )
+            
+            content = response.choices[0].message.content
+            result = json.loads(content)
+            
+            chunk_paragraphs = []
+            if isinstance(result, list):
+                chunk_paragraphs = result
+            elif isinstance(result, dict):
+                for key in ["paragraphs", "segments", "sections", "result"]:
+                    if key in result and isinstance(result[key], list):
+                        chunk_paragraphs = result[key]
+                        break
+            
+            if chunk_paragraphs:
+                all_paragraphs.extend(chunk_paragraphs)
+            else:
+                # Fallback for this chunk if no list found
+                all_paragraphs.append(chunk)
+                
+        except Exception as e:
+            print(f"[CHAPTERS] ⚠️ Error splitting chunk {i+1}: {str(e)}")
+            # Fallback for this specific chunk
+            all_paragraphs.extend(fallback_paragraph_split(chunk))
+            
+    return all_paragraphs
 
 
 def fallback_paragraph_split(text: str, max_chars: int = 350) -> list:
