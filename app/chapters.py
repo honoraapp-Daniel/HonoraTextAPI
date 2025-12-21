@@ -243,7 +243,7 @@ def detect_book_structure(full_text: str) -> dict:
     print("[CHAPTERS] Detecting book structure with GPT...")
     
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": STRUCTURE_DETECTION_PROMPT},
             {"role": "user", "content": f"Analyze this book's structure:\n\n{sample_text}"}
@@ -455,18 +455,17 @@ def write_stories_to_supabase(book_id: str, stories: list) -> dict:
     return story_id_map
 
 
-def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None):
+def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None) -> list:
     """
     Writes chapters to the 'chapters' table, including chapter text.
     Optionally links to stories for anthology books.
     
-    Args:
-        book_id: UUID of the book
-        chapters: List of chapter dicts with chapter_index, title, text, parent_story
-        story_id_map: Dict mapping story title -> story_id (for anthologies)
+    Returns:
+        List of created chapter dicts (including database UUIDs)
     """
     supabase = get_supabase()
     story_id_map = story_id_map or {}
+    created_chapters = []
     
     for chapter in chapters:
         parent_story = chapter.get("parent_story")
@@ -482,9 +481,14 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
         if story_id:
             insert_data["story_id"] = story_id
         
-        supabase.table("chapters").insert(insert_data).execute()
-        print(f"[SUPABASE] Created chapter: {chapter['title']}" + 
-              (f" (story: {parent_story})" if parent_story else ""))
+        result = supabase.table("chapters").insert(insert_data).execute()
+        
+        if result.data:
+            created_chapters.append(result.data[0])
+            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}" + 
+                  (f" (story: {parent_story})" if parent_story else ""))
+    
+    return created_chapters
 
 
 def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
@@ -649,9 +653,9 @@ def split_into_paragraphs_gpt(text: str) -> list:
     client = get_openai()
     
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-4o",
         messages=[
-            {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
+            {"role": "system", "content": PARAGRAPH_SPLIT_PROMPT},
             {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{text}"}
         ],
         response_format={"type": "json_object"}

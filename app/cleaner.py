@@ -83,7 +83,7 @@ def clean_page_text(page_items):
     """
 
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": CLEANER_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}

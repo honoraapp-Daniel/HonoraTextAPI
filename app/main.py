@@ -823,18 +823,17 @@ async def process_book(file: UploadFile = File(...)):
             result["stories"] = len(stories)
         
         # Write chapters (linked to stories if applicable)
-        write_chapters_to_supabase(book_id, chapters, story_id_map)
-        print(f"[PIPELINE] Step 4 complete: {len(stories)} stories, {len(chapters)} chapters")
+        db_chapters = write_chapters_to_supabase(book_id, chapters, story_id_map)
+        print(f"[PIPELINE] Step 4 complete: {len(stories)} stories, {len(db_chapters)} chapters created")
         
         result["steps_completed"].append("extract_chapters")
-        result["chapters"] = len(chapters)
+        result["chapters"] = len(db_chapters)
         
         # ===== STEP 5: Chunk Chapters (TTS sections) =====
         logger.info("Step 5: Creating TTS sections...")
-        print(f"[PIPELINE] Step 5: Creating TTS sections (250 char chunks)...")
-        from app.chapters import get_chapters_for_book, chunk_chapter_text, write_sections_to_supabase
+        print(f"[PIPELINE] Step 5: Creating TTS sections (250 char chunks) for {len(db_chapters)} chapters...")
+        from app.chapters import chunk_chapter_text, write_sections_to_supabase
         
-        db_chapters = get_chapters_for_book(book_id)
         total_sections = 0
         
         for chapter in db_chapters:
@@ -843,6 +842,8 @@ async def process_book(file: UploadFile = File(...)):
                 sections = chunk_chapter_text(chapter_text, max_chars=250)
                 write_sections_to_supabase(chapter["id"], sections)
                 total_sections += len(sections)
+            else:
+                print(f"[PIPELINE] ⚠️ Warning: Chapter {chapter.get('chapter_index')} has no text!")
         
         print(f"[PIPELINE] Step 5 complete: {total_sections} sections created")
         result["steps_completed"].append("chunk_chapters")
@@ -850,7 +851,7 @@ async def process_book(file: UploadFile = File(...)):
         
         # ===== STEP 6: Create Paragraphs (app display) =====
         logger.info("Step 6: Creating display paragraphs...")
-        print(f"[PIPELINE] Step 6: Creating display paragraphs with GPT...")
+        print(f"[PIPELINE] Step 6: Creating display paragraphs with GPT for {len(db_chapters)} chapters...")
         from app.chapters import split_into_paragraphs_gpt, write_paragraphs_to_supabase
         
         total_paragraphs = 0
@@ -858,10 +859,12 @@ async def process_book(file: UploadFile = File(...)):
         for i, chapter in enumerate(db_chapters):
             chapter_text = chapter.get("text", "")
             if chapter_text:
-                print(f"[PIPELINE] Creating paragraphs for chapter {i+1}/{len(db_chapters)}...")
+                print(f"[PIPELINE] Creating paragraphs for chapter {i+1}/{len(db_chapters)} (ID: {chapter['id']})...")
                 paragraphs = split_into_paragraphs_gpt(chapter_text)
                 write_paragraphs_to_supabase(chapter["id"], paragraphs)
                 total_paragraphs += len(paragraphs)
+            else:
+                print(f"[PIPELINE] ⚠️ Warning: Chapter {i+1} has no text, skipping paragraphs!")
         
         print(f"[PIPELINE] Step 6 complete: {total_paragraphs} paragraphs created")
         result["steps_completed"].append("create_paragraphs")
