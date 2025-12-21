@@ -122,11 +122,20 @@ COLOR PALETTE:
 - Dark reds, indigo, ash, rust acceptable
 - NO bright or saturated colors
 
-COMPOSITION:
+COMPOSITION (CRITICAL - Canvas Extension Format):
+- Image will be generated at 1536x1024 (3:2 landscape)
+- ALL important visual elements MUST be in the CENTER 66% of the width
+- Left and right edges (17% each side) should contain only:
+  - Ambient gradients, soft textures, atmospheric fade
+  - NO important symbols, objects, or focal points in edges
 - Minimal, high contrast, strong negative space
-- Centered or carefully balanced
 - Must work at small thumbnail sizes
-- Leave breathing room for text overlay in lower third
+- Leave breathing room for text overlay in lower 20%
+
+EDGE TREATMENT:
+- Outer edges should gracefully fade to ambient tones
+- Think of it as a vignette that extends the mood
+- The center is the "stage", the edges are "atmosphere"
 
 FINAL IMPRESSION:
 The artwork must feel like a visual key, not a picture.
@@ -262,39 +271,52 @@ def generate_cover_image(metadata: dict) -> dict:
     client = get_openai()
     
     # Generate image with DALL-E 3 (pure artwork, no text)
+    # Using 1536x1024 for Canvas Extension - allows cropping to both 1:1 and 2:3
     response = client.images.generate(
         model="dall-e-3",
         prompt=prompt,
-        size="1024x1024",
+        size="1536x1024",  # Extended canvas for safe cropping
         quality="hd",
         n=1
     )
     
     image_url = response.data[0].url
-    print(f"[COVER ART] Artwork generated, downloading...")
+    print(f"[COVER ART] Artwork generated (1536x1024), downloading...")
     
     # Download the image
     image_response = requests.get(image_url)
     if image_response.status_code != 200:
         raise Exception(f"Failed to download image: {image_response.status_code}")
     
-    # Open image with PIL
+    # Open image with PIL - should be 1536x1024
     artwork = Image.open(BytesIO(image_response.content)).convert("RGBA")
+    canvas_width, canvas_height = artwork.size
+    print(f"[COVER ART] Downloaded artwork size: {canvas_width}x{canvas_height}")
     
-    # Add text overlay with Pillow
-    print(f"[COVER ART] Adding title and author text...")
-    cover_with_text = add_text_overlay(artwork, title, author, category)
+    # === CROP FIRST, THEN ADD TEXT ===
+    # This ensures text is never cut off and both formats get proper text placement
     
-    # Convert back to RGB for saving as PNG
-    final_image = cover_with_text.convert("RGB")
+    # 1:1 SQUARE (1024x1024) - crop center of the canvas
+    square_left = (canvas_width - 1024) // 2  # (1536-1024)/2 = 256
+    square_artwork = artwork.crop((square_left, 0, square_left + 1024, 1024))
+    print(f"[COVER ART] Cropped 1:1 version from center (x={square_left} to {square_left + 1024})")
     
-    # Create 1:1 version
-    square_image = final_image.copy()
+    # 2:3 PORTRAIT (682x1024) - crop center of the canvas
+    portrait_width = int(1024 * 2 / 3)  # 682
+    portrait_left = (canvas_width - portrait_width) // 2  # (1536-682)/2 = 427
+    portrait_artwork = artwork.crop((portrait_left, 0, portrait_left + portrait_width, 1024))
+    print(f"[COVER ART] Cropped 2:3 version from center (x={portrait_left} to {portrait_left + portrait_width})")
     
-    # Create 2:3 version by cropping from center
-    width_2x3 = int(1024 * 2 / 3)  # 682
-    left = (1024 - width_2x3) // 2
-    portrait_image = final_image.crop((left, 0, left + width_2x3, 1024))
+    # Now add text overlay to EACH cropped version separately
+    print(f"[COVER ART] Adding title and author text to both versions...")
+    
+    # Add text to 1:1 version
+    square_with_text = add_text_overlay(square_artwork, title, author, category)
+    square_final = square_with_text.convert("RGB")
+    
+    # Add text to 2:3 version
+    portrait_with_text = add_text_overlay(portrait_artwork, title, author, category)
+    portrait_final = portrait_with_text.convert("RGB")
     
     # Upload to Supabase Storage
     supabase = get_supabase()
@@ -304,7 +326,7 @@ def generate_cover_image(metadata: dict) -> dict:
     
     # Upload 1:1 version
     square_buffer = BytesIO()
-    square_image.save(square_buffer, format="PNG")
+    square_final.save(square_buffer, format="PNG")
     square_buffer.seek(0)
     
     file_name_1x1 = f"covers/{book_id}_1x1.png"
@@ -317,7 +339,7 @@ def generate_cover_image(metadata: dict) -> dict:
     
     # Upload 2:3 version
     portrait_buffer = BytesIO()
-    portrait_image.save(portrait_buffer, format="PNG")
+    portrait_final.save(portrait_buffer, format="PNG")
     portrait_buffer.seek(0)
     
     file_name_2x3 = f"covers/{book_id}_2x3.png"
@@ -328,7 +350,7 @@ def generate_cover_image(metadata: dict) -> dict:
     )
     url_2x3 = supabase.storage.from_("audio").get_public_url(file_name_2x3)
     
-    print(f"[COVER ART] Upload complete: 1:1 and 2:3 versions with text overlay")
+    print(f"[COVER ART] Upload complete! Both 1:1 and 2:3 versions with text overlay")
     
     return {
         "cover_art_url": url_1x1,
