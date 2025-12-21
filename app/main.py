@@ -41,8 +41,8 @@ Transform PDFs into structured audiobook content.
 *Powered by Honora*
     """,
     version="1.0.0",
-    docs_url=None,  # Disable default docs
-    redoc_url=None,  # Disable redoc
+    docs_url="/docs",  # Re-enable default docs for debugging
+    redoc_url="/redoc",
 )
 
 from fastapi.staticfiles import StaticFiles
@@ -54,8 +54,8 @@ if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
-# Custom Swagger UI - Clean dark theme
-@app.get("/docs", include_in_schema=False)
+# Custom Swagger UI - Disabled for debugging
+# @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui():
     custom_css = """
     <style>
