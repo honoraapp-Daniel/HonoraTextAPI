@@ -18,9 +18,95 @@ def get_supabase():
     return _supabase_client
 
 
+# ============================================
+# 3NF LOOKUP HELPER FUNCTIONS
+# ============================================
+
+def get_or_create_author(name: str) -> str:
+    """Get existing author ID or create new author. Returns author UUID."""
+    supabase = get_supabase()
+    name = name.strip()
+    
+    # Try to find existing
+    result = supabase.table("authors").select("id").eq("name", name).execute()
+    if result.data:
+        return result.data[0]["id"]
+    
+    # Create new
+    result = supabase.table("authors").insert({"name": name}).execute()
+    return result.data[0]["id"]
+
+
+def get_or_create_language(name: str) -> str:
+    """Get existing language ID or create new language. Returns language UUID."""
+    supabase = get_supabase()
+    name = name.strip()
+    
+    # Try to find existing
+    result = supabase.table("languages").select("id").eq("name", name).execute()
+    if result.data:
+        return result.data[0]["id"]
+    
+    # Create new
+    result = supabase.table("languages").insert({"name": name}).execute()
+    return result.data[0]["id"]
+
+
+def get_or_create_publisher(name: str) -> str:
+    """Get existing publisher ID or create new publisher. Returns publisher UUID."""
+    supabase = get_supabase()
+    name = name.strip()
+    
+    # Try to find existing
+    result = supabase.table("publishers").select("id").eq("name", name).execute()
+    if result.data:
+        return result.data[0]["id"]
+    
+    # Create new
+    result = supabase.table("publishers").insert({"name": name}).execute()
+    return result.data[0]["id"]
+
+
+def get_category_id(name: str) -> str:
+    """Get category ID by name. Returns None if not found (categories are pre-seeded)."""
+    supabase = get_supabase()
+    result = supabase.table("categories").select("id").eq("name", name).execute()
+    if result.data:
+        return result.data[0]["id"]
+    return None
+
+
+def link_book_authors(book_id: str, author_string: str):
+    """Parse comma-separated authors and create book_authors relationships."""
+    supabase = get_supabase()
+    
+    if not author_string or author_string == "Unknown":
+        return
+    
+    # Split by comma and process each author
+    author_names = [a.strip() for a in author_string.split(",") if a.strip()]
+    
+    for order, name in enumerate(author_names):
+        author_id = get_or_create_author(name)
+        # Insert into junction table (ignore if already exists)
+        try:
+            supabase.table("book_authors").insert({
+                "book_id": book_id,
+                "author_id": author_id,
+                "author_order": order
+            }).execute()
+        except Exception:
+            pass  # Relationship may already exist
+
+
+# ============================================
+# MAIN BOOK CREATION FUNCTION (3NF VERSION)
+# ============================================
+
 def create_book_in_supabase(metadata: dict) -> str:
     """
     Creates a new book entry in the 'books' table with full metadata.
+    Uses 3NF lookup tables for author, category, language, and publisher.
     
     Args:
         metadata: dict containing title, author, language, and optional fields
@@ -33,24 +119,60 @@ def create_book_in_supabase(metadata: dict) -> str:
     # Build insert data with only non-None values
     insert_data = {
         "title": metadata.get("title", "Unknown"),
+        # Keep author text for backwards compatibility
         "author": metadata.get("author", "Unknown"),
         "language": metadata.get("language", "en"),
     }
     
-    # Add optional fields if present
-    optional_fields = [
+    # Add optional text fields (keep for backwards compatibility)
+    optional_text_fields = [
         "original_language", "publisher", "publishing_year",
         "synopsis", "book_of_the_day_quote", "category"
     ]
     
-    for field in optional_fields:
+    for field in optional_text_fields:
         if metadata.get(field) is not None:
             insert_data[field] = metadata[field]
     
-    result = supabase.table("books").insert(insert_data).execute()
+    # === 3NF: Add foreign keys ===
     
-    # Return the generated UUID
-    return result.data[0]["id"]
+    # Category FK
+    category_name = metadata.get("category")
+    if category_name:
+        category_id = get_category_id(category_name)
+        if category_id:
+            insert_data["category_id"] = category_id
+    
+    # Language FK
+    language_name = metadata.get("language")
+    if language_name and language_name != "en":
+        insert_data["language_id"] = get_or_create_language(language_name)
+    elif language_name:
+        # Handle common case of "English" or "en"
+        insert_data["language_id"] = get_or_create_language(language_name)
+    
+    # Original Language FK
+    original_lang = metadata.get("original_language")
+    if original_lang:
+        insert_data["original_language_id"] = get_or_create_language(original_lang)
+    
+    # Publisher FK
+    publisher_name = metadata.get("publisher")
+    if publisher_name:
+        insert_data["publisher_id"] = get_or_create_publisher(publisher_name)
+    
+    # Insert the book
+    result = supabase.table("books").insert(insert_data).execute()
+    book_id = result.data[0]["id"]
+    
+    # Link authors (many-to-many)
+    author_string = metadata.get("author")
+    if author_string:
+        link_book_authors(book_id, author_string)
+    
+    print(f"[SUPABASE] ✅ Created book with 3NF relations: {metadata.get('title')}")
+    
+    return book_id
 
 
 
