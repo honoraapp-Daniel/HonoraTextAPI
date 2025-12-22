@@ -160,15 +160,45 @@ def get_dominant_brightness(image: Image.Image) -> float:
     return avg_brightness
 
 
+def wrap_text(draw: ImageDraw.Draw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
+    """
+    Wraps text to fit within max_width. Returns list of lines.
+    """
+    words = text.split()
+    lines = []
+    current_line = ""
+    
+    for word in words:
+        test_line = f"{current_line} {word}".strip()
+        bbox = draw.textbbox((0, 0), test_line, font=font)
+        line_width = bbox[2] - bbox[0]
+        
+        if line_width <= max_width:
+            current_line = test_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    
+    if current_line:
+        lines.append(current_line)
+    
+    return lines if lines else [text]
+
+
 def add_text_overlay(image: Image.Image, title: str, author: str, category: str) -> Image.Image:
     """
     Adds title and author text to the image using Pillow.
     Automatically chooses text color based on background brightness.
     Uses bundled Cinzel font with robust path handling.
+    Long titles are wrapped to multiple lines with max 80% width.
     """
     img = image.copy()
     draw = ImageDraw.Draw(img)
     width, height = img.size
+    
+    # Max text width is 80% of image width
+    max_text_width = int(width * 0.8)
     
     # Determine text color based on background brightness
     brightness = get_dominant_brightness(img)
@@ -185,34 +215,43 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
     title_font = load_font(72, bold=True)
     author_font = load_font(36, bold=False)
     
-    # Calculate text positions
-    # Title in lower third, centered
+    # Title in upper case
     title_upper = title.upper()
     
-    # Get text bounding box
-    title_bbox = draw.textbbox((0, 0), title_upper, font=title_font)
-    title_width = title_bbox[2] - title_bbox[0]
-    title_height = title_bbox[3] - title_bbox[1]
+    # Wrap title if too long
+    title_lines = wrap_text(draw, title_upper, title_font, max_text_width)
     
-    author_bbox = draw.textbbox((0, 0), author, font=author_font)
-    author_width = author_bbox[2] - author_bbox[0]
+    # Calculate total title height
+    line_spacing = 10
+    title_line_height = draw.textbbox((0, 0), "A", font=title_font)[3]
+    total_title_height = len(title_lines) * title_line_height + (len(title_lines) - 1) * line_spacing
     
-    # Position title centered, in lower portion
-    title_x = (width - title_width) // 2
-    title_y = int(height * 0.75)
-    
-    # Position author below title
-    author_x = (width - author_width) // 2
-    author_y = title_y + title_height + 20
+    # Position title starting Y (in lower portion, adjusted for multi-line)
+    title_start_y = int(height * 0.75) - (total_title_height // 2) + (title_line_height // 2)
     
     # Draw shadow for better readability
     shadow_offset = 3
     
-    # Draw title shadow
-    draw.text((title_x + shadow_offset, title_y + shadow_offset), 
-              title_upper, font=title_font, fill=shadow_color)
-    # Draw title
-    draw.text((title_x, title_y), title_upper, font=title_font, fill=text_color)
+    # Draw each title line, centered
+    current_y = title_start_y
+    for line in title_lines:
+        line_bbox = draw.textbbox((0, 0), line, font=title_font)
+        line_width = line_bbox[2] - line_bbox[0]
+        line_x = (width - line_width) // 2
+        
+        # Draw shadow
+        draw.text((line_x + shadow_offset, current_y + shadow_offset), 
+                  line, font=title_font, fill=shadow_color)
+        # Draw text
+        draw.text((line_x, current_y), line, font=title_font, fill=text_color)
+        
+        current_y += title_line_height + line_spacing
+    
+    # Position author below title
+    author_bbox = draw.textbbox((0, 0), author, font=author_font)
+    author_width = author_bbox[2] - author_bbox[0]
+    author_x = (width - author_width) // 2
+    author_y = current_y + 10
     
     # Draw author shadow
     draw.text((author_x + shadow_offset, author_y + shadow_offset), 
@@ -220,7 +259,7 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
     # Draw author
     draw.text((author_x, author_y), author, font=author_font, fill=text_color)
     
-    print(f"[COVER ART] ✅ Text overlay added: '{title_upper}' by {author}")
+    print(f"[COVER ART] ✅ Text overlay added: '{title_upper}' ({len(title_lines)} lines) by {author}")
     return img
 
 
