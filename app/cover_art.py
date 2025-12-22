@@ -1,31 +1,33 @@
 """
 Cover art generation module for Honora.
-Generates artistic book cover images using DALL-E, then adds title/author
-with Pillow for perfect typography.
+Generates artistic book cover images using Nano Banana (via Kie.ai API),
+then adds title/author with Pillow for perfect typography.
 """
 import os
 import requests
 import uuid
+import time
+import json
 from io import BytesIO
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from openai import OpenAI
 from supabase import create_client
 
 # Lazy initialization
-_openai_client = None
 _supabase_client = None
 _cached_fonts = {}  # Cache loaded fonts
 
+# Kie.ai API configuration
+KIE_API_BASE = "https://api.kie.ai/api/v1/jobs"
+KIE_MODEL = "google/nano-banana"
 
-def get_openai():
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY must be set")
-        _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
+
+def get_kie_api_key():
+    """Get Kie.ai API key from environment."""
+    api_key = os.getenv("KIE_API_KEY")
+    if not api_key:
+        raise RuntimeError("KIE_API_KEY must be set")
+    return api_key
 
 
 def get_supabase():
@@ -265,7 +267,7 @@ def add_text_overlay(image: Image.Image, title: str, author: str, category: str)
 
 def generate_cover_image(metadata: dict) -> dict:
     """
-    Generates book cover artwork using DALL-E (pure artwork),
+    Generates book cover artwork using Nano Banana (via Kie.ai API),
     then adds title/author with Pillow.
     Creates 1:1 square cover only.
     """
@@ -275,21 +277,79 @@ def generate_cover_image(metadata: dict) -> dict:
     category = metadata.get("category", "Fiction")
     
     print(f"[COVER ART] Generating artwork for: {title}")
+    print(f"[COVER ART] Using Nano Banana via Kie.ai API...")
     
-    client = get_openai()
+    api_key = get_kie_api_key()
     
-    # Generate image with DALL-E 3 (pure artwork, no text)
-    # Using 1024x1024 for direct 1:1 - no cropping needed!
-    response = client.images.generate(
-        model="dall-e-3",
-        prompt=prompt,
-        size="1024x1024",  # Direct 1:1 square
-        quality="hd",
-        n=1
+    # Create image generation task
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": KIE_MODEL,
+        "input": {
+            "prompt": prompt,
+            "output_format": "png",
+            "image_size": "1:1"
+        }
+    }
+    
+    # Submit task to Kie.ai
+    create_response = requests.post(
+        f"{KIE_API_BASE}/createTask",
+        headers=headers,
+        json=payload
     )
     
-    image_url = response.data[0].url
-    print(f"[COVER ART] Artwork generated (1024x1024), downloading...")
+    if create_response.status_code != 200:
+        raise Exception(f"Kie.ai API error: {create_response.status_code} - {create_response.text}")
+    
+    create_data = create_response.json()
+    task_id = create_data.get("data", {}).get("taskId")
+    
+    if not task_id:
+        raise Exception(f"No taskId in response: {create_data}")
+    
+    print(f"[COVER ART] Task created: {task_id}, polling for result...")
+    
+    # Poll for result (max 60 seconds)
+    image_url = None
+    max_attempts = 30
+    for attempt in range(max_attempts):
+        time.sleep(2)  # Wait 2 seconds between polls
+        
+        poll_response = requests.get(
+            f"{KIE_API_BASE}/recordInfo?taskId={task_id}",
+            headers=headers
+        )
+        
+        if poll_response.status_code != 200:
+            print(f"[COVER ART] Poll error: {poll_response.status_code}")
+            continue
+        
+        poll_data = poll_response.json()
+        state = poll_data.get("data", {}).get("state", "")
+        
+        if state == "success":
+            result_json_str = poll_data.get("data", {}).get("resultJson", "{}")
+            result_json = json.loads(result_json_str)
+            result_urls = result_json.get("resultUrls", [])
+            if result_urls:
+                image_url = result_urls[0]
+                print(f"[COVER ART] ✅ Image generated successfully!")
+                break
+        elif state == "failed":
+            error_msg = poll_data.get("data", {}).get("errorMessage", "Unknown error")
+            raise Exception(f"Image generation failed: {error_msg}")
+        else:
+            print(f"[COVER ART] Status: {state} (attempt {attempt + 1}/{max_attempts})")
+    
+    if not image_url:
+        raise Exception("Timeout waiting for image generation")
+    
+    print(f"[COVER ART] Downloading artwork...")
     
     # Download the image
     image_response = requests.get(image_url)
