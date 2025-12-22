@@ -111,87 +111,34 @@ CATEGORY_FONTS = {
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a DALL-E prompt following Honora's unique aesthetic:
-    Dark conceptual illustration, sacred manuscript aesthetics, symbolic minimalism.
+    Generates a DALL-E prompt with maximum creative freedom.
+    Only 2 rules: no text on images, and artwork should be inspired by the book's content.
     """
     title = metadata.get("title", "Untitled")
-    category = metadata.get("category", "Fiction")
+    author = metadata.get("author", "")
+    category = metadata.get("category", "")
     synopsis = metadata.get("synopsis", "")
     
-    # Thematic guidance based on category - abstract, never literal
-    category_themes = {
-        "Fiction": "narrative fragments, emotional residue, atmospheric depth",
-        "Mystery": "hidden revelations, obscured truths, shadowed knowledge",
-        "Romance": "emotional resonance, connection, ineffable bonds",
-        "Fantasy": "otherworldly geometry, impossible forms, mythic abstraction",
-        "Science Fiction": "cosmic abstraction, technological metaphor, infinite scale",
-        "Biography": "essence distilled, human traces, memory artifacts",
-        "Self-Help": "transformation symbols, emergence from darkness, inner light",
-        "History": "temporal weight, civilizational echoes, forgotten power",
-        "Philosophy": "conceptual forms, wisdom glyphs, contemplative geometry",
-        "Business": "power structures, system diagrams, strategic abstraction",
-        "Classic Literature": "timeless forms, literary essence, cultural weight",
-        "Children": "wonder symbols, imagination glyphs, playful geometry",
-        "Young Adult": "transition symbols, identity formation, emotional intensity",
-        "Poetry": "lyrical abstraction, emotional geometry, verse essence",
-        "Religion": "sacred geometry, divine abstraction, spiritual weight",
-        "Science": "discovery symbols, natural laws, pattern revelation",
-        "Non-Fiction": "truth markers, knowledge artifacts, documented essence"
-    }
+    # Build context about the book
+    book_context = f'Book title: "{title}"'
+    if author:
+        book_context += f' by {author}'
+    if category:
+        book_context += f'. Genre: {category}'
+    if synopsis:
+        book_context += f'. Synopsis: {synopsis[:500]}'
     
-    theme = category_themes.get(category, "conceptual depth, symbolic weight")
-    
-    # Build the Honora-style prompt
-    prompt = f"""Create artwork for Honora audiobook platform. Subject: "{title}".
+    prompt = f"""Create beautiful, unique artwork inspired by this book:
 
-HONORA STYLE MANDATE:
+{book_context}
 
-CORE AESTHETIC:
-- Dark conceptual illustration with sacred manuscript feel
-- Symbolic minimalism and esoteric glyph language
-- Must feel like a timeless artifact, not a book cover
-- Ancient, forbidden, ritualistic, contemplative mood
-- Darkness should feel meaningful, not horror-styled
+You have complete creative freedom! Choose any artistic style, colors, composition, mood, or visual approach that you feel best captures the essence and themes of this book.
 
-VISUAL APPROACH:
-- Single central symbolic concept: one strong form, shape, or ritual object
-- Represent the IDEAS and PHILOSOPHY of the book, never literal scenes
-- Theme guidance: {theme}
-- Book essence: {synopsis[:200] if synopsis else 'Capture the symbolic weight of the title'}
+ONLY 2 RULES:
+1. ❌ NO TEXT whatsoever - no letters, words, titles, or any readable characters
+2. ✅ The artwork must be inspired by and reflect the book's content, themes, or mood
 
-STRICT CONSTRAINTS:
-❌ NO TEXT, letters, runes, or readable characters of any kind
-❌ NO people, faces, figures, or characters
-❌ NO literal scenes, locations, or recognizable landmarks
-❌ NO photorealism or cinematic lighting
-❌ NO clichés: wizards, crystal balls, hooded figures, obvious pyramids/eyes
-
-COLOR PALETTE:
-- 1-3 dominant tones maximum
-- Deep blacks, muted golds, bone/parchment whites
-- Dark reds, indigo, ash, rust acceptable
-- NO bright or saturated colors
-
-COMPOSITION (CRITICAL - Canvas Extension Format):
-- Image will be generated at 1792x1024 (7:4 landscape)
-- ALL important visual elements MUST be in the CENTER 57% of the width
-- Left and right edges (21% each side) should contain only:
-  - Ambient gradients, soft textures, atmospheric fade
-  - NO important symbols, objects, or focal points in edges
-- Minimal, high contrast, strong negative space
-- Must work at small thumbnail sizes
-- Leave breathing room for text overlay in lower 20%
-
-EDGE TREATMENT:
-- Outer edges should gracefully fade to ambient tones
-- Think of it as a vignette that extends the mood
-- The center is the "stage", the edges are "atmosphere"
-
-FINAL IMPRESSION:
-The artwork must feel like a visual key, not a picture.
-Something you sense, not immediately understand.
-Modern yet ancient. Minimal but heavy with meaning.
-Like a page from a lost manuscript or a ritual diagram discovered."""
+Be creative and surprise me!"""
 
     return prompt
 
