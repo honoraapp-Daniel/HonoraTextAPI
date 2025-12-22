@@ -651,7 +651,8 @@ RULES:
 3. Keep related sentences together
 4. Start new paragraph when topic/speaker changes
 5. Respect existing paragraph breaks in the text
-6. Never split in the middle of a sentence
+6. CRITICAL: ONLY split at periods (.). Never split at ! or ? - keep those within the paragraph
+7. It's OK if some paragraphs are longer than 350 chars - never break mid-sentence
 
 OUTPUT: Return a JSON array of paragraph strings.
 Example: ["First paragraph text here.", "Second paragraph continues the narrative.", "Third paragraph with new topic."]
@@ -739,8 +740,8 @@ def fallback_paragraph_split(text: str, max_chars: int = 350) -> list:
         if len(para) <= max_chars:
             paragraphs.append(para)
         else:
-            # Split long paragraphs by sentences
-            sentences = re.split(r'(?<=[.!?])\s+', para)
+            # Split long paragraphs ONLY at periods (.) - never at ! or ?
+            sentences = re.split(r'(?<=\.)\s+', para)
             current = ""
             for sentence in sentences:
                 if len(current) + len(sentence) + 1 > max_chars:
