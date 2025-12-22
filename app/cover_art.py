@@ -75,24 +75,30 @@ Make it stunning and professional - this is for an audiobook app."""
     return prompt
 
 
-def crop_to_aspect_ratio(image: Image.Image, target_ratio: float) -> Image.Image:
+def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = "center") -> Image.Image:
     """
-    Crops image to target aspect ratio from center.
+    Crops image to target aspect ratio.
     target_ratio = width / height (e.g., 1.0 for 1:1, 0.667 for 2:3)
+    anchor: "center" or "top" - where to anchor the crop
     """
     width, height = image.size
     current_ratio = width / height
     
     if current_ratio > target_ratio:
-        # Image is wider than target - crop width
+        # Image is wider than target - crop width from center
         new_width = int(height * target_ratio)
         left = (width - new_width) // 2
         return image.crop((left, 0, left + new_width, height))
     else:
         # Image is taller than target - crop height
         new_height = int(width / target_ratio)
-        top = (height - new_height) // 2
-        return image.crop((0, top, width, top + new_height))
+        if anchor == "top":
+            # Anchor from top (keep title visible)
+            return image.crop((0, 0, width, new_height))
+        else:
+            # Anchor from center
+            top = (height - new_height) // 2
+            return image.crop((0, top, width, top + new_height))
 
 
 def generate_cover_image(metadata: dict) -> dict:
@@ -200,7 +206,7 @@ def generate_cover_image(metadata: dict) -> dict:
     img_1x1 = crop_to_aspect_ratio(original, 1.0)
     
     # 2:3 - portrait crop from center
-    img_2x3 = crop_to_aspect_ratio(original, 2/3)
+    img_2x3 = crop_to_aspect_ratio(original, 2/3, anchor="top")
     
     print(f"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}, 2:3={img_2x3.size}")
     
