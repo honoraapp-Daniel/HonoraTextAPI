@@ -205,10 +205,7 @@ def generate_cover_image(metadata: dict) -> dict:
     # 1:1 - square crop from center
     img_1x1 = crop_to_aspect_ratio(original, 1.0)
     
-    # 2:3 - portrait crop from center
-    img_2x3 = crop_to_aspect_ratio(original, 2/3, anchor="top")
-    
-    print(f"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}, 2:3={img_2x3.size}")
+    print(f"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}")
     
     # Upload all versions to Supabase Storage
     supabase = get_supabase()
@@ -242,19 +239,7 @@ def generate_cover_image(metadata: dict) -> dict:
     )
     urls["cover_art_url"] = supabase.storage.from_("audio").get_public_url(file_name)
     
-    # Upload 2:3 (portrait)
-    buffer = BytesIO()
-    img_2x3.save(buffer, format="PNG")
-    buffer.seek(0)
-    file_name = f"covers/{book_id}_2x3.png"
-    supabase.storage.from_("audio").upload(
-        file_name,
-        buffer.getvalue(),
-        {"content-type": "image/png", "x-upsert": "true"}
-    )
-    urls["cover_art_url_2x3"] = supabase.storage.from_("audio").get_public_url(file_name)
-    
-    print(f"[COVER ART] ✅ Upload complete! 3 cover versions uploaded")
+    print(f"[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
     
     return urls
 
@@ -270,8 +255,6 @@ def update_book_cover_url(book_id: str, cover_urls: dict):
         update_data["cover_art_url"] = cover_urls["cover_art_url"]
     if "cover_art_url_16x9" in cover_urls:
         update_data["cover_art_url_16x9"] = cover_urls["cover_art_url_16x9"]
-    if "cover_art_url_2x3" in cover_urls:
-        update_data["cover_art_url_2x3"] = cover_urls["cover_art_url_2x3"]
     
     if update_data:
         supabase.table("books").update(update_data).eq("id", book_id).execute()
