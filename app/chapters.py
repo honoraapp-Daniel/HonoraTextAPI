@@ -257,7 +257,17 @@ def detect_book_structure(full_text: str) -> dict:
     
     try:
         structure = json.loads(content)
-        print(f"[CHAPTERS] ✅ Detected: {structure.get('book_type', 'unknown')} with {len(structure.get('structure', []))} items")
+        book_type = structure.get('book_type', 'unknown')
+        items = structure.get('structure', [])
+        
+        # Detailed logging for debugging
+        print(f"[CHAPTERS] ✅ Detected: {book_type} with {len(items)} items")
+        
+        # Log detected chapter titles for debugging
+        chapter_titles = [item.get('title', 'Untitled') for item in items if item.get('type') == 'chapter']
+        if chapter_titles:
+            print(f"[CHAPTERS] Chapter titles detected: {chapter_titles[:5]}{'...' if len(chapter_titles) > 5 else ''}")
+        
         return structure
     except json.JSONDecodeError:
         print("[CHAPTERS] ⚠️ Failed to parse structure, using fallback")
@@ -346,22 +356,35 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
         next_title = chapters[i + 1]["title"] if i + 1 < len(chapters) else None
         
         # Find where this chapter starts
-        # Look for "Chapter X" pattern OR the chapter title itself
+        # Look for various chapter patterns OR the chapter title itself
+        # Roman numeral pattern for matching I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, XIII, XIV, XV, XVI, etc.
+        roman_pattern = r"(?:X{0,3})(?:IX|IV|V?I{0,3})"
+        
         chapter_patterns = [
-            rf"Chapter\s+\d+[:\.\s\-–]+{re.escape(title)}",  # "Chapter 1: Getting Ready"
-            rf"Chapter\s+\w+[:\.\s\-–]+{re.escape(title)}",  # "Chapter One – Getting Ready"
-            rf"(?:^|\n){re.escape(title)}(?:\n|$)",  # Just the title on its own line
+            # Arabic numerals: "Chapter 1: Getting Ready", "Chapter 1. Getting Ready"
+            rf"Chapter\s+\d+[:\.\s\-–]+{re.escape(title)}",
+            # Word numbers: "Chapter One – Getting Ready" 
+            rf"Chapter\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen)[:\.\s\-–]+{re.escape(title)}",
+            # Roman numerals WITH Chapter: "Chapter I. Salaam", "Chapter III: The Theory", "CHAPTER IV - Title"
+            rf"(?i)Chapter\s+{roman_pattern}[:\.\s\-–]+{re.escape(title)}",
+            # Roman numerals WITHOUT Chapter: "I. The Hermetic Philosophy", "II. Breath Is Life"
+            rf"(?:^|\n)\s*{roman_pattern}[:\.\s]+{re.escape(title)}",
+            # Just the title on its own line
+            rf"(?:^|\n){re.escape(title)}(?:\n|$)",
         ]
         
         start_pos = None
-        for pattern in chapter_patterns:
+        matched_pattern = None
+        for idx, pattern in enumerate(chapter_patterns):
             match = re.search(pattern, remaining_text, re.IGNORECASE | re.MULTILINE)
             if match:
                 start_pos = match.start()
+                matched_pattern = idx
                 break
         
         if start_pos is None:
-            # Chapter title not found, skip
+            # Chapter title not found, log and skip
+            print(f"[CHAPTERS] ⚠️ Could not find chapter in text: '{title[:50]}...' (searched {len(remaining_text)} chars)")
             continue
         
         # Find where this chapter ends (start of next chapter)
@@ -383,6 +406,7 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
             "parent_story": chapter.get("parent_story"),
             "text": chapter_text
         })
+        print(f"[CHAPTERS] ✅ Extracted chapter {chapter['chapter_index']}: '{title}' ({len(chapter_text)} chars, pattern #{matched_pattern})")
     
     return result_chapters
 
