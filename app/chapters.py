@@ -371,6 +371,9 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
             rf"(?:^|\n)\s*{roman_pattern}[:\.\s]+{re.escape(title)}",
             # Just the title on its own line
             rf"(?:^|\n){re.escape(title)}(?:\n|$)",
+            # FLEXIBLE: Match "Chapter X" where X is the chapter_index (no title required)
+            rf"(?:^|\n)Chapter\s+{re.escape(str(chapter['chapter_index']))}[:\.\s\-–]",
+            rf"(?:^|\n)Chapter\s+{roman_pattern}[:\.\s\-–]",  # Any Chapter + Roman numeral
         ]
         
         start_pos = None
@@ -407,6 +410,16 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
             "text": chapter_text
         })
         print(f"[CHAPTERS] ✅ Extracted chapter {chapter['chapter_index']}: '{title}' ({len(chapter_text)} chars, pattern #{matched_pattern})")
+    
+    # CRITICAL FALLBACK: If no chapters were matched, create single chapter with full text
+    if not result_chapters:
+        print(f"[CHAPTERS] ⚠️ No chapters matched by regex! Creating fallback single chapter.")
+        result_chapters = [{
+            "chapter_index": 1,
+            "title": "Full Text",
+            "parent_story": None,
+            "text": full_text
+        }]
     
     return result_chapters
 
