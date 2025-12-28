@@ -530,6 +530,53 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
     return created_chapters
 
 
+def clean_section_text(text: str) -> str:
+    """
+    Final cleanup for section text before TTS.
+    - Removes 'Next:' markers
+    - Removes trailing attribution lines
+    - Converts IPA tags to plain text (TTS uses default pronunciation)
+    - Removes source citations
+    
+    Args:
+        text: Raw section text
+        
+    Returns:
+        Cleaned text ready for TTS
+    """
+    if not text:
+        return ""
+    
+    # Remove "Next:" at end (with optional whitespace)
+    text = re.sub(r'\s*Next:\s*$', '', text, flags=re.IGNORECASE)
+    
+    # Remove "Previous:" at start
+    text = re.sub(r'^Previous:\s*', '', text, flags=re.IGNORECASE)
+    
+    # Remove book attribution patterns at end of text
+    # e.g., "The Kybalion, by Three Initiates," or "Science of Breath, by Yogi Ramacharaka, pseud. William Atkinson."
+    text = re.sub(r',?\s+by\s+[A-Z][^.]*(?:,\s+[^.]+)?\.\s*$', '', text)
+    
+    # Remove standalone attribution lines (book title + author)
+    text = re.sub(r'^(?:The\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,\s+by\s+[A-Z][^,\n]+(?:,\s+[^.\n]+)?\.\s*', '', text, flags=re.MULTILINE)
+    
+    # Convert IPA tags to plain text (old format with angle brackets)
+    # <word<<IPA:/pronunciation/>>> -> word
+    text = re.sub(r'<(\w+)<<IPA:[^>]+>>>', r'\1', text)
+    
+    # Convert IPA tags (new format with pipe separator)
+    # <word|IPA:/pronunciation/> -> word
+    text = re.sub(r'<(\w+)\|IPA:[^>]+>', r'\1', text)
+    
+    # Remove any remaining empty angle bracket constructs
+    text = re.sub(r'<\s*>', '', text)
+    
+    # Normalize multiple spaces/newlines
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+
 def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
     """
     Splits text into chunks of max_chars, respecting sentence boundaries.
@@ -599,6 +646,7 @@ def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
 def write_sections_to_supabase(chapter_id: str, sections: list):
     """
     Writes sections to the 'sections' table.
+    Applies final TTS cleanup to each section.
     
     Args:
         chapter_id: UUID of the parent chapter
@@ -607,10 +655,17 @@ def write_sections_to_supabase(chapter_id: str, sections: list):
     supabase = get_supabase()
     
     for index, text in enumerate(sections):
+        # Apply final cleanup for TTS
+        cleaned_text = clean_section_text(text)
+        
+        # Skip empty sections after cleanup
+        if not cleaned_text:
+            continue
+            
         supabase.table("sections").insert({
             "chapter_id": chapter_id,
             "section_index": index,
-            "text_ref": text,
+            "text_ref": cleaned_text,
             "start_ms": None,  # Will be calculated after TTS
             "end_ms": None     # Will be calculated after TTS
         }).execute()
@@ -673,24 +728,72 @@ Example: ["First paragraph text here.", "Second paragraph continues the narrativ
 Return ONLY the JSON array, no markdown, no explanations."""
 
 
+def extract_chapter_header(text: str) -> tuple:
+    """
+    Extracts the chapter header (title line) from the beginning of chapter text.
+    Returns (header, remaining_text) tuple.
+    
+    Handles patterns like:
+    - "Chapter I. The Hermetic Philosophy The Kybalion..."
+    - "Chapter Four. The All The Kybalion..."
+    - "I. The Hermetic Philosophy"
+    """
+    if not text or not text.strip():
+        return None, text
+    
+    # Pattern for chapter headers at the start of text
+    # Matches: "Chapter X. Title" or "Chapter X: Title" or just "X. Title" (Roman numerals)
+    patterns = [
+        # "Chapter" + number/roman + separator + title (greedy to get full header line)
+        r'^(Chapter\s+(?:\d+|[IVXLCDM]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen)[:\.\s\-–][^\n]*)',
+        # Roman numeral at start + separator + title
+        r'^([IVXLCDM]+[:\.\s]+[^\n]*)',
+    ]
+    
+    text = text.strip()
+    
+    for pattern in patterns:
+        match = re.match(pattern, text, re.IGNORECASE)
+        if match:
+            header = match.group(1).strip()
+            remaining = text[match.end():].strip()
+            print(f"[CHAPTERS] Extracted chapter header: '{header[:60]}...'")
+            return header, remaining
+    
+    return None, text
+
+
 def split_into_paragraphs_gpt(text: str) -> list:
     """
     Uses GPT to split text into natural paragraphs for app display.
     Handles large texts by splitting into chunks to avoid token limits.
+    
+    IMPORTANT: The chapter header (e.g., "Chapter I. Title...") is always
+    extracted as the first paragraph, separate from the content.
     """
     if not text or not text.strip():
         return []
     
-    # For very short text, return as single paragraph
-    if len(text) <= 350:
-        return [text.strip()]
+    # First, extract chapter header as separate paragraph
+    chapter_header, remaining_text = extract_chapter_header(text)
+    
+    all_paragraphs = []
+    
+    # Add chapter header as first paragraph if found
+    if chapter_header:
+        all_paragraphs.append(chapter_header)
+    
+    # For very short remaining text, return as single paragraph
+    if len(remaining_text) <= 350:
+        if remaining_text.strip():
+            all_paragraphs.append(remaining_text.strip())
+        return all_paragraphs
     
     # Chunking strategy: Split text into ~10k character chunks
     # This ensures we stay well within the TPM limits even for large chapters.
     chunk_size = 10000
-    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunks = [remaining_text[i:i + chunk_size] for i in range(0, len(remaining_text), chunk_size)]
     
-    all_paragraphs = []
     client = get_openai()
     
     print(f"[CHAPTERS] Splitting text into paragraphs using GPT-4o-mini ({len(chunks)} chunks)...")

@@ -16,12 +16,16 @@ RULES:
 3. Convert all numbers and years into English words.
 4. Convert Roman numerals into English words.
 5. Modernize spelling only when meaning is unchanged.
-6. Convert foreign (Latin/Greek) words into pronunciation tags:
-   Format: <word<<IPA:/.../>>>
+6. Convert foreign (Latin/Greek/Sanskrit) words into pronunciation tags:
+   Format: <word|IPA:/pronunciation/> (use pipe separator for TTS parsing)
 7. Flatten poetry and quotes into normal paragraphs.
 8. NEVER change the meaning of a sentence.
 9. If uncertain about any segment, keep it but add an "uncertain" entry.
 10. Return JSON only, no markdown, no explanations.
+11. Remove navigation markers: "Next:", "Previous:", "Contents", "Back to", etc.
+12. Remove book/chapter attribution lines at end of paragraphs (e.g., "The Kybalion, by Three Initiates")
+13. Remove source citations like "Science of Breath, by Yogi Ramacharaka, pseud. William Atkinson."
+14. Remove trailing periods after chapter titles (e.g., "Chapter One." → "Chapter One")
 
 OUTPUT JSON:
 {
