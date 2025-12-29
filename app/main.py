@@ -53,6 +53,17 @@ static_path = Path(__file__).parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
+dashboard_path = static_path / "dashboard.html"
+
+
+# Minimal dashboard UI for running the full pipeline
+@app.get("/", include_in_schema=False)
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard():
+    if dashboard_path.exists():
+        return FileResponse(dashboard_path)
+    return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)
+
 
 # Custom Swagger UI - Clean dark theme
 @app.get("/docs", include_in_schema=False)
@@ -900,4 +911,3 @@ async def process_book(file: UploadFile = File(...)):
         result["errors"].append(str(e))
         result["traceback"] = error_details
         return JSONResponse(result, status_code=500)
-
