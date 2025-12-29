@@ -214,19 +214,19 @@ def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     # 1:1 - square crop from center
     img_1x1 = crop_to_aspect_ratio(original, 1.0)
     
-    print(f\"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}\")
+    print(f"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}")
     
     # Upload all versions to Supabase Storage
     supabase = get_supabase()
-    book_id = metadata.get(\"book_id\", str(uuid.uuid4()))
+    book_id = metadata.get("book_id", str(uuid.uuid4()))
     
-    print(f\"[COVER ART] Uploading to Supabase Storage...\")
+    print("[COVER ART] Uploading to Supabase Storage...")
     
     # Upload 16:9 (banner)
     buffer = BytesIO()
-    img_16x9.save(buffer, format=\"PNG\")
+    img_16x9.save(buffer, format="PNG")
     buffer.seek(0)
-    file_name = f\"covers/{book_id}_16x9.png\"
+    file_name = f"covers/{book_id}_16x9.png"
     supabase.storage.from_("audio").upload(
         file_name,
         buffer.getvalue(),
