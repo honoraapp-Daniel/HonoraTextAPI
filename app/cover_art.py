@@ -101,12 +101,13 @@ def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = 
             return image.crop((0, top, width, top + new_height))
 
 
-def generate_cover_image(metadata: dict) -> dict:
+def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     """
     Generates book cover artwork using Nano Banana (via Kie.ai API).
     Nano Banana renders title and author directly on the image.
     Generates 16:9 then crops to 1:1 and 2:3.
-    Returns URLs for all three versions.
+    Returns URLs for all three versions. When upload=False, returns the Kie.ai
+    result URL for both keys without uploading to Supabase.
     """
     prompt = generate_cover_art_prompt(metadata)
     title = metadata.get("title", "Untitled")
@@ -184,7 +185,15 @@ def generate_cover_image(metadata: dict) -> dict:
     if not image_url:
         raise Exception("Timeout waiting for image generation")
     
-    print(f"[COVER ART] Downloading artwork...")
+    urls = {}
+    if not upload:
+        # Preview-only: return the generated URL without uploading to Supabase
+        urls["cover_art_url"] = image_url
+        urls["cover_art_url_16x9"] = image_url
+        print("[COVER ART] Preview mode: returning generated URL without upload")
+        return urls
+
+    print("[COVER ART] Downloading artwork...")
     
     # Download the image
     image_response = requests.get(image_url)
@@ -197,7 +206,7 @@ def generate_cover_image(metadata: dict) -> dict:
     print(f"[COVER ART] Downloaded artwork size: {width}x{height}")
     
     # Create cropped versions
-    print(f"[COVER ART] Creating cropped versions...")
+    print("[COVER ART] Creating cropped versions...")
     
     # 16:9 - keep original (for banners)
     img_16x9 = original
@@ -205,21 +214,19 @@ def generate_cover_image(metadata: dict) -> dict:
     # 1:1 - square crop from center
     img_1x1 = crop_to_aspect_ratio(original, 1.0)
     
-    print(f"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}")
+    print(f\"[COVER ART] Cropped sizes: 16:9={img_16x9.size}, 1:1={img_1x1.size}\")
     
     # Upload all versions to Supabase Storage
     supabase = get_supabase()
-    book_id = metadata.get("book_id", str(uuid.uuid4()))
+    book_id = metadata.get(\"book_id\", str(uuid.uuid4()))
     
-    print(f"[COVER ART] Uploading to Supabase Storage...")
-    
-    urls = {}
+    print(f\"[COVER ART] Uploading to Supabase Storage...\")
     
     # Upload 16:9 (banner)
     buffer = BytesIO()
-    img_16x9.save(buffer, format="PNG")
+    img_16x9.save(buffer, format=\"PNG\")
     buffer.seek(0)
-    file_name = f"covers/{book_id}_16x9.png"
+    file_name = f\"covers/{book_id}_16x9.png\"
     supabase.storage.from_("audio").upload(
         file_name,
         buffer.getvalue(),
@@ -239,7 +246,7 @@ def generate_cover_image(metadata: dict) -> dict:
     )
     urls["cover_art_url"] = supabase.storage.from_("audio").get_public_url(file_name)
     
-    print(f"[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
+    print("[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
     
     return urls
 

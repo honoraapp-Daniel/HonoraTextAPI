@@ -21,6 +21,7 @@ from app.chapters import (
     write_paragraphs_to_supabase
 )
 from app.metadata import extract_book_metadata
+from app.cover_art import generate_cover_image, update_book_cover_url
 
 
 # Custom Swagger UI with Honora branding
@@ -706,6 +707,175 @@ async def create_paragraphs(payload: dict):
         "chapters_processed": len(chapters),
         "total_paragraphs_created": total_paragraphs,
         "details": details
+    }
+
+# -----------------------------------------------------------
+# Preview-only pipeline (no Supabase writes)
+# -----------------------------------------------------------
+@app.post("/process_book_preview")
+async def process_book_preview(file: UploadFile = File(...)):
+    """
+    Preview pipeline: run full processing but DO NOT write to Supabase.
+    Returns metadata, cover art preview URLs, and samples of sections/paragraphs.
+    """
+    preview_id = str(uuid.uuid4())
+    pdf_path = f"{TEMP_DIR}/{preview_id}.pdf"
+    json_path = f"{TEMP_DIR}/{preview_id}.json"
+    preview_path = f"{TEMP_DIR}/{preview_id}.preview.json"
+
+    with open(pdf_path, "wb") as f:
+        f.write(await file.read())
+
+    pages = extract_raw_pages(pdf_path)
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(pages, f, ensure_ascii=False, indent=2)
+
+    # Metadata from first pages
+    first_pages_text = ""
+    for page_obj in pages[:3]:
+        items = page_obj.get("items", [])
+        page_text = " ".join([item.get("text", "") for item in items])
+        first_pages_text += page_text + "\n\n"
+    metadata = extract_book_metadata(first_pages_text)
+
+    # Cover art preview (no Supabase upload)
+    cover_urls = {}
+    try:
+        cover_urls = generate_cover_image(metadata, upload=False)
+    except Exception as cover_error:
+        cover_urls["error"] = str(cover_error)
+
+    # Clean pages
+    cleaned_pages = []
+    for page_obj in pages:
+        items = page_obj.get("items", [])
+        if items:
+            cleaned = clean_page_text(items)
+            cleaned_pages.append({
+                "page": page_obj.get("page"),
+                "cleaned_text": cleaned.get("cleaned_text", "")
+            })
+    full_text = "\n\n".join([p["cleaned_text"] for p in cleaned_pages if p.get("cleaned_text")])
+
+    # Chapters + stories
+    stories, chapters = extract_chapters_smart(full_text)
+
+    # Sections
+    sections_all = []
+    sections_by_chapter = []
+    for chap in chapters:
+        chapter_sections = chunk_chapter_text(chap.get("text", ""), max_chars=250)
+        sections_by_chapter.append(chapter_sections)
+        for idx, sec in enumerate(chapter_sections):
+            sections_all.append({
+                "chapter_index": chap.get("chapter_index"),
+                "section_index": idx + 1,
+                "text": sec.get("text") if isinstance(sec, dict) else sec
+            })
+
+    # Paragraphs
+    paragraphs_all = []
+    paragraphs_by_chapter = []
+    for chap in chapters:
+        chapter_paragraphs = split_into_paragraphs_gpt(chap.get("text", ""))
+        paragraphs_by_chapter.append(chapter_paragraphs)
+        for idx, par in enumerate(chapter_paragraphs):
+            paragraphs_all.append({
+                "chapter_index": chap.get("chapter_index"),
+                "paragraph_index": idx + 1,
+                "text": par
+            })
+
+    # Persist preview payload for later approval upload
+    preview_payload = {
+        "metadata": metadata,
+        "cover_urls": cover_urls,
+        "stories": stories,
+        "chapters": chapters,
+        "sections_by_chapter": sections_by_chapter,
+        "paragraphs_by_chapter": paragraphs_by_chapter,
+    }
+    with open(preview_path, "w", encoding="utf-8") as f:
+        json.dump(preview_payload, f, ensure_ascii=False, indent=2)
+
+    return {
+        "status": "preview",
+        "preview_id": preview_id,
+        "metadata": metadata,
+        "cover_urls": cover_urls,
+        "sections_sample": sections_all[:10],
+        "paragraphs_sample": paragraphs_all[:10],
+    }
+
+# -----------------------------------------------------------
+# Commit preview to Supabase after approval
+# -----------------------------------------------------------
+@app.post("/process_book_upload")
+async def process_book_upload(payload: dict):
+    """
+    Commit a previously generated preview to Supabase.
+    Expects: {"preview_id": "..."}
+    """
+    preview_id = payload.get("preview_id")
+    if not preview_id:
+        return JSONResponse({"error": "preview_id is required"}, status_code=400)
+
+    preview_path = f"{TEMP_DIR}/{preview_id}.preview.json"
+    if not os.path.isfile(preview_path):
+        return JSONResponse({"error": "Preview not found"}, status_code=404)
+
+    with open(preview_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    metadata = data.get("metadata", {})
+    cover_urls_preview = data.get("cover_urls", {})
+    stories = data.get("stories", [])
+    chapters = data.get("chapters", [])
+    sections_by_chapter = data.get("sections_by_chapter", [])
+    paragraphs_by_chapter = data.get("paragraphs_by_chapter", [])
+
+    # Create book
+    book_id = create_book_in_supabase(metadata)
+
+    # Generate & upload cover art
+    try:
+        metadata_with_id = dict(metadata)
+        metadata_with_id["book_id"] = book_id
+        cover_urls = generate_cover_image(metadata_with_id, upload=True)
+        update_book_cover_url(book_id, cover_urls)
+    except Exception as cover_error:
+        cover_urls = {"error": str(cover_error), **cover_urls_preview}
+
+    # Stories
+    story_id_map = {}
+    if stories:
+        story_id_map = write_stories_to_supabase(book_id, stories)
+
+    # Chapters
+    db_chapters = write_chapters_to_supabase(book_id, chapters, story_id_map)
+    total_sections = 0
+    total_paragraphs = 0
+
+    # Sections
+    for i, chapter in enumerate(db_chapters):
+        chapter_sections = sections_by_chapter[i] if i < len(sections_by_chapter) else []
+        write_sections_to_supabase(chapter["id"], chapter_sections)
+        total_sections += len(chapter_sections)
+
+    # Paragraphs
+    for i, chapter in enumerate(db_chapters):
+        chapter_paragraphs = paragraphs_by_chapter[i] if i < len(paragraphs_by_chapter) else []
+        write_paragraphs_to_supabase(chapter["id"], chapter_paragraphs)
+        total_paragraphs += len(chapter_paragraphs)
+
+    return {
+        "status": "uploaded",
+        "book_id": book_id,
+        "cover_urls": cover_urls,
+        "sections": total_sections,
+        "paragraphs": total_paragraphs,
+        "chapters": len(db_chapters),
+        "stories": len(stories),
     }
 
 # -----------------------------------------------------------

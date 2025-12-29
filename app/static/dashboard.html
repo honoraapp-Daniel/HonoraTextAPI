@@ -257,8 +257,8 @@
 
     <div class="grid">
       <div class="card">
-        <h2>Upload & launch</h2>
-        <p class="muted">Pipeline steps: extract PDF → metadata → cover art → clean text → chapters → sections → paragraphs.</p>
+        <h2>Upload & preview</h2>
+        <p class="muted">Preview: extract PDF → metadata → cover art → clean text → chapters → sections → paragraphs. Supabase upload happens only after you approve.</p>
 
         <form id="pipeline-form">
           <label class="upload-box">
@@ -272,7 +272,7 @@
           <div class="muted" id="file-info" style="margin-top: 6px;">No file selected</div>
 
           <div class="actions" style="margin-top: 14px;">
-            <button class="primary" type="submit" id="start-btn" disabled>Start pipeline</button>
+            <button class="primary" type="submit" id="start-btn" disabled>Generate preview</button>
             <div id="status-text" class="muted">Select a PDF to begin</div>
           </div>
 
@@ -291,17 +291,42 @@
         <div id="status-list" class="status-list"></div>
       </div>
     </div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h2>Preview & approval</h2>
+      <div class="muted" id="preview-meta">Awaiting preview...</div>
+      <div id="cover-preview" style="margin: 12px 0; display: none;">
+        <img id="cover-img" src="" alt="Cover art preview" style="max-width: 260px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow);" />
+        <div class="muted" id="cover-url"></div>
+      </div>
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+        <div>
+          <div class="pill" style="margin-bottom: 8px;">Sections (first 10)</div>
+          <div id="sections-list" class="status-list"></div>
+        </div>
+        <div>
+          <div class="pill" style="margin-bottom: 8px;">Paragraphs (first 10)</div>
+          <div id="paragraphs-list" class="status-list"></div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top: 14px;">
+        <button class="primary" type="button" id="upload-btn" disabled>Upload to Supabase</button>
+        <div id="upload-status" class="muted">Generate a preview to enable upload</div>
+      </div>
+    </div>
   </main>
 
   <script>
     const steps = [
+      { key: 'preview', label: 'Preview pipeline' },
       { key: 'extract_pdf', label: 'Upload & extract PDF' },
       { key: 'create_book', label: 'Create book + metadata' },
       { key: 'generate_cover', label: 'Generate cover art' },
       { key: 'clean_book', label: 'Clean text for TTS' },
       { key: 'extract_chapters', label: 'Detect chapters/stories' },
       { key: 'chunk_chapters', label: 'Chunk chapters for TTS' },
-      { key: 'create_paragraphs', label: 'Create display paragraphs' }
+      { key: 'create_paragraphs', label: 'Create display paragraphs' },
+      { key: 'upload_supabase', label: 'Upload to Supabase' }
     ];
 
     const statusList = document.getElementById('status-list');
@@ -313,9 +338,18 @@
     const resultBox = document.getElementById('result-box');
     const statusText = document.getElementById('status-text');
     const fileInfo = document.getElementById('file-info');
+    const previewMeta = document.getElementById('preview-meta');
+    const sectionsList = document.getElementById('sections-list');
+    const paragraphsList = document.getElementById('paragraphs-list');
+    const coverPreview = document.getElementById('cover-preview');
+    const coverImg = document.getElementById('cover-img');
+    const coverUrl = document.getElementById('cover-url');
+    const uploadBtn = document.getElementById('upload-btn');
+    const uploadStatus = document.getElementById('upload-status');
 
     let optimisticTimer = null;
     let optimisticProgress = 0;
+    let previewId = null;
 
     function renderStatuses() {
       statusList.innerHTML = steps.map(step => `
@@ -379,6 +413,53 @@
       setProgress(percent);
     }
 
+    function showPreview(data) {
+      previewId = data.preview_id;
+      uploadBtn.disabled = false;
+      uploadStatus.textContent = 'Ready to upload to Supabase';
+
+      const meta = data.metadata || {};
+      const parts = [];
+      if (meta.title) parts.push(`Title: ${meta.title}`);
+      if (meta.author) parts.push(`Author: ${meta.author}`);
+      if (meta.language) parts.push(`Language: ${meta.language}`);
+      if (meta.category) parts.push(`Category: ${meta.category}`);
+      if (meta.synopsis) parts.push(`Synopsis: ${meta.synopsis}`);
+      previewMeta.textContent = parts.join(' · ') || 'No metadata available';
+
+      const cover = data.cover_urls || {};
+      if (cover.cover_art_url) {
+        coverPreview.style.display = 'block';
+        coverImg.src = cover.cover_art_url;
+        coverUrl.textContent = cover.cover_art_url;
+      } else {
+        coverPreview.style.display = 'none';
+        coverUrl.textContent = '';
+      }
+
+      const sections = data.sections_sample || [];
+      sectionsList.innerHTML = sections.map(s => `
+        <div class="status done">
+          <div class="dot"></div>
+          <div>
+            <div class="label">Chapter ${s.chapter_index || '?'} · Section ${s.section_index || '?'}</div>
+            <div class="hint">${(s.text || '').slice(0, 200)}</div>
+          </div>
+        </div>
+      `).join('') || '<div class="muted">No sections available</div>';
+
+      const paragraphs = data.paragraphs_sample || [];
+      paragraphsList.innerHTML = paragraphs.map(p => `
+        <div class="status done">
+          <div class="dot"></div>
+          <div>
+            <div class="label">Chapter ${p.chapter_index || '?'} · Paragraph ${p.paragraph_index || '?'}</div>
+            <div class="hint">${(p.text || '').slice(0, 200)}</div>
+          </div>
+        </div>
+      `).join('') || '<div class="muted">No paragraphs available</div>';
+    }
+
     function updateFileState() {
       const file = fileInput.files?.[0];
       if (file) {
@@ -394,18 +475,21 @@
     }
 
     async function runPipeline(file) {
-      statusText.textContent = 'Uploading & starting pipeline...';
+      statusText.textContent = 'Uploading & starting preview...';
       resultBox.hidden = true;
       setProgress(0);
+      previewId = null;
+      uploadBtn.disabled = true;
+      uploadStatus.textContent = 'Generating preview...';
       steps.forEach(step => setStepState(step.key, 'pending'));
-      setStepState('extract_pdf', 'active', 'Uploading...');
+      setStepState('preview', 'active', 'Running preview');
       startOptimisticProgress();
 
       const formData = new FormData();
       formData.append('file', file);
 
       try {
-        const response = await fetch('/process_book', {
+        const response = await fetch('/process_book_preview', {
           method: 'POST',
           body: formData
         });
@@ -414,28 +498,22 @@
         stopOptimisticProgress();
 
         if (!response.ok) {
-          throw new Error(data?.errors?.join(' | ') || data?.detail || 'Pipeline error');
+          throw new Error(data?.errors?.join(' | ') || data?.detail || 'Preview error');
         }
 
-        syncStepsFromResponse(data.steps_completed || []);
-        setProgress(100);
-        statusText.textContent = 'Pipeline complete';
+        setStepState('preview', 'done', 'Preview ready');
+        const stepsCompleted = ['preview','extract_pdf','create_book','generate_cover','clean_book','extract_chapters','chunk_chapters','create_paragraphs'];
+        syncStepsFromResponse(stepsCompleted);
+        setProgress(90);
+        statusText.textContent = 'Preview ready — review and approve';
 
-        let summary = `Status: ${data.status}\n`;
-        if (data.book_id) summary += `Book ID: ${data.book_id}\n`;
-        if (data.title) summary += `Title: ${data.title}\n`;
-        if (data.author) summary += `Author: ${data.author}\n`;
-        if (data.category) summary += `Category: ${data.category}\n`;
-        if (data.sections) summary += `Sections: ${data.sections}\n`;
-        if (data.paragraphs) summary += `Paragraphs: ${data.paragraphs}\n`;
-        if (data.cover_art_url) summary += `Cover: ${data.cover_art_url}\n`;
-
-        resultBox.textContent = summary.trim();
+        showPreview(data);
+        resultBox.textContent = 'Preview complete. Review samples and click Upload to Supabase.';
         resultBox.hidden = false;
       } catch (err) {
         stopOptimisticProgress();
         setProgress(5);
-        statusText.textContent = 'Pipeline failed';
+        statusText.textContent = 'Preview failed';
         steps.forEach(step => setStepState(step.key, 'error', 'Error'));
         resultBox.textContent = `Error: ${err.message || err}`;
         resultBox.hidden = false;
@@ -455,6 +533,35 @@
       runPipeline(file).finally(() => {
         startBtn.disabled = !fileInput.files?.length;
       });
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!previewId) return;
+      uploadBtn.disabled = true;
+      uploadStatus.textContent = 'Uploading to Supabase...';
+      setStepState('upload_supabase', 'active', 'Uploading...');
+      try {
+        const response = await fetch('/process_book_upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preview_id: previewId })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || data?.detail || 'Upload failed');
+        setStepState('upload_supabase', 'done', 'Uploaded');
+        setProgress(100);
+        uploadStatus.textContent = `Uploaded. Book ID: ${data.book_id}`;
+        statusText.textContent = 'Upload complete';
+        let summary = `Status: ${data.status}\nBook ID: ${data.book_id}\nChapters: ${data.chapters}\nSections: ${data.sections}\nParagraphs: ${data.paragraphs}`;
+        resultBox.textContent = summary;
+        resultBox.hidden = false;
+      } catch (err) {
+        setStepState('upload_supabase', 'error', 'Error');
+        uploadStatus.textContent = `Upload failed: ${err.message || err}`;
+        statusText.textContent = 'Upload failed';
+      } finally {
+        uploadBtn.disabled = false;
+      }
     });
 
     renderStatuses();
