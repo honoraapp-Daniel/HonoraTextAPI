@@ -269,10 +269,11 @@
               <div class="muted">We send it directly to /process_book on this service.</div>
             </div>
           </label>
+          <div class="muted" id="file-info" style="margin-top: 6px;">No file selected</div>
 
           <div class="actions" style="margin-top: 14px;">
-            <button class="primary" type="submit" id="start-btn">Start pipeline</button>
-            <div id="status-text" class="muted">Idle</div>
+            <button class="primary" type="submit" id="start-btn" disabled>Start pipeline</button>
+            <div id="status-text" class="muted">Select a PDF to begin</div>
           </div>
 
           <div class="progress" aria-label="Pipeline progress">
@@ -311,6 +312,7 @@
     const progressLabel = document.getElementById('progress-label');
     const resultBox = document.getElementById('result-box');
     const statusText = document.getElementById('status-text');
+    const fileInfo = document.getElementById('file-info');
 
     let optimisticTimer = null;
     let optimisticProgress = 0;
@@ -377,6 +379,20 @@
       setProgress(percent);
     }
 
+    function updateFileState() {
+      const file = fileInput.files?.[0];
+      if (file) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        fileInfo.textContent = `${file.name} · ${sizeMB} MB`;
+        statusText.textContent = 'Ready to start';
+        startBtn.disabled = false;
+      } else {
+        fileInfo.textContent = 'No file selected';
+        statusText.textContent = 'Select a PDF to begin';
+        startBtn.disabled = true;
+      }
+    }
+
     async function runPipeline(file) {
       statusText.textContent = 'Uploading & starting pipeline...';
       resultBox.hidden = true;
@@ -426,6 +442,8 @@
       }
     }
 
+    fileInput.addEventListener('change', updateFileState);
+
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const file = fileInput.files?.[0];
@@ -435,11 +453,12 @@
       }
       startBtn.disabled = true;
       runPipeline(file).finally(() => {
-        startBtn.disabled = false;
+        startBtn.disabled = !fileInput.files?.length;
       });
     });
 
     renderStatuses();
+    updateFileState();
   </script>
 </body>
 </html>
