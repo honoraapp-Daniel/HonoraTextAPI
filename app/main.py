@@ -1116,27 +1116,36 @@ os.makedirs(TEMP_DIR_V2, exist_ok=True)
 
 
 @app.post("/v2/upload", tags=["Pipeline V2"])
-async def v2_upload_pdf(file: UploadFile = File(...)):
+async def v2_upload_file(file: UploadFile = File(...)):
     """
     Start a new V2 processing job.
     
-    Uploads the PDF and creates a job for chapter-by-chapter processing.
+    Uploads the file (PDF or JSON) and creates a job for chapter-by-chapter processing.
     Returns job_id for tracking progress.
     """
-    # Save uploaded PDF
-    job_id = str(uuid.uuid4())
-    pdf_path = f"{TEMP_DIR_V2}/{job_id}.pdf"
+    # Determine file extension from uploaded filename
+    original_filename = file.filename or "upload.pdf"
+    extension = os.path.splitext(original_filename)[1].lower()
     
-    with open(pdf_path, "wb") as f:
+    # Default to .pdf if unknown
+    if extension not in [".pdf", ".json"]:
+        extension = ".pdf"
+    
+    # Save uploaded file with correct extension
+    temp_id = str(uuid.uuid4())
+    file_path = f"{TEMP_DIR_V2}/{temp_id}{extension}"
+    
+    with open(file_path, "wb") as f:
         f.write(await file.read())
     
-    # Create job
-    job_id = create_job(pdf_path)
+    # Create job (will detect file type from extension)
+    job_id = create_job(file_path)
     
     return {
         "status": "created",
         "job_id": job_id,
-        "message": "Job created. Call /v2/job/{job_id}/extract to start extraction."
+        "file_type": "json" if extension == ".json" else "pdf",
+        "message": f"Job created from {extension.upper()[1:]} file. Call appropriate endpoints to process."
     }
 
 
