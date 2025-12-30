@@ -45,23 +45,33 @@ def create_job(file_path: str) -> str:
     Supports both PDF and JSON files:
     - PDF: Will use Marker API for extraction
     - JSON: Direct parsing from HonoraWebScraper output (faster, more reliable)
+    
+    The source file is COPIED to the job directory to ensure persistence.
     """
+    import shutil
+    
     job_id = str(uuid.uuid4())
     job_dir = f"{TEMP_DIR}/{job_id}"
     os.makedirs(job_dir, exist_ok=True)
     
     # Detect file type
     is_json = file_path.endswith('.json')
+    file_ext = '.json' if is_json else '.pdf'
+    
+    # Copy file to job directory for persistence
+    job_file_path = f"{job_dir}/source{file_ext}"
+    shutil.copy2(file_path, job_file_path)
+    print(f"[PIPELINE_V2] Copied source file to: {job_file_path}")
     
     job_state = {
         "job_id": job_id,
         "status": "created",
         "phase": "upload",
-        "file_path": file_path,
+        "file_path": job_file_path,  # Use the copied file
         "file_type": "json" if is_json else "pdf",
-        "pdf_path": file_path if not is_json else None,
-        "json_path": file_path if is_json else None,
-        "json_data": None,  # Will be populated for JSON files
+        "pdf_path": job_file_path if not is_json else None,
+        "json_path": job_file_path if is_json else None,
+        "json_data": None,  # Will be loaded when needed
         "markdown": None,
         "metadata": None,
         "cover_urls": None,
@@ -69,13 +79,17 @@ def create_job(file_path: str) -> str:
         "error": None
     }
     
-    # If JSON file, load it immediately
+    # For JSON files, verify it's readable and log chapter count
     if is_json:
-        with open(file_path, "r", encoding="utf-8") as f:
-            json_data = json.load(f)
-        job_state["json_data"] = json_data
-        job_state["phase"] = "json_loaded"
-        print(f"[PIPELINE_V2] Created job from JSON: {job_id} ({json_data.get('chapterCount', '?')} chapters)")
+        try:
+            with open(job_file_path, "r", encoding="utf-8") as f:
+                json_data = json.load(f)
+            chapter_count = json_data.get('chapterCount', len(json_data.get('chapters', [])))
+            job_state["phase"] = "json_loaded"
+            print(f"[PIPELINE_V2] Created job from JSON: {job_id} ({chapter_count} chapters)")
+        except Exception as e:
+            print(f"[PIPELINE_V2] Warning: Could not pre-load JSON: {e}")
+            print(f"[PIPELINE_V2] Created job from JSON: {job_id}")
     else:
         print(f"[PIPELINE_V2] Created job from PDF: {job_id}")
     
