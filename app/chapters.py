@@ -569,12 +569,12 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
         parent_story = chapter.get("parent_story")
         story_id = story_id_map.get(parent_story) if parent_story else None
         
-            insert_data = {
-                "book_id": book_id,
-                "chapter_index": chapter["chapter_index"],
-                "title": chapter.get("display_title") or chapter["title"],
-                "text": chapter.get("text", "")
-            }
+        insert_data = {
+            "book_id": book_id,
+            "chapter_index": chapter["chapter_index"],
+            "title": chapter.get("display_title") or chapter["title"],
+            "text": chapter.get("text", "")
+        }
         
         if story_id:
             insert_data["story_id"] = story_id
