@@ -158,8 +158,15 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     ]
     navigation_regex = re.compile('|'.join(navigation_patterns), re.IGNORECASE)
     
-    # Pattern for chapter headers (## or # followed by Chapter/Roman numerals)
+    # Pattern for chapter headers (## or # followed by Chapter/Roman numerals/English words)
+    # English number words for matching
+    number_words = r'(?:One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|Eleven|Twelve|Thirteen|Fourteen|Fifteen|Sixteen|Seventeen|Eighteen|Nineteen|Twenty(?:-One|-Two|-Three|-Four|-Five|-Six|-Seven|-Eight|-Nine)?|Thirty)'
+    
     chapter_patterns = [
+        # NEW: "Chapter One - Salaam" (HonoraWebScraper format with English words)
+        rf'^#{{1,2}}\s+Chapter\s+{number_words}\s*[\-–]\s*(.*)',
+        # NEW: "Chapter One" alone (no subtitle)
+        rf'^#{{1,2}}\s+Chapter\s+{number_words}\s*$',
         # "Chapter 1: Title" or "Chapter I. Title"
         r'^#{1,2}\s+Chapter\s+(\d+|[IVXLCDM]+)[:\.\s\-–]*(.*)',
         # "Chapter 1" alone (from scraped Table of Contents entries like "Chapter 4: Chapter I. Salaam")

@@ -12,6 +12,106 @@ function delay(ms) {
 }
 
 /**
+ * Konverterer tal til engelske ord (1-30)
+ */
+const numberWords = [
+  '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty',
+  'Twenty-One', 'Twenty-Two', 'Twenty-Three', 'Twenty-Four', 'Twenty-Five', 'Twenty-Six', 'Twenty-Seven', 'Twenty-Eight', 'Twenty-Nine', 'Thirty'
+];
+
+function numberToWord(num) {
+  if (num >= 1 && num <= 30) {
+    return numberWords[num];
+  }
+  return num.toString();
+}
+
+/**
+ * Konverterer romertal til arabiske tal
+ */
+function romanToNumber(roman) {
+  const romanNumerals = {
+    'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000
+  };
+
+  let result = 0;
+  const upper = roman.toUpperCase();
+
+  for (let i = 0; i < upper.length; i++) {
+    const current = romanNumerals[upper[i]] || 0;
+    const next = romanNumerals[upper[i + 1]] || 0;
+
+    if (current < next) {
+      result -= current;
+    } else {
+      result += current;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Renser og formaterer kapitel-titel
+ * Input: "Chapter I. Salaam" eller "Chapter 1: The Beginning"
+ * Output: "Chapter One - Salaam" eller "Chapter One - The Beginning"
+ */
+function cleanChapterTitle(rawTitle, index) {
+  let title = rawTitle.trim();
+
+  // Fjern "page X" referencer
+  title = title.replace(/page\s+\d+/gi, '').trim();
+
+  // Fjern "Chapter X:" eller "Chapter X." prefix (vi tilføjer vores egen)
+  title = title.replace(/^Chapter\s+(\d+|[IVXLCDM]+)[:\.\s-]*/i, '').trim();
+
+  // Hvis titlen nu er tom eller bare et romertal/tal, brug index
+  if (!title || title.match(/^[IVXLCDM]+$/i) || title.match(/^\d+$/)) {
+    title = '';
+  }
+
+  // Byg den rene titel: "Chapter One - Title" eller bare "Chapter One"
+  const chapterWord = numberToWord(index);
+  if (title) {
+    return `Chapter ${chapterWord} - ${title}`;
+  } else {
+    return `Chapter ${chapterWord}`;
+  }
+}
+
+/**
+ * Fjerner duplikerede kapitel-headers fra indhold
+ * Fjerner ting som "Chapter I", "SALAAM" headers der matcher kapitlet
+ */
+function cleanChapterContent(content, chapterTitle) {
+  let cleaned = content;
+
+  // Fjern "Chapter X" headers (romertal eller tal)
+  cleaned = cleaned.replace(/<h[1-6][^>]*>\s*Chapter\s+[IVXLCDM]+\s*<\/h[1-6]>/gi, '');
+  cleaned = cleaned.replace(/<h[1-6][^>]*>\s*Chapter\s+\d+\s*<\/h[1-6]>/gi, '');
+
+  // Fjern standalone kapitel-titler der matcher (f.eks. <h2>SALAAM</h2>)
+  // Ekstraher kapitel-navnet fra den rensede titel
+  const titleMatch = chapterTitle.match(/Chapter\s+\w+\s*-\s*(.+)/i);
+  if (titleMatch) {
+    const subTitle = titleMatch[1].trim();
+    // Fjern header der matcher sub-titlen (case-insensitive)
+    const escapedTitle = subTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const headerPattern = new RegExp(`<h[1-6][^>]*>\\s*${escapedTitle}\\s*</h[1-6]>`, 'gi');
+    cleaned = cleaned.replace(headerPattern, '');
+  }
+
+  // Fjern tomme headers
+  cleaned = cleaned.replace(/<h[1-6][^>]*>\s*<\/h[1-6]>/gi, '');
+
+  // Fjern multiple line breaks
+  cleaned = cleaned.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
+
+  return cleaned;
+}
+
+/**
  * Henter alle kapitel-links fra en bogs index-side
  * @param {string} bookIndexUrl - URL til bogens index.htm
  * @returns {Promise<Array<{title: string, url: string}>>}
@@ -437,9 +537,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   // Build Table of Contents
   let tocHtml = '<div class="table-of-contents"><h2>Table of Contents</h2><ul>';
   for (let i = 0; i < chapters.length; i++) {
-    // Rens kapitel-titel for "page X" referencer
-    const cleanTitle = chapters[i].title.replace(/page\s+\d+/gi, '').trim();
-    tocHtml += `<li>Chapter ${i + 1}: ${escapeHtml(cleanTitle)}</li>`;
+    const formattedTitle = cleanChapterTitle(chapters[i].title, i + 1);
+    tocHtml += `<li>${escapeHtml(formattedTitle)}</li>`;
   }
   tocHtml += '</ul></div>';
   fullHtml += tocHtml;
@@ -447,25 +546,28 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   // Hent hvert kapitel
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
+    const chapterIndex = i + 1;
 
     if (progressCallback) {
-      progressCallback(i + 1, chapters.length, chapter.title);
+      progressCallback(chapterIndex, chapters.length, chapter.title);
     }
 
-    console.log(`  📖 Henter kapitel ${i + 1}/${chapters.length}: ${chapter.title.substring(0, 50)}...`);
+    // Opret ren kapitel-titel: "Chapter One - Salaam"
+    const formattedTitle = cleanChapterTitle(chapter.title, chapterIndex);
+    console.log(`  📖 Henter kapitel ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
 
     try {
-      const { content } = await fetchChapterContent(chapter.url);
+      let { content } = await fetchChapterContent(chapter.url);
 
-      // Rens kapitel-titel
-      const cleanChapterTitle = chapter.title.replace(/page\s+\d+/gi, '').trim();
+      // Fjern duplikerede kapitel-headers fra indholdet
+      content = cleanChapterContent(content, formattedTitle);
 
       fullHtml += `
-  <div class="chapter" data-chapter-index="${i + 1}">
-    <!-- HONORA_CHAPTER_START: ${i + 1} | ${escapeHtml(cleanChapterTitle)} -->
-    <h2 class="honora-chapter-title">Chapter ${i + 1}: ${escapeHtml(cleanChapterTitle)}</h2>
+  <div class="chapter" data-chapter-index="${chapterIndex}">
+    <!-- HONORA_CHAPTER_START: ${chapterIndex} | ${escapeHtml(formattedTitle)} -->
+    <h2 class="honora-chapter-title">${escapeHtml(formattedTitle)}</h2>
     ${content}
-    <!-- HONORA_CHAPTER_END: ${i + 1} -->
+    <!-- HONORA_CHAPTER_END: ${chapterIndex} -->
   </div>
 `;
 
@@ -474,14 +576,12 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
     } catch (error) {
       console.error(`  ⚠️ Fejl ved hentning af ${chapter.url}: ${error.message}`);
-      // Rens kapitel-titel
-      const cleanChapterTitle = chapter.title.replace(/page\s+\d+/gi, '').trim();
       fullHtml += `
-  <div class="chapter" data-chapter-index="${i + 1}">
-    <!-- HONORA_CHAPTER_START: ${i + 1} | ${escapeHtml(cleanChapterTitle)} -->
-    <h2 class="honora-chapter-title">Chapter ${i + 1}: ${escapeHtml(cleanChapterTitle)}</h2>
+  <div class="chapter" data-chapter-index="${chapterIndex}">
+    <!-- HONORA_CHAPTER_START: ${chapterIndex} | ${escapeHtml(formattedTitle)} -->
+    <h2 class="honora-chapter-title">${escapeHtml(formattedTitle)}</h2>
     <p><em>Kunne ikke hente dette kapitel.</em></p>
-    <!-- HONORA_CHAPTER_END: ${i + 1} -->
+    <!-- HONORA_CHAPTER_END: ${chapterIndex} -->
   </div>
 `;
     }
