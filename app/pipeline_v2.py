@@ -39,17 +39,29 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # JOB STATE MANAGEMENT (file-based for now)
 # ============================================
 
-def create_job(pdf_path: str) -> str:
-    """Create a new processing job and return job_id."""
+def create_job(file_path: str) -> str:
+    """Create a new processing job and return job_id.
+    
+    Supports both PDF and JSON files:
+    - PDF: Will use Marker API for extraction
+    - JSON: Direct parsing from HonoraWebScraper output (faster, more reliable)
+    """
     job_id = str(uuid.uuid4())
     job_dir = f"{TEMP_DIR}/{job_id}"
     os.makedirs(job_dir, exist_ok=True)
+    
+    # Detect file type
+    is_json = file_path.endswith('.json')
     
     job_state = {
         "job_id": job_id,
         "status": "created",
         "phase": "upload",
-        "pdf_path": pdf_path,
+        "file_path": file_path,
+        "file_type": "json" if is_json else "pdf",
+        "pdf_path": file_path if not is_json else None,
+        "json_path": file_path if is_json else None,
+        "json_data": None,  # Will be populated for JSON files
         "markdown": None,
         "metadata": None,
         "cover_urls": None,
@@ -57,8 +69,17 @@ def create_job(pdf_path: str) -> str:
         "error": None
     }
     
+    # If JSON file, load it immediately
+    if is_json:
+        with open(file_path, "r", encoding="utf-8") as f:
+            json_data = json.load(f)
+        job_state["json_data"] = json_data
+        job_state["phase"] = "json_loaded"
+        print(f"[PIPELINE_V2] Created job from JSON: {job_id} ({json_data.get('chapterCount', '?')} chapters)")
+    else:
+        print(f"[PIPELINE_V2] Created job from PDF: {job_id}")
+    
     save_job_state(job_id, job_state)
-    print(f"[PIPELINE_V2] Created job: {job_id}")
     return job_id
 
 
@@ -145,24 +166,46 @@ async def phase_extract_pdf(job_id: str) -> dict:
 
 async def phase_metadata(job_id: str) -> dict:
     """
-    Extract metadata with GPT and generate cover art with Nano Banana.
+    Extract metadata and generate cover art.
+    
+    For JSON files: Use metadata directly from json_data
+    For PDF files: Extract with GPT from markdown
     
     Returns:
         {"metadata": {...}, "cover_urls": {...}}
     """
     state = get_job_state(job_id)
-    if not state or not state.get("markdown"):
-        raise ValueError(f"Job not found or no markdown: {job_id}")
+    if not state:
+        raise ValueError(f"Job not found: {job_id}")
     
     try:
         update_job_phase(job_id, "metadata", status="Extracting metadata...")
         
-        # Use first 15% of markdown for metadata extraction
-        markdown = state["markdown"]
-        first_portion = markdown[:int(len(markdown) * 0.15)]
+        metadata = None
         
-        # Extract metadata using existing GPT-based extraction
-        metadata = extract_book_metadata(first_portion)
+        # For JSON files, use metadata directly
+        if state.get("file_type") == "json" and state.get("json_data"):
+            json_data = state["json_data"]
+            print(f"[PIPELINE_V2] Using metadata from JSON: {json_data.get('title')}")
+            metadata = {
+                "title": json_data.get("title", "Unknown"),
+                "author": json_data.get("author", "Unknown"),
+                "publishing_year": json_data.get("year", None),
+                "publisher": json_data.get("publisher", None),
+                "language": "en",
+                "original_language": "en",
+                "category": None,
+                "synopsis": None,
+                "book_of_the_day_quote": None
+            }
+        
+        # For PDF files, use GPT extraction
+        elif state.get("markdown"):
+            markdown = state["markdown"]
+            first_portion = markdown[:int(len(markdown) * 0.15)]
+            metadata = extract_book_metadata(first_portion)
+        else:
+            raise ValueError("No data available for metadata extraction")
         
         update_job_phase(job_id, "cover_art", status="Generating cover art...")
         
@@ -193,31 +236,62 @@ async def phase_metadata(job_id: str) -> dict:
 
 async def phase_detect_chapters(job_id: str) -> dict:
     """
-    Detect chapter boundaries from Markdown headers.
+    Detect chapters from the uploaded file.
+    
+    For JSON files: Direct extraction from json_data.chapters (100% reliable)
+    For PDF files: Parse from Markdown headers (uses Marker API output)
     
     Returns:
         {"chapters": [{"index": 1, "title": "...", ...}, ...]}
     """
     state = get_job_state(job_id)
-    if not state or not state.get("markdown"):
-        raise ValueError(f"Job not found or no markdown: {job_id}")
+    if not state:
+        raise ValueError(f"Job not found: {job_id}")
     
     try:
         update_job_phase(job_id, "detecting_chapters", status="Detecting chapters...")
         
-        markdown = state["markdown"]
+        chapters = []
         
-        # Parse chapters from markdown headers
-        chapters = parse_chapters_from_markdown(markdown)
+        # Check if this is a JSON file (direct extraction)
+        if state.get("file_type") == "json" and state.get("json_data"):
+            json_data = state["json_data"]
+            print(f"[PIPELINE_V2] Using JSON chapters: {json_data.get('chapterCount', 0)} chapters")
+            
+            # Extract chapters directly from JSON
+            for ch in json_data.get("chapters", []):
+                content = ch.get("content", "")
+                chapters.append({
+                    "index": ch.get("index", len(chapters) + 1),
+                    "title": ch.get("title", f"Chapter {len(chapters) + 1}"),
+                    "content": content,  # Store full content for later processing
+                    "status": "pending",
+                    "char_count": len(content),
+                    "preview": content[:200] + "..." if len(content) > 200 else content,
+                    "sections": None,
+                    "paragraphs": None
+                })
         
-        # Add status and preview to each chapter
-        for ch in chapters:
-            ch["status"] = "pending"
-            text = extract_chapter_text(markdown, ch)
-            ch["char_count"] = len(text)
-            ch["preview"] = text[:200] + "..." if len(text) > 200 else text
-            ch["sections"] = None
-            ch["paragraphs"] = None
+        # Fallback to PDF/Markdown parsing
+        elif state.get("markdown"):
+            markdown = state["markdown"]
+            print(f"[PIPELINE_V2] Parsing chapters from Markdown...")
+            
+            # Parse chapters from markdown headers
+            raw_chapters = parse_chapters_from_markdown(markdown)
+            
+            # Add status and preview to each chapter
+            for ch in raw_chapters:
+                text = extract_chapter_text(markdown, ch)
+                ch["content"] = text
+                ch["status"] = "pending"
+                ch["char_count"] = len(text)
+                ch["preview"] = text[:200] + "..." if len(text) > 200 else text
+                ch["sections"] = None
+                ch["paragraphs"] = None
+                chapters.append(ch)
+        else:
+            raise ValueError("No data available: neither json_data nor markdown found")
         
         update_job_phase(
             job_id,
@@ -225,6 +299,12 @@ async def phase_detect_chapters(job_id: str) -> dict:
             status=f"Found {len(chapters)} chapters",
             chapters=chapters
         )
+        
+        print(f"[PIPELINE_V2] Detected {len(chapters)} chapters:")
+        for ch in chapters[:5]:
+            print(f"[PIPELINE_V2]   {ch['index']}. {ch['title']} ({ch['char_count']} chars)")
+        if len(chapters) > 5:
+            print(f"[PIPELINE_V2]   ... and {len(chapters) - 5} more")
         
         return {
             "chapters": chapters,
