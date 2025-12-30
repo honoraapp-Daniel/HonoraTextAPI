@@ -760,17 +760,19 @@ async def process_book_preview(file: UploadFile = File(...)):
     # Chapters + stories
     stories, chapters = extract_chapters_smart(full_text)
 
-    # Sections
+    # Sections - use same semantic splitting as paragraphs
+    # Section 0 = chapter title, Section 1+ = semantic paragraphs
     sections_all = []
     sections_by_chapter = []
     for chap in chapters:
-        chapter_sections = chunk_chapter_text(chap.get("text", ""), max_chars=250)
+        # Use GPT to create semantic sections (same as paragraphs)
+        chapter_sections = split_into_paragraphs_gpt(chap.get("text", ""))
         sections_by_chapter.append(chapter_sections)
         for idx, sec in enumerate(chapter_sections):
             sections_all.append({
                 "chapter_index": chap.get("chapter_index"),
-                "section_index": idx + 1,
-                "text": sec.get("text") if isinstance(sec, dict) else sec
+                "section_index": idx,  # Start from 0 (title is section 0)
+                "text": sec
             })
 
     # Paragraphs
@@ -1021,23 +1023,24 @@ async def process_book(file: UploadFile = File(...)):
         result["steps_completed"].append("extract_chapters")
         result["chapters"] = len(db_chapters)
         
-        # ===== STEP 5: Chunk Chapters (TTS sections) =====
-        logger.info("Step 5: Creating TTS sections...")
-        print(f"[PIPELINE] Step 5: Creating TTS sections (250 char chunks) for {len(db_chapters)} chapters...")
-        from app.chapters import chunk_chapter_text, write_sections_to_supabase
+        # ===== STEP 5: Create Semantic Sections =====
+        logger.info("Step 5: Creating semantic sections...")
+        print(f"[PIPELINE] Step 5: Creating semantic sections (GPT paragraphs) for {len(db_chapters)} chapters...")
+        from app.chapters import split_into_paragraphs_gpt, write_sections_to_supabase
         
         total_sections = 0
         
         for chapter in db_chapters:
             chapter_text = chapter.get("text", "")
             if chapter_text:
-                sections = chunk_chapter_text(chapter_text, max_chars=250)
+                # Use GPT semantic splitting - Section 0 = title, Section 1+ = paragraphs
+                sections = split_into_paragraphs_gpt(chapter_text)
                 write_sections_to_supabase(chapter["id"], sections)
                 total_sections += len(sections)
             else:
                 print(f"[PIPELINE] ⚠️ Warning: Chapter {chapter.get('chapter_index')} has no text!")
         
-        print(f"[PIPELINE] Step 5 complete: {total_sections} sections created")
+        print(f"[PIPELINE] Step 5 complete: {total_sections} semantic sections created")
         result["steps_completed"].append("chunk_chapters")
         result["sections"] = total_sections
         
