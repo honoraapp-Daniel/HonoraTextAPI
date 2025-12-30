@@ -1084,3 +1084,223 @@ async def process_book(file: UploadFile = File(...)):
         result["errors"].append(str(e))
         result["traceback"] = error_details
         return JSONResponse(result, status_code=500)
+
+
+# ============================================
+# PIPELINE V2: CHAPTER-BY-CHAPTER ENDPOINTS
+# ============================================
+
+from app.pipeline_v2 import (
+    create_job,
+    get_job_state,
+    phase_extract_pdf,
+    phase_metadata,
+    phase_detect_chapters,
+    phase_process_chapter,
+    phase_commit_to_supabase,
+    process_all_chapters
+)
+
+TEMP_DIR_V2 = "/tmp/honora_v2"
+os.makedirs(TEMP_DIR_V2, exist_ok=True)
+
+
+@app.post("/v2/upload", tags=["Pipeline V2"])
+async def v2_upload_pdf(file: UploadFile = File(...)):
+    """
+    Start a new V2 processing job.
+    
+    Uploads the PDF and creates a job for chapter-by-chapter processing.
+    Returns job_id for tracking progress.
+    """
+    # Save uploaded PDF
+    job_id = str(uuid.uuid4())
+    pdf_path = f"{TEMP_DIR_V2}/{job_id}.pdf"
+    
+    with open(pdf_path, "wb") as f:
+        f.write(await file.read())
+    
+    # Create job
+    job_id = create_job(pdf_path)
+    
+    return {
+        "status": "created",
+        "job_id": job_id,
+        "message": "Job created. Call /v2/job/{job_id}/extract to start extraction."
+    }
+
+
+@app.get("/v2/job/{job_id}", tags=["Pipeline V2"])
+async def v2_get_job_status(job_id: str):
+    """
+    Get full job status including:
+    - Current phase
+    - Metadata preview  
+    - Chapter list with status
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    return state
+
+
+@app.post("/v2/job/{job_id}/extract", tags=["Pipeline V2"])
+async def v2_extract_pdf(job_id: str):
+    """
+    Extract PDF to Markdown using Marker API.
+    This is the first processing step after upload.
+    """
+    try:
+        result = await phase_extract_pdf(job_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/metadata", tags=["Pipeline V2"])
+async def v2_extract_metadata(job_id: str):
+    """
+    Extract metadata (title, author, etc.) and generate cover art preview.
+    Call after extraction is complete.
+    """
+    try:
+        result = await phase_metadata(job_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/detect-chapters", tags=["Pipeline V2"])
+async def v2_detect_chapters(job_id: str):
+    """
+    Detect chapter boundaries from the Markdown.
+    Returns list of chapters with titles and previews.
+    """
+    try:
+        result = await phase_detect_chapters(job_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/process-chapter/{chapter_index}", tags=["Pipeline V2"])
+async def v2_process_single_chapter(job_id: str, chapter_index: int):
+    """
+    Process a single chapter: clean text, create sections and paragraphs.
+    """
+    try:
+        result = await phase_process_chapter(job_id, chapter_index)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/process-all", tags=["Pipeline V2"])
+async def v2_process_all_chapters(job_id: str):
+    """
+    Process all chapters in sequence.
+    Convenience endpoint for batch processing.
+    """
+    try:
+        result = await process_all_chapters(job_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.put("/v2/job/{job_id}/chapter/{chapter_index}", tags=["Pipeline V2"])
+async def v2_edit_chapter(job_id: str, chapter_index: int, payload: dict):
+    """
+    Edit chapter content manually.
+    
+    payload: {
+        "sections": ["Section 0 text", "Section 1 text", ...],
+        "paragraphs": ["Paragraph 0 text", ...]
+    }
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": f"Chapter {chapter_index} not found"}, status_code=404)
+    
+    # Update chapter with new content
+    if "sections" in payload:
+        chapter["sections"] = payload["sections"]
+        chapter["section_count"] = len(payload["sections"])
+    
+    if "paragraphs" in payload:
+        chapter["paragraphs"] = payload["paragraphs"]
+        chapter["paragraph_count"] = len(payload["paragraphs"])
+    
+    chapter["status"] = "ready"
+    
+    from app.pipeline_v2 import save_job_state
+    save_job_state(job_id, state)
+    
+    return {
+        "status": "updated",
+        "chapter_index": chapter_index,
+        "sections": len(chapter.get("sections", [])),
+        "paragraphs": len(chapter.get("paragraphs", []))
+    }
+
+
+@app.post("/v2/job/{job_id}/commit", tags=["Pipeline V2"])
+async def v2_commit_to_supabase(job_id: str):
+    """
+    Final commit: Upload all processed data to Supabase.
+    Creates book, chapters, sections, and paragraphs.
+    """
+    try:
+        result = await phase_commit_to_supabase(job_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/full-pipeline", tags=["Pipeline V2"])
+async def v2_full_pipeline(job_id: str):
+    """
+    Run the complete V2 pipeline in one call:
+    1. Extract PDF
+    2. Extract metadata + cover art
+    3. Detect chapters
+    4. Process all chapters
+    5. Commit to Supabase
+    
+    For automated processing without manual approval.
+    """
+    try:
+        # Step 1: Extract
+        await phase_extract_pdf(job_id)
+        
+        # Step 2: Metadata
+        await phase_metadata(job_id)
+        
+        # Step 3: Detect chapters
+        await phase_detect_chapters(job_id)
+        
+        # Step 4: Process all chapters
+        await process_all_chapters(job_id)
+        
+        # Step 5: Commit
+        result = await phase_commit_to_supabase(job_id)
+        
+        return {
+            "status": "complete",
+            **result
+        }
+        
+    except Exception as e:
+        import traceback
+        return JSONResponse({
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }, status_code=500)
+
