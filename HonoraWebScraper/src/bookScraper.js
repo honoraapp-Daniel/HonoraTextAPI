@@ -71,12 +71,12 @@ function cleanChapterTitle(rawTitle, index) {
     title = '';
   }
 
-  // Byg den rene titel: "Chapter One - Title" eller bare "Chapter One"
-  const chapterWord = numberToWord(index);
+  // Byg den rene titel: "Chapter 1 - Title" eller bare "Chapter 1"
+  const chapterNumber = index;
   if (title) {
-    return `Chapter ${chapterWord} - ${title}`;
+    return `Chapter ${chapterNumber} - ${title}`;
   } else {
-    return `Chapter ${chapterWord}`;
+    return `Chapter ${chapterNumber}`;
   }
 }
 
@@ -93,7 +93,7 @@ function cleanChapterContent(content, chapterTitle) {
 
   // Fjern standalone kapitel-titler der matcher (f.eks. <h2>SALAAM</h2>)
   // Ekstraher kapitel-navnet fra den rensede titel
-  const titleMatch = chapterTitle.match(/Chapter\s+\w+\s*-\s*(.+)/i);
+  const titleMatch = chapterTitle.match(/Chapter\s+\d+\s*-\s*(.+)/i);
   if (titleMatch) {
     const subTitle = titleMatch[1].trim();
     // Fjern header der matcher sub-titlen (case-insensitive)
