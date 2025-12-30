@@ -122,11 +122,13 @@ def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
     client = get_openai_client()
     metadata = metadata or {}
     title = metadata.get("title", "Untitled")
+    synopsis = metadata.get("synopsis") or ""  # Handle None explicitly
+    category = metadata.get("category") or "General"
     print(f"[COVER ART] ⚠️ Using DALL-E 3 fallback for: {title}")
 
     prompt = f"""Book cover artwork for "{title}". 
-    Genre: {metadata.get('category', 'General')}. 
-    Synopsis: {metadata.get('synopsis', '')[:200]}.
+    Genre: {category}. 
+    Synopsis: {synopsis[:200] if synopsis else 'A profound literary work'}.
     Style: Professional, artistic, high quality.
     Do NOT include any text on the image, just the artwork."""
 
