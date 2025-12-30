@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -22,13 +23,16 @@
       --radius: 16px;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
       background: radial-gradient(circle at 20% 20%, rgba(125, 211, 252, 0.08), transparent 25%),
-                  radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.1), transparent 30%),
-                  linear-gradient(135deg, #0b1020, #0c0f16 40%, #0b1121 80%);
+        radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.1), transparent 30%),
+        linear-gradient(135deg, #0b1020, #0c0f16 40%, #0b1121 80%);
       color: var(--text);
       font-family: 'Space Grotesk', 'SF Pro Display', 'Segoe UI', sans-serif;
       padding: 32px 16px 48px;
@@ -85,7 +89,9 @@
     }
 
     @media (max-width: 980px) {
-      .grid { grid-template-columns: 1fr; }
+      .grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .card {
@@ -103,7 +109,10 @@
       letter-spacing: -0.01em;
     }
 
-    .muted { color: var(--muted); font-size: 14px; }
+    .muted {
+      color: var(--muted);
+      font-size: 14px;
+    }
 
     .upload-box {
       border: 1px dashed rgba(255, 255, 255, 0.18);
@@ -117,9 +126,14 @@
       transition: border-color 0.2s ease, background 0.2s ease;
     }
 
-    .upload-box:hover { border-color: rgba(125, 211, 252, 0.5); background: rgba(255, 255, 255, 0.04); }
+    .upload-box:hover {
+      border-color: rgba(125, 211, 252, 0.5);
+      background: rgba(255, 255, 255, 0.04);
+    }
 
-    .upload-box input { display: none; }
+    .upload-box input {
+      display: none;
+    }
 
     .upload-box label {
       display: flex;
@@ -163,7 +177,9 @@
       box-shadow: none;
     }
 
-    button.primary:hover:not(:disabled) { transform: translateY(-1px) scale(1.01); }
+    button.primary:hover:not(:disabled) {
+      transform: translateY(-1px) scale(1.01);
+    }
 
     .progress {
       margin-top: 14px;
@@ -215,12 +231,29 @@
       transition: background 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .status.active .dot { background: var(--accent); box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.15); }
-    .status.done .dot { background: var(--success); box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.18); }
-    .status.error .dot { background: var(--error); box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.18); }
+    .status.active .dot {
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.15);
+    }
 
-    .status .label { font-weight: 600; }
-    .status .hint { color: var(--muted); font-size: 12px; }
+    .status.done .dot {
+      background: var(--success);
+      box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.18);
+    }
+
+    .status.error .dot {
+      background: var(--error);
+      box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.18);
+    }
+
+    .status .label {
+      font-weight: 600;
+    }
+
+    .status .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
 
     .result {
       margin-top: 14px;
@@ -234,7 +267,9 @@
       white-space: pre-line;
     }
 
-    .result strong { color: var(--text); }
+    .result strong {
+      color: var(--text);
+    }
 
     .hint-banner {
       margin-top: 14px;
@@ -247,18 +282,25 @@
     }
   </style>
 </head>
+
 <body>
   <main class="page">
     <section class="hero">
       <div class="badge">Honora Book Pipeline · FastAPI</div>
       <h1>Run the full pipeline</h1>
-      <p class="lead">Upload a PDF to launch the Honora pipeline (/process_book). The dashboard tracks each stage and shows the resulting book ID once finished.</p>
+      <p class="lead">Upload a PDF to launch the Honora pipeline (/process_book). The dashboard tracks each stage and
+        shows the resulting book ID once finished.</p>
+      <a href="/v2" class="muted"
+        style="display: inline-block; margin-top: 12px; padding: 8px 16px; background: rgba(125, 211, 252, 0.1); border-radius: 8px; border: 1px solid var(--border); text-decoration: none; color: var(--accent);">
+        🆕 Try Pipeline V2 → Chapter-by-Chapter Processing
+      </a>
     </section>
 
     <div class="grid">
       <div class="card">
         <h2>Upload & preview</h2>
-        <p class="muted">Preview: extract PDF → metadata → cover art → clean text → chapters → sections → paragraphs. Supabase upload happens only after you approve.</p>
+        <p class="muted">Preview: extract PDF → metadata → cover art → clean text → chapters → sections → paragraphs.
+          Supabase upload happens only after you approve.</p>
 
         <form id="pipeline-form">
           <label class="upload-box">
@@ -296,7 +338,8 @@
       <h2>Preview & approval</h2>
       <div class="muted" id="preview-meta">Awaiting preview...</div>
       <div id="cover-preview" style="margin: 12px 0; display: none;">
-        <img id="cover-img" src="" alt="Cover art preview" style="max-width: 260px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow);" />
+        <img id="cover-img" src="" alt="Cover art preview"
+          style="max-width: 260px; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow);" />
         <div class="muted" id="cover-url"></div>
       </div>
       <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
@@ -502,7 +545,7 @@
         }
 
         setStepState('preview', 'done', 'Preview ready');
-        const stepsCompleted = ['preview','extract_pdf','create_book','generate_cover','clean_book','extract_chapters','chunk_chapters','create_paragraphs'];
+        const stepsCompleted = ['preview', 'extract_pdf', 'create_book', 'generate_cover', 'clean_book', 'extract_chapters', 'chunk_chapters', 'create_paragraphs'];
         syncStepsFromResponse(stepsCompleted);
         setProgress(90);
         statusText.textContent = 'Preview ready — review and approve';
@@ -568,4 +611,5 @@
     updateFileState();
   </script>
 </body>
+
 </html>

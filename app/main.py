@@ -55,6 +55,7 @@ if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 dashboard_path = static_path / "dashboard.html"
+dashboard_v2_path = static_path / "dashboard_v2.html"
 
 
 # Minimal dashboard UI for running the full pipeline
@@ -64,6 +65,15 @@ async def dashboard():
     if dashboard_path.exists():
         return FileResponse(dashboard_path)
     return HTMLResponse("<h1>Dashboard not found</h1>", status_code=404)
+
+
+# V2 Dashboard - Chapter by Chapter pipeline
+@app.get("/v2", include_in_schema=False)
+@app.get("/v2/dashboard", include_in_schema=False)
+async def dashboard_v2():
+    if dashboard_v2_path.exists():
+        return FileResponse(dashboard_v2_path)
+    return HTMLResponse("<h1>V2 Dashboard not found</h1>", status_code=404)
 
 
 # Custom Swagger UI - Clean dark theme

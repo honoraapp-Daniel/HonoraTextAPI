@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Honora Pipeline V2 - Chapter by Chapter</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap');
+
+    :root {
+      --bg: #0c0f16;
+      --panel: rgba(20, 24, 34, 0.8);
+      --panel-strong: rgba(32, 38, 52, 0.9);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf8;
+      --muted: #9aa4bd;
+      --accent: #7dd3fc;
+      --accent-2: #a855f7;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --error: #f87171;
+      --shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 20%, rgba(125, 211, 252, 0.08), transparent 25%),
+                  radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.1), transparent 30%),
+                  linear-gradient(135deg, #0b1020, #0c0f16 40%, #0b1121 80%);
+      color: var(--text);
+      font-family: 'Space Grotesk', 'SF Pro Display', 'Segoe UI', sans-serif;
+      padding: 32px 16px 48px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .page { width: 100%; max-width: 1200px; }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: linear-gradient(120deg, rgba(125, 211, 252, 0.15), rgba(168, 85, 247, 0.15));
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    h1 { margin: 12px 0 8px; font-size: 28px; font-weight: 600; }
+    h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+    .lead { margin: 0; color: var(--muted); line-height: 1.6; }
+    .muted { color: var(--muted); font-size: 14px; }
+
+    .card {
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 22px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+
+    .upload-box {
+      border: 2px dashed rgba(255, 255, 255, 0.18);
+      border-radius: 14px;
+      padding: 32px;
+      background: rgba(255, 255, 255, 0.02);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .upload-box:hover { border-color: var(--accent); background: rgba(125, 211, 252, 0.05); }
+    .upload-box input { display: none; }
+    .upload-box.dragover { border-color: var(--accent); background: rgba(125, 211, 252, 0.1); }
+
+    button {
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: none;
+    }
+    button.primary {
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      color: #0b1020;
+      box-shadow: 0 10px 30px rgba(125, 211, 252, 0.2);
+    }
+    button.primary:hover:not(:disabled) { transform: translateY(-1px); }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.secondary:hover { background: rgba(255, 255, 255, 0.12); }
+    button.small { padding: 6px 12px; font-size: 12px; }
+    button.success { background: var(--success); color: #0b1020; }
+    button.warning { background: var(--warning); color: #0b1020; }
+
+    .phase-indicator {
+      display: flex;
+      gap: 8px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+    .phase {
+      padding: 8px 16px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .phase.active { background: rgba(125, 211, 252, 0.2); border-color: var(--accent); color: var(--accent); }
+    .phase.complete { background: rgba(52, 211, 153, 0.2); border-color: var(--success); color: var(--success); }
+
+    .metadata-grid {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .cover-preview {
+      width: 200px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.3);
+    }
+    .metadata-fields { display: flex; flex-direction: column; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .field input, .field textarea {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.3);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .field textarea { min-height: 80px; resize: vertical; }
+
+    .chapter-list { display: flex; flex-direction: column; gap: 8px; max-height: 500px; overflow-y: auto; }
+    .chapter-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .chapter-item.processing { border-color: var(--accent); }
+    .chapter-item.ready { border-color: var(--success); }
+    .chapter-item.error { border-color: var(--error); }
+
+    .chapter-status {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    .chapter-item.pending .chapter-status { background: var(--muted); }
+    .chapter-item.processing .chapter-status { background: var(--accent); animation: pulse 1s infinite; }
+    .chapter-item.ready .chapter-status { background: var(--success); }
+    .chapter-item.error .chapter-status { background: var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .chapter-info { flex: 1; min-width: 0; }
+    .chapter-title { font-weight: 600; font-size: 14px; }
+    .chapter-meta { font-size: 12px; color: var(--muted); }
+    .chapter-actions { display: flex; gap: 8px; }
+
+    .progress-bar {
+      height: 8px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 0.3s ease;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal.open { display: flex; }
+    .modal-content {
+      background: var(--panel-strong);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 90%;
+      max-width: 800px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-header h2 { margin: 0; }
+    .close-btn {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .section-list { display: flex; flex-direction: column; gap: 8px; }
+    .section-item {
+      padding: 12px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .section-index { font-weight: 600; font-size: 12px; color: var(--accent); }
+    .section-chars { font-size: 11px; color: var(--muted); }
+    .section-text {
+      width: 100%;
+      min-height: 60px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.3);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .hidden { display: none !important; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 16px 0;
+    }
+    .summary-item {
+      text-align: center;
+      padding: 16px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+    }
+    .summary-value { font-size: 32px; font-weight: 600; color: var(--accent); }
+    .summary-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <!-- Hero -->
+    <section class="hero">
+      <span class="badge">Pipeline V2 · Chapter by Chapter</span>
+      <h1>Honora Book Pipeline</h1>
+      <p class="lead">Upload a PDF and process it chapter by chapter. Preview, edit, and approve each chapter before uploading to Supabase.</p>
+      <a href="/" class="muted" style="display: inline-block; margin-top: 8px;">← Back to V1 Pipeline</a>
+    </section>
+
+    <!-- Phase Indicator -->
+    <div class="phase-indicator">
+      <div class="phase" id="phase-upload">1. Upload</div>
+      <div class="phase" id="phase-extract">2. Extract</div>
+      <div class="phase" id="phase-metadata">3. Metadata</div>
+      <div class="phase" id="phase-chapters">4. Chapters</div>
+      <div class="phase" id="phase-process">5. Process</div>
+      <div class="phase" id="phase-commit">6. Commit</div>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="card" id="upload-section">
+      <h2>Upload PDF</h2>
+      <label class="upload-box" id="upload-box">
+        <input type="file" id="file-input" accept="application/pdf" />
+        <div>
+          <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
+          <div style="font-weight: 600;">Drop your PDF here or click to browse</div>
+          <div class="muted">Supports any book PDF format</div>
+        </div>
+      </label>
+      <div id="file-info" class="muted" style="margin-top: 12px;"></div>
+      <div style="margin-top: 16px;">
+        <button class="primary" id="start-btn" disabled>Start Processing</button>
+      </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div class="card hidden" id="progress-section">
+      <h2>Processing</h2>
+      <div id="current-phase" class="muted">Initializing...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Metadata Section -->
+    <div class="card hidden" id="metadata-section">
+      <h2>Book Metadata</h2>
+      <div class="metadata-grid">
+        <div>
+          <img id="cover-img" class="cover-preview" src="" alt="Cover preview" />
+          <div class="muted" style="margin-top: 8px; font-size: 11px; word-break: break-all;" id="cover-url"></div>
+        </div>
+        <div class="metadata-fields">
+          <div class="field">
+            <label>Title</label>
+            <input type="text" id="meta-title" />
+          </div>
+          <div class="field">
+            <label>Author</label>
+            <input type="text" id="meta-author" />
+          </div>
+          <div class="field">
+            <label>Language</label>
+            <input type="text" id="meta-language" />
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <input type="text" id="meta-category" />
+          </div>
+          <div class="field">
+            <label>Synopsis</label>
+            <textarea id="meta-synopsis"></textarea>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 12px;">
+        <button class="primary" id="approve-metadata-btn">Approve & Detect Chapters</button>
+      </div>
+    </div>
+
+    <!-- Chapters Section -->
+    <div class="card hidden" id="chapters-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2 style="margin: 0;">Chapters</h2>
+        <div style="display: flex; gap: 8px;">
+          <button class="secondary small" id="process-all-btn">Process All</button>
+        </div>
+      </div>
+      <div id="chapters-summary" class="muted" style="margin-bottom: 12px;"></div>
+      <div class="chapter-list" id="chapter-list"></div>
+      <div style="margin-top: 16px;">
+        <button class="success" id="commit-btn" disabled>Upload to Supabase</button>
+        <span id="commit-status" class="muted" style="margin-left: 12px;"></span>
+      </div>
+    </div>
+
+    <!-- Result Section -->
+    <div class="card hidden" id="result-section">
+      <h2>✅ Upload Complete!</h2>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-value" id="result-chapters">0</div>
+          <div class="summary-label">Chapters</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value" id="result-sections">0</div>
+          <div class="summary-label">Sections</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value" id="result-paragraphs">0</div>
+          <div class="summary-label">Paragraphs</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-value" id="result-book-id" style="font-size: 14px; word-break: break-all;">-</div>
+          <div class="summary-label">Book ID</div>
+        </div>
+      </div>
+      <div style="margin-top: 16px;">
+        <button class="primary" onclick="location.reload()">Process Another Book</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Chapter Editor Modal -->
+  <div class="modal" id="editor-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="editor-chapter-title">Edit Chapter</h2>
+        <button class="close-btn" id="close-editor">&times;</button>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <div class="muted">Sections (for TTS - each section is read separately)</div>
+      </div>
+      <div class="section-list" id="editor-sections"></div>
+      <div style="margin-top: 16px; display: flex; gap: 12px;">
+        <button class="secondary" id="cancel-edit-btn">Cancel</button>
+        <button class="primary" id="save-edit-btn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let jobId = null;
+    let jobState = null;
+
+    // Elements
+    const fileInput = document.getElementById('file-input');
+    const uploadBox = document.getElementById('upload-box');
+    const startBtn = document.getElementById('start-btn');
+    const fileInfo = document.getElementById('file-info');
+    const progressSection = document.getElementById('progress-section');
+    const progressFill = document.getElementById('progress-fill');
+    const currentPhase = document.getElementById('current-phase');
+    const metadataSection = document.getElementById('metadata-section');
+    const chaptersSection = document.getElementById('chapters-section');
+    const chapterList = document.getElementById('chapter-list');
+    const commitBtn = document.getElementById('commit-btn');
+    const resultSection = document.getElementById('result-section');
+    const editorModal = document.getElementById('editor-modal');
+
+    // Phase indicators
+    const phases = ['upload', 'extract', 'metadata', 'chapters', 'process', 'commit'];
+
+    function setActivePhase(phase) {
+      phases.forEach(p => {
+        const el = document.getElementById(`phase-${p}`);
+        el.classList.remove('active', 'complete');
+        const idx = phases.indexOf(p);
+        const activeIdx = phases.indexOf(phase);
+        if (idx < activeIdx) el.classList.add('complete');
+        if (idx === activeIdx) el.classList.add('active');
+      });
+    }
+
+    // File selection
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (file) {
+        fileInfo.textContent = `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+        startBtn.disabled = false;
+      }
+    });
+
+    // Drag and drop
+    uploadBox.addEventListener('dragover', (e) => { e.preventDefault(); uploadBox.classList.add('dragover'); });
+    uploadBox.addEventListener('dragleave', () => uploadBox.classList.remove('dragover'));
+    uploadBox.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadBox.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change'));
+      }
+    });
+
+    // Start processing
+    startBtn.addEventListener('click', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      startBtn.disabled = true;
+      progressSection.classList.remove('hidden');
+      setActivePhase('extract');
+
+      try {
+        // Step 1: Upload
+        currentPhase.textContent = 'Uploading PDF...';
+        progressFill.style.width = '10%';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadRes = await fetch('/v2/upload', { method: 'POST', body: formData });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+
+        jobId = uploadData.job_id;
+        console.log('Job created:', jobId);
+
+        // Step 2: Extract PDF
+        currentPhase.textContent = 'Extracting PDF with Marker API...';
+        progressFill.style.width = '25%';
+
+        const extractRes = await fetch(`/v2/job/${jobId}/extract`, { method: 'POST' });
+        const extractData = await extractRes.json();
+        if (!extractRes.ok) throw new Error(extractData.error || 'Extraction failed');
+
+        console.log('Extraction complete:', extractData);
+
+        // Step 3: Metadata
+        setActivePhase('metadata');
+        currentPhase.textContent = 'Extracting metadata and generating cover art...';
+        progressFill.style.width = '45%';
+
+        const metaRes = await fetch(`/v2/job/${jobId}/metadata`, { method: 'POST' });
+        const metaData = await metaRes.json();
+        if (!metaRes.ok) throw new Error(metaData.error || 'Metadata extraction failed');
+
+        console.log('Metadata:', metaData);
+
+        // Show metadata section
+        progressSection.classList.add('hidden');
+        metadataSection.classList.remove('hidden');
+
+        const meta = metaData.metadata || {};
+        document.getElementById('meta-title').value = meta.title || '';
+        document.getElementById('meta-author').value = meta.author || '';
+        document.getElementById('meta-language').value = meta.language || '';
+        document.getElementById('meta-category').value = meta.category || '';
+        document.getElementById('meta-synopsis').value = meta.synopsis || '';
+
+        const coverUrl = metaData.cover_urls?.cover_art_url;
+        if (coverUrl) {
+          document.getElementById('cover-img').src = coverUrl;
+          document.getElementById('cover-url').textContent = coverUrl;
+        }
+
+      } catch (err) {
+        console.error(err);
+        currentPhase.textContent = `Error: ${err.message}`;
+        progressFill.style.width = '0%';
+        startBtn.disabled = false;
+      }
+    });
+
+    // Approve metadata and detect chapters
+    document.getElementById('approve-metadata-btn').addEventListener('click', async () => {
+      setActivePhase('chapters');
+      progressSection.classList.remove('hidden');
+      currentPhase.textContent = 'Detecting chapters...';
+      progressFill.style.width = '55%';
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/detect-chapters`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Chapter detection failed');
+
+        console.log('Chapters:', data);
+
+        progressSection.classList.add('hidden');
+        metadataSection.classList.add('hidden');
+        chaptersSection.classList.remove('hidden');
+
+        // Refresh state
+        await refreshJobState();
+        renderChapters();
+
+      } catch (err) {
+        console.error(err);
+        currentPhase.textContent = `Error: ${err.message}`;
+      }
+    });
+
+    // Refresh job state
+    async function refreshJobState() {
+      const res = await fetch(`/v2/job/${jobId}`);
+      jobState = await res.json();
+      return jobState;
+    }
+
+    // Render chapters
+    function renderChapters() {
+      if (!jobState?.chapters) return;
+
+      const chapters = jobState.chapters;
+      const readyCount = chapters.filter(c => c.status === 'ready' || c.status === 'approved').length;
+      const totalSections = chapters.reduce((sum, c) => sum + (c.section_count || 0), 0);
+
+      document.getElementById('chapters-summary').textContent = 
+        `${chapters.length} chapters found · ${readyCount}/${chapters.length} processed · ${totalSections} sections`;
+
+      chapterList.innerHTML = chapters.map(ch => `
+        <div class="chapter-item ${ch.status}" data-index="${ch.index}">
+          <div class="chapter-status"></div>
+          <div class="chapter-info">
+            <div class="chapter-title">Chapter ${ch.index}: ${ch.title}</div>
+            <div class="chapter-meta">
+              ${ch.section_count ? `${ch.section_count} sections` : `${ch.char_count || 0} chars`}
+              ${ch.status === 'error' ? ` · Error: ${ch.error}` : ''}
+            </div>
+          </div>
+          <div class="chapter-actions">
+            ${ch.status === 'pending' ? `<button class="secondary small" onclick="processChapter(${ch.index})">Process</button>` : ''}
+            ${ch.status === 'ready' ? `<button class="secondary small" onclick="editChapter(${ch.index})">Edit</button>` : ''}
+            ${ch.status === 'error' ? `<button class="warning small" onclick="processChapter(${ch.index})">Retry</button>` : ''}
+            ${ch.status === 'processing' ? `<span class="muted">Processing...</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      // Enable commit button if all chapters are ready
+      commitBtn.disabled = readyCount < chapters.length;
+      document.getElementById('commit-status').textContent = 
+        readyCount < chapters.length ? `Process all chapters first (${readyCount}/${chapters.length})` : 'Ready to upload!';
+    }
+
+    // Process single chapter
+    async function processChapter(index) {
+      const item = document.querySelector(`.chapter-item[data-index="${index}"]`);
+      item.classList.remove('pending', 'ready', 'error');
+      item.classList.add('processing');
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/process-chapter/${index}`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Processing failed');
+
+        await refreshJobState();
+        renderChapters();
+      } catch (err) {
+        console.error(err);
+        await refreshJobState();
+        renderChapters();
+      }
+    }
+
+    // Process all chapters
+    document.getElementById('process-all-btn').addEventListener('click', async () => {
+      setActivePhase('process');
+      progressSection.classList.remove('hidden');
+      currentPhase.textContent = 'Processing all chapters...';
+
+      const chapters = jobState?.chapters || [];
+      const total = chapters.length;
+
+      for (let i = 0; i < chapters.length; i++) {
+        const ch = chapters[i];
+        if (ch.status === 'ready' || ch.status === 'approved') continue;
+
+        currentPhase.textContent = `Processing chapter ${ch.index}/${total}: ${ch.title}`;
+        progressFill.style.width = `${60 + (i / total) * 30}%`;
+
+        await processChapter(ch.index);
+      }
+
+      progressSection.classList.add('hidden');
+      await refreshJobState();
+      renderChapters();
+    });
+
+    // Edit chapter
+    let editingChapterIndex = null;
+
+    async function editChapter(index) {
+      editingChapterIndex = index;
+      await refreshJobState();
+
+      const chapter = jobState.chapters.find(c => c.index === index);
+      if (!chapter) return;
+
+      document.getElementById('editor-chapter-title').textContent = `Edit Chapter ${index}: ${chapter.title}`;
+
+      const sections = chapter.sections || [];
+      document.getElementById('editor-sections').innerHTML = sections.map((sec, i) => `
+        <div class="section-item">
+          <div class="section-header">
+            <span class="section-index">Section ${i}</span>
+            <span class="section-chars">${sec.length} chars</span>
+          </div>
+          <textarea class="section-text" data-section="${i}">${sec}</textarea>
+        </div>
+      `).join('');
+
+      editorModal.classList.add('open');
+    }
+
+    // Close editor
+    document.getElementById('close-editor').addEventListener('click', () => {
+      editorModal.classList.remove('open');
+      editingChapterIndex = null;
+    });
+
+    document.getElementById('cancel-edit-btn').addEventListener('click', () => {
+      editorModal.classList.remove('open');
+      editingChapterIndex = null;
+    });
+
+    // Save edits
+    document.getElementById('save-edit-btn').addEventListener('click', async () => {
+      if (editingChapterIndex === null) return;
+
+      const textareas = document.querySelectorAll('#editor-sections .section-text');
+      const sections = Array.from(textareas).map(t => t.value);
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/chapter/${editingChapterIndex}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sections, paragraphs: sections })
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Save failed');
+        }
+
+        editorModal.classList.remove('open');
+        editingChapterIndex = null;
+        await refreshJobState();
+        renderChapters();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to save: ' + err.message);
+      }
+    });
+
+    // Commit to Supabase
+    commitBtn.addEventListener('click', async () => {
+      setActivePhase('commit');
+      commitBtn.disabled = true;
+      document.getElementById('commit-status').textContent = 'Uploading to Supabase...';
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/commit`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Commit failed');
+
+        console.log('Commit result:', data);
+
+        chaptersSection.classList.add('hidden');
+        resultSection.classList.remove('hidden');
+
+        document.getElementById('result-chapters').textContent = data.chapters || 0;
+        document.getElementById('result-sections').textContent = data.sections || 0;
+        document.getElementById('result-paragraphs').textContent = data.paragraphs || 0;
+        document.getElementById('result-book-id').textContent = data.book_id || '-';
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById('commit-status').textContent = `Error: ${err.message}`;
+        commitBtn.disabled = false;
+      }
+    });
+
+    // Init
+    setActivePhase('upload');
+  </script>
+</body>
+</html>
