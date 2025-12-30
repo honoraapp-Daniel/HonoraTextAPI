@@ -46,6 +46,7 @@ def generate_cover_art_prompt(metadata: dict) -> str:
     Includes title and author for the AI to render on the cover.
     Only rule: artwork must be inspired by the book's content.
     """
+    metadata = metadata or {}
     title = metadata.get("title", "Untitled")
     author = metadata.get("author", "Unknown")
     category = metadata.get("category", "")
@@ -143,7 +144,16 @@ def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
         raise Exception(f"Kie.ai API error: {create_response.status_code} - {create_response.text}")
     
     create_data = create_response.json()
-    task_id = create_data.get("data", {}).get("taskId")
+    
+    # Safe extraction of taskId
+    data_obj = create_data.get("data")
+    if data_obj is None:
+        print(f"[COVER ART] ⚠️ Unexpected response from Kie.ai: {create_data}")
+        # Try to find error message
+        error_msg = create_data.get("message") or create_data.get("msg") or "Unknown error"
+        raise Exception(f"Kie.ai response missing 'data' object: {error_msg}")
+        
+    task_id = data_obj.get("taskId")
     
     if not task_id:
         raise Exception(f"No taskId in response: {create_data}")
