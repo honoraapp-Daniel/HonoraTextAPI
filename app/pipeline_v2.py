@@ -114,12 +114,15 @@ def update_job_phase(job_id: str, phase: str, **kwargs):
 
 
 # ============================================
-# PHASE 1: PDF EXTRACTION (Marker API)
+# PHASE 1: PDF EXTRACTION (Marker API) or JSON (skip)
 # ============================================
 
 async def phase_extract_pdf(job_id: str) -> dict:
     """
-    Extract PDF to Markdown using Marker API.
+    Extract content from uploaded file.
+    
+    For JSON files: Skip - data already loaded during create_job
+    For PDF files: Use Marker API to convert to Markdown
     
     Returns:
         {"success": True, "pages": N, "markdown_preview": "..."}
@@ -128,9 +131,30 @@ async def phase_extract_pdf(job_id: str) -> dict:
     if not state:
         raise ValueError(f"Job not found: {job_id}")
     
-    pdf_path = state["pdf_path"]
-    
     try:
+        # For JSON files, skip extraction - data is already loaded
+        if state.get("file_type") == "json" and state.get("json_data"):
+            print(f"[PIPELINE_V2] Skipping extraction for JSON file (data already loaded)")
+            update_job_phase(
+                job_id, 
+                "extracted",
+                status="JSON data loaded (no extraction needed)",
+                pages=0
+            )
+            json_data = state["json_data"]
+            return {
+                "success": True,
+                "file_type": "json",
+                "pages": 0,
+                "chapter_count": json_data.get("chapterCount", len(json_data.get("chapters", []))),
+                "message": "JSON file loaded directly - no Marker API needed"
+            }
+        
+        # For PDF files, use Marker API
+        pdf_path = state.get("pdf_path")
+        if not pdf_path:
+            raise ValueError("No PDF path found for extraction")
+        
         update_job_phase(job_id, "extracting", status="Extracting PDF with Marker API...")
         
         # Call Marker API
@@ -150,6 +174,7 @@ async def phase_extract_pdf(job_id: str) -> dict:
         
         return {
             "success": True,
+            "file_type": "pdf",
             "pages": pages,
             "markdown_preview": markdown[:500] + "..." if len(markdown) > 500 else markdown,
             "markdown_length": len(markdown)
