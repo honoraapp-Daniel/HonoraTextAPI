@@ -248,9 +248,9 @@ async def phase_metadata(job_id: str) -> dict:
                 "author": json_data.get("author", "Unknown"),
                 "publishing_year": json_data.get("year", None),
                 "publisher": json_data.get("publisher", None),
-                "language": "en",
-                "original_language": "en",
-                "category": None,
+                "language": "English",
+                "original_language": "English",
+                "category": "Spirituality & Religion",  # Default for sacred-texts books
                 "synopsis": None,
                 "book_of_the_day_quote": None
             }
@@ -414,9 +414,18 @@ async def phase_process_chapter(job_id: str, chapter_index: int) -> dict:
         
         print(f"[PIPELINE_V2] Processing chapter {chapter_index}: {chapter['title']}")
         
-        # Extract chapter text
-        markdown = state["markdown"]
-        chapter_text = extract_chapter_text(markdown, chapter)
+        # Get chapter text
+        # For JSON files, content is already stored in chapter['content']
+        # For PDF files, extract from markdown
+        if chapter.get("content"):
+            chapter_text = chapter["content"]
+            print(f"[PIPELINE_V2] Using stored content ({len(chapter_text)} chars)")
+        elif state.get("markdown"):
+            markdown = state["markdown"]
+            chapter_text = extract_chapter_text(markdown, chapter)
+            print(f"[PIPELINE_V2] Extracted from markdown ({len(chapter_text)} chars)")
+        else:
+            raise ValueError("No content available for this chapter")
         
         # Clean the text (remove markdown artifacts)
         cleaned_text = clean_markdown_text(chapter_text)
