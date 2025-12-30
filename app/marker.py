@@ -163,20 +163,21 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     number_words = r'(?:One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|Eleven|Twelve|Thirteen|Fourteen|Fifteen|Sixteen|Seventeen|Eighteen|Nineteen|Twenty(?:-One|-Two|-Three|-Four|-Five|-Six|-Seven|-Eight|-Nine)?|Thirty)'
     
     chapter_patterns = [
-        # NEW: "Chapter One - Salaam" (HonoraWebScraper format with English words)
-        rf'^#{{1,2}}\s+Chapter\s+{number_words}\s*[\-–]\s*(.*)',
-        # NEW: "Chapter One" alone (no subtitle)
-        rf'^#{{1,2}}\s+Chapter\s+{number_words}\s*$',
+        # PRIORITY 1: HONORA_CHAPTER_START markers from HonoraWebScraper (most reliable!)
+        # Format: <!-- HONORA_CHAPTER_START: 1 | Chapter 1 - Salaam -->
+        r'HONORA_CHAPTER_START:\s*(\d+)\s*\|\s*(.*?)\s*(?:-->|$)',
+        # PRIORITY 2: "Chapter 1 - Salaam" format (HonoraWebScraper with numbers)
+        r'^#{0,2}\s*Chapter\s+(\d+)\s*[-–]\s*(.+)',
+        # "Chapter One - Salaam" (HonoraWebScraper format with English words)
+        rf'^#{{0,2}}\s*Chapter\s+{number_words}\s*[-–]\s*(.*)',
+        # "Chapter One" alone (no subtitle)
+        rf'^#{{0,2}}\s*Chapter\s+{number_words}\s*$',
         # "Chapter 1: Title" or "Chapter I. Title"
         r'^#{1,2}\s+Chapter\s+(\d+|[IVXLCDM]+)[:\.\s\-–]*(.*)',
-        # "Chapter 1" alone (from scraped Table of Contents entries like "Chapter 4: Chapter I. Salaam")
-        r'^#{1,2}\s+Chapter\s+\d+:\s*Chapter\s+([IVXLCDM]+)[:\.\s]*(.*)',
         # "I. The Philosophy" (Roman numeral at start)
         r'^#{1,2}\s+([IVXLCDM]+)[:\.\s]+(.*)',
         # "Introduction", "Preface", etc.
         r'^#{1,2}\s+(Introduction|Preface|Prologue|Epilogue|Conclusion)(.*)',
-        # Generic "Chapter X: Title" from scraper
-        r'^#{1,2}\s+Chapter\s+\d+:\s*(.+)',
     ]
     
     for line_num, line in enumerate(lines):
