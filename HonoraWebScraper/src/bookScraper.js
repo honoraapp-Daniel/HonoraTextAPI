@@ -12,22 +12,6 @@ function delay(ms) {
 }
 
 /**
- * Konverterer tal til engelske ord (1-30)
- */
-const numberWords = [
-  '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
-  'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty',
-  'Twenty-One', 'Twenty-Two', 'Twenty-Three', 'Twenty-Four', 'Twenty-Five', 'Twenty-Six', 'Twenty-Seven', 'Twenty-Eight', 'Twenty-Nine', 'Thirty'
-];
-
-function numberToWord(num) {
-  if (num >= 1 && num <= 30) {
-    return numberWords[num];
-  }
-  return num.toString();
-}
-
-/**
  * Konverterer romertal til arabiske tal
  */
 function romanToNumber(roman) {
@@ -72,17 +56,12 @@ function cleanChapterTitle(rawTitle, index) {
   }
 
   // Forsøg at læse kapitelnummer fra rå titlen (behold tal, konverter ord/romertal)
-  const numberWords = {
+  const wordMap = {
     one: 1, two: 2, three: 3, four: 4, five: 5,
     six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
     eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
     fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
-    nineteen: 19, twenty: 20
-  };
-  const romanMap = {
-    i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7,
-    viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13,
-    xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20
+    nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50
   };
 
   let chapterNumber = index;
@@ -90,14 +69,14 @@ function cleanChapterTitle(rawTitle, index) {
   if (prefixMatch) {
     const token = prefixMatch[1].trim();
     const remainder = prefixMatch[2].trim();
-    if (token.match(/^\d+$/)) {
+    if (/^\d+$/.test(token)) {
       chapterNumber = parseInt(token, 10);
-    } else if (romanMap[token.toLowerCase()]) {
-      chapterNumber = romanMap[token.toLowerCase()];
-    } else if (numberWords[token.toLowerCase()]) {
-      chapterNumber = numberWords[token.toLowerCase()];
+    } else if (wordMap[token.toLowerCase()]) {
+      chapterNumber = wordMap[token.toLowerCase()];
+    } else {
+      const romanVal = romanToNumber(token);
+      if (romanVal > 0) chapterNumber = romanVal;
     }
-    // If we found a remainder, use it as cleaned title
     if (remainder) {
       title = remainder;
     }
@@ -124,7 +103,7 @@ function cleanChapterContent(content, chapterTitle) {
 
   // Fjern standalone kapitel-titler der matcher (f.eks. <h2>SALAAM</h2>)
   // Ekstraher kapitel-navnet fra den rensede titel
-  const titleMatch = chapterTitle.match(/Chapter\s+\d+\s*-\s*(.+)/i);
+  const titleMatch = chapterTitle.match(/Chapter\s+(?:\d+|[IVXLCDM]+|[A-Za-z]+)\s*-\s*(.+)/i);
   if (titleMatch) {
     const subTitle = titleMatch[1].trim();
     // Fjern header der matcher sub-titlen (case-insensitive)
