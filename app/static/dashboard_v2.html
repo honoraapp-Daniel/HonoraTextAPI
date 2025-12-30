@@ -502,13 +502,13 @@
 
     <!-- Upload Section -->
     <div class="card" id="upload-section">
-      <h2>Upload PDF</h2>
+      <h2>Upload PDF or JSON</h2>
       <label class="upload-box" id="upload-box">
-        <input type="file" id="file-input" accept="application/pdf" />
+        <input type="file" id="file-input" accept="application/pdf,application/json,.json" />
         <div>
           <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
-          <div style="font-weight: 600;">Drop your PDF here or click to browse</div>
-          <div class="muted">Supports any book PDF format</div>
+          <div style="font-weight: 600;">Drop your file here or click to browse</div>
+          <div class="muted">Supports PDF or JSON from HonoraWebScraper</div>
         </div>
       </label>
       <div id="file-info" class="muted" style="margin-top: 12px;"></div>
@@ -791,7 +791,7 @@
       const readyCount = chapters.filter(c => c.status === 'ready' || c.status === 'approved').length;
       const totalSections = chapters.reduce((sum, c) => sum + (c.section_count || 0), 0);
 
-      document.getElementById('chapters-summary').textContent = 
+      document.getElementById('chapters-summary').textContent =
         `${chapters.length} chapters found · ${readyCount}/${chapters.length} processed · ${totalSections} sections`;
 
       chapterList.innerHTML = chapters.map(ch => `
@@ -815,7 +815,7 @@
 
       // Enable commit button if all chapters are ready
       commitBtn.disabled = readyCount < chapters.length;
-      document.getElementById('commit-status').textContent = 
+      document.getElementById('commit-status').textContent =
         readyCount < chapters.length ? `Process all chapters first (${readyCount}/${chapters.length})` : 'Ready to upload!';
     }
 
