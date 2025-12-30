@@ -126,6 +126,8 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     - ## for chapters
     - ### for sections
     
+    Filters out navigation pages like "Start Reading", "Page Index", etc.
+    
     Returns:
         [
             {"index": 1, "title": "Introduction", "start_line": 0, "end_line": 45},
@@ -139,22 +141,41 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     chapters = []
     current_chapter = None
     
+    # Navigation pages to skip (common on sacred-texts.com scraped PDFs)
+    navigation_patterns = [
+        r'^start\s*reading$',
+        r'^page\s*index$',
+        r'^title\s*page$',
+        r'^table\s*of\s*contents$',
+        r'^contents$',
+        r'^index$',
+        r'^errata$',
+        r'^next$',
+        r'^previous$',
+        r'^prev$',
+        r'^home$',
+        r'^\s*$',  # Empty titles
+    ]
+    navigation_regex = re.compile('|'.join(navigation_patterns), re.IGNORECASE)
+    
     # Pattern for chapter headers (## or # followed by Chapter/Roman numerals)
     chapter_patterns = [
-        r'^#{1,2}\s+Chapter\s+(\d+|[IVXLCDM]+)[:\.\s\-–]*(.*)',  # ## Chapter I. Title
-        r'^#{1,2}\s+([IVXLCDM]+)[:\.\s]+(.*)',  # ## I. The Philosophy
-        r'^#{1,2}\s+(Introduction|Preface|Prologue|Epilogue|Conclusion)(.*)',  # ## Introduction
+        # "Chapter 1: Title" or "Chapter I. Title"
+        r'^#{1,2}\s+Chapter\s+(\d+|[IVXLCDM]+)[:\.\s\-–]*(.*)',
+        # "Chapter 1" alone (from scraped Table of Contents entries like "Chapter 4: Chapter I. Salaam")
+        r'^#{1,2}\s+Chapter\s+\d+:\s*Chapter\s+([IVXLCDM]+)[:\.\s]*(.*)',
+        # "I. The Philosophy" (Roman numeral at start)
+        r'^#{1,2}\s+([IVXLCDM]+)[:\.\s]+(.*)',
+        # "Introduction", "Preface", etc.
+        r'^#{1,2}\s+(Introduction|Preface|Prologue|Epilogue|Conclusion)(.*)',
+        # Generic "Chapter X: Title" from scraper
+        r'^#{1,2}\s+Chapter\s+\d+:\s*(.+)',
     ]
     
     for line_num, line in enumerate(lines):
         for pattern in chapter_patterns:
             match = re.match(pattern, line, re.IGNORECASE)
             if match:
-                # Close previous chapter
-                if current_chapter:
-                    current_chapter["end_line"] = line_num - 1
-                    chapters.append(current_chapter)
-                
                 # Extract title
                 groups = match.groups()
                 if len(groups) >= 2:
@@ -164,12 +185,24 @@ def parse_chapters_from_markdown(markdown: str) -> list:
                 
                 # Clean title
                 title = title.strip(".:- ")
+                
+                # Skip navigation pages
+                if navigation_regex.match(title):
+                    print(f"[MARKER] ⏭️ Skipping navigation chapter: '{title}'")
+                    continue
+                
+                # Skip chapters with very short content hints (likely navigation)
                 if not title:
-                    title = f"Chapter {len(chapters) + 1}"
+                    continue
+                
+                # Close previous chapter
+                if current_chapter:
+                    current_chapter["end_line"] = line_num - 1
+                    chapters.append(current_chapter)
                 
                 current_chapter = {
                     "index": len(chapters) + 1,
-                    "title": title,
+                    "title": title if title else f"Chapter {len(chapters) + 1}",
                     "start_line": line_num,
                     "end_line": None,
                     "header_line": line.strip()
@@ -191,7 +224,11 @@ def parse_chapters_from_markdown(markdown: str) -> list:
             "header_line": None
         })
     
-    print(f"[MARKER] Found {len(chapters)} chapters in Markdown")
+    # Re-index chapters sequentially
+    for i, ch in enumerate(chapters):
+        ch["index"] = i + 1
+    
+    print(f"[MARKER] Found {len(chapters)} chapters in Markdown (after filtering)")
     for ch in chapters[:5]:  # Log first 5
         print(f"[MARKER]   Chapter {ch['index']}: {ch['title']}")
     if len(chapters) > 5:
