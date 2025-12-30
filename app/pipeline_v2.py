@@ -117,6 +117,19 @@ def update_job_phase(job_id: str, phase: str, **kwargs):
 # PHASE 1: PDF EXTRACTION (Marker API) or JSON (skip)
 # ============================================
 
+def load_json_data(state: dict) -> dict:
+    """Load JSON data from file path. More reliable than storing in state."""
+    json_path = state.get("json_path")
+    if not json_path or not os.path.exists(json_path):
+        return None
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[PIPELINE_V2] Error loading JSON: {e}")
+        return None
+
+
 async def phase_extract_pdf(job_id: str) -> dict:
     """
     Extract content from uploaded file.
@@ -132,23 +145,27 @@ async def phase_extract_pdf(job_id: str) -> dict:
         raise ValueError(f"Job not found: {job_id}")
     
     try:
-        # For JSON files, skip extraction - data is already loaded
-        if state.get("file_type") == "json" and state.get("json_data"):
-            print(f"[PIPELINE_V2] Skipping extraction for JSON file (data already loaded)")
-            update_job_phase(
-                job_id, 
-                "extracted",
-                status="JSON data loaded (no extraction needed)",
-                pages=0
-            )
-            json_data = state["json_data"]
-            return {
-                "success": True,
-                "file_type": "json",
-                "pages": 0,
-                "chapter_count": json_data.get("chapterCount", len(json_data.get("chapters", []))),
-                "message": "JSON file loaded directly - no Marker API needed"
-            }
+        # For JSON files, skip extraction - load data from file
+        if state.get("file_type") == "json":
+            json_data = load_json_data(state)
+            if json_data:
+                print(f"[PIPELINE_V2] Skipping extraction for JSON file (loading from {state.get('json_path')})")
+                update_job_phase(
+                    job_id, 
+                    "extracted",
+                    status="JSON data loaded (no extraction needed)",
+                    pages=0,
+                    json_data=json_data  # Store it now for later phases
+                )
+                return {
+                    "success": True,
+                    "file_type": "json",
+                    "pages": 0,
+                    "chapter_count": json_data.get("chapterCount", len(json_data.get("chapters", []))),
+                    "message": "JSON file loaded directly - no Marker API needed"
+                }
+            else:
+                raise ValueError(f"Failed to load JSON data from {state.get('json_path')}")
         
         # For PDF files, use Marker API
         pdf_path = state.get("pdf_path")
