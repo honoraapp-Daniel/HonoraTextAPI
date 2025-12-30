@@ -33,13 +33,17 @@ export async function getBookChapters(bookIndexUrl) {
     /^table\s*of\s*contents$/i,
     /^contents$/i,
     /^index$/i,
-    /^introduction$/i,  // Usually just ToC, not content
     /^errata$/i,
     /^next$/i,
     /^previous$/i,
     /^prev$/i,
     /^home$/i,
-    /^\s*$/ // Empty titles
+    /^«\s*previous/i,           // « Previous: X
+    /^next\s*:/i,                // Next: X
+    /^next\s*»/i,                // Next: X »
+    /»\s*$/,                     // Ends with »
+    /^«/,                        // Starts with «
+    /^\s*$/                      // Empty titles
   ];
 
   // Find alle kapitel-links
@@ -133,20 +137,49 @@ export async function fetchChapterContent(chapterUrl) {
     $('title').text().trim() ||
     'Untitled';
 
+  // Fjern book attribution linje (den grønne tekst med forfatter/titel)
+  // Typisk i format: "Title, by Author, [Year]"
+  $('font[color="GREEN"]').remove();
+  $('font[color="green"]').remove();
+
+  // Fjern også evt. center-element med attribution
+  $('center').each((_, el) => {
+    const text = $(el).text();
+    // Fjern hvis det ligner attribution (indeholder "by" og år i brackets)
+    if (text.match(/,\s*by\s+.+,\s*\[\d{4}\]/i)) {
+      $(el).remove();
+    }
+  });
+
+  // Fjern sidetal som "p. 5" eller "p.5"
+  $('font[size="1"]').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text.match(/^p\.?\s*\d+$/i)) {
+      $(el).remove();
+    }
+  });
+  $('small').each((_, el) => {
+    const text = $(el).text().trim();
+    if (text.match(/^p\.?\s*\d+$/i)) {
+      $(el).remove();
+    }
+  });
+
   // Hent body content
   let content = $('body').html() || '';
 
   // Rens content for at fjerne tomme elementer
   content = content.replace(/<p>\s*<\/p>/g, '');
-  content = content.replace(/<br\s*\/?>\s*<br\s*\/?>/g, '<br>');
+  content = content.replace(/<br\s*\/?>/gi, '<br>');
 
   // Fjern "Next: X" og "Previous: X" navigation tekst
   content = content
     .replace(/Next:\s*[^<]+/gi, '')
     .replace(/Previous:\s*[^<]+/gi, '');
 
-  // Fjern sidetal som "1 / 80"
+  // Fjern sidetal som "1 / 80" eller "p. 5"
   content = content.replace(/\d+\s*\/\s*\d+/g, '');
+  content = content.replace(/<[^>]*>\s*p\.?\s*\d+\s*<\/[^>]*>/gi, '');
 
   // Fjern scanning metadata
   content = content.replace(/Scanned,?\s*proofed.*?sacred-texts\.com[^<]*/gi, '');
@@ -156,6 +189,10 @@ export async function fetchChapterContent(chapterUrl) {
 
   // Fjern "page X" fra ToC-lignende sektioner
   content = content.replace(/\bpage\s+\d+\b/gi, '');
+
+  // Fjern book attribution fra content (backup cleanup)
+  // Match: "Title, by Author Name, [Year]" pattern
+  content = content.replace(/<[^>]*>[^<]*,\s*by\s+[^<]+,\s*\[\d{4}\][^<]*<\/[^>]*>/gi, '');
 
   return {
     title,
@@ -181,12 +218,14 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
   // Rens bogtitel for site-metadata
   bookTitle = bookTitle
+    .replace(/\s*Index\s*\|\s*Internet\s*Sacred\s*Text\s*Archive/gi, '')
     .replace(/\s*Index\s*\|\s*Sacred\s*Texts\s*Archive/gi, '')
     .replace(/\s*\|\s*Sacred\s*Texts/gi, '')
+    .replace(/\s*\|\s*Internet\s*Sacred\s*Text\s*Archive/gi, '')
     .replace(/\s*Index$/i, '')
     .trim();
 
-  // Hent kapitler
+  // Hent kapitler først så vi kan hente attribution fra første kapitel
   const chapters = await getBookChapters(bookUrl);
 
   if (chapters.length === 0) {
@@ -194,6 +233,114 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   }
 
   console.log(`📚 Fandt ${chapters.length} kapitler i "${bookTitle}"`);
+
+  // Ekstraher forfatter og år fra første kapitels side (mere pålidelig end index)
+  let bookAuthor = 'Unknown Author';
+  let bookYear = '';
+  let bookPublisher = 'Internet Sacred Texts Archive';
+
+  try {
+    // Hent første kapitel for at finde attribution
+    const firstChapterUrl = chapters[0].url;
+    console.log(`  📋 Henter metadata fra: ${firstChapterUrl}`);
+
+    const firstChapterResponse = await axios.get(firstChapterUrl, {
+      headers: { 'User-Agent': config.userAgent }
+    });
+    const $first = cheerio.load(firstChapterResponse.data);
+
+    // Find grøn font med attribution (mest pålidelig)
+    let attributionText = '';
+
+    // Funktion til at tjekke om tekst er en billedtekst (og ikke bog-attribution)
+    const isImageCaption = (text) => {
+      // Billedtekster indeholder typisk disse ord
+      const captionPatterns = [
+        /\(detail\)/i,
+        /\(public domain/i,
+        /painting/i,
+        /illustration/i,
+        /\bimage\b/i,
+        /\bphoto\b/i,
+        /\bpicture\b/i,
+        /\bportrait\b/i,
+        /\bartwork\b/i,
+        /\bdrawing\b/i,
+        /\bengraving\b/i,
+        /\bfresco\b/i,
+        /\bmanuscript\b/i,
+        /Day and the Dawn/i,       // Specifikt The Kybalion billede
+        /Herbert Draper/i,          // Specifikt The Kybalion kunstner
+      ];
+      return captionPatterns.some(p => p.test(text));
+    };
+
+    // Funktion til at tjekke om tekst ligner bog-attribution
+    const isBookAttribution = (text) => {
+      // Skal have "by" og årstal
+      if (!text.match(/,?\s*by\s+.+,?\s*\[\d{4}\]/i)) return false;
+      // Skal IKKE være billedtekst
+      if (isImageCaption(text)) return false;
+      return true;
+    };
+
+    // Metode 1: Grøn font - find ALLE og vælg den rigtige
+    const greenTexts = [];
+    $first('font[color="GREEN"], font[color="green"]').each((_, el) => {
+      const text = $first(el).text().trim();
+      if (text.match(/,?\s*by\s+.+,?\s*\[\d{4}\]/i)) {
+        greenTexts.push(text);
+      }
+    });
+
+    // Vælg den første der IKKE er billedtekst
+    for (const text of greenTexts) {
+      if (isBookAttribution(text)) {
+        attributionText = text;
+        break;
+      }
+    }
+
+    // Metode 2: Kig i center elementer
+    if (!attributionText) {
+      $first('center').each((_, el) => {
+        const text = $first(el).text().trim();
+        if (isBookAttribution(text)) {
+          attributionText = text;
+          return false;
+        }
+      });
+    }
+
+    // Metode 3: Kig efter bogens titel i body tekst med "by" mønster
+    if (!attributionText) {
+      const bodyText = $first('body').text();
+      // Match bogens titel efterfulgt af ", by Author, [Year]"
+      const cleanTitle = bookTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape regex
+      const titlePattern = new RegExp(`${cleanTitle}[^\\[]*by\\s+([^\\[]+)\\[(\\d{4})\\]`, 'i');
+      const titleMatch = bodyText.match(titlePattern);
+      if (titleMatch) {
+        attributionText = `${bookTitle}, by ${titleMatch[1]}[${titleMatch[2]}]`;
+      }
+    }
+
+    console.log(`  📋 Attribution: "${attributionText.substring(0, 80)}${attributionText.length > 80 ? '...' : ''}"`);
+
+    if (attributionText) {
+      // Parse attribution: "Title, by Author Name, [Year]" eller "Title, by Author, pseud. Real Name, [Year]"
+      const fullMatch = attributionText.match(/by\s+(.+?),?\s*\[(\d{4})\]/i);
+      if (fullMatch) {
+        bookAuthor = fullMatch[1].trim().replace(/,\s*$/, '');
+        bookYear = fullMatch[2];
+      }
+    }
+
+    console.log(`  👤 Author: ${bookAuthor}`);
+    console.log(`  📅 Year: ${bookYear || 'Unknown'}`);
+
+  } catch (err) {
+    console.log(`  ⚠️ Kunne ikke hente metadata: ${err.message}`);
+  }
 
   // Byg HTML dokument
   let fullHtml = `
@@ -256,11 +403,34 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     .table-of-contents li {
       padding: 5px 0;
     }
+    .book-meta {
+      text-align: center;
+      color: #666;
+      margin-top: 10px;
+    }
+    .book-author {
+      font-size: 1.2em;
+      font-style: italic;
+    }
+    .book-year {
+      font-size: 1em;
+      margin-top: 5px;
+    }
+    .book-publisher {
+      font-size: 0.9em;
+      margin-top: 10px;
+      color: #888;
+    }
   </style>
 </head>
 <body>
   <div class="book-title">
     <h1>${escapeHtml(bookTitle)}</h1>
+    <div class="book-meta">
+      <div class="book-author">${escapeHtml(bookAuthor)}</div>
+      ${bookYear ? `<div class="book-year">${escapeHtml(bookYear)}</div>` : ''}
+      <div class="book-publisher">${escapeHtml(bookPublisher)}</div>
+    </div>
   </div>
 `;
 
