@@ -180,6 +180,19 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     ]
     
     for line_num, line in enumerate(lines):
+        # Skip Table of Contents section
+        # ToC entries look like chapters but have no real content after them
+        # Detect ToC header and skip until we see actual chapter content
+        if re.match(r'^#{1,2}\s*Table\s+of\s+Contents\s*$', line, re.IGNORECASE):
+            print(f"[MARKER] 📚 Found Table of Contents at line {line_num}, will skip ToC entries")
+            # Mark that we're in ToC section - entries here should be skipped
+            # We detect end of ToC by finding a chapter header followed by substantial content
+            continue
+        
+        # Skip lines that are just ToC entries (short lines with chapter references but no following content)
+        # ToC entries typically have very little text on the same line
+        # Real chapters have content paragraphs following the header
+        
         for pattern in chapter_patterns:
             match = re.match(pattern, line, re.IGNORECASE)
             if match:
@@ -230,6 +243,32 @@ def parse_chapters_from_markdown(markdown: str) -> list:
             "end_line": len(lines) - 1,
             "header_line": None
         })
+    
+    # POST-PROCESSING: Filter out Table of Contents entries
+    # ToC entries have very little content between headers (< 100 chars typically)
+    # Real chapters have substantial content (> 500 chars typically)
+    MIN_CHAPTER_CONTENT = 200  # Minimum characters for a real chapter
+    
+    filtered_chapters = []
+    for ch in chapters:
+        start = ch["start_line"]
+        end = ch["end_line"] if ch["end_line"] else len(lines) - 1
+        
+        # Calculate content length (excluding the header line itself)
+        content_lines = lines[start + 1:end + 1]
+        content_text = "\n".join(content_lines).strip()
+        content_length = len(content_text)
+        
+        if content_length < MIN_CHAPTER_CONTENT:
+            print(f"[MARKER] ⏭️ Skipping ToC/short entry: '{ch['title']}' ({content_length} chars)")
+            continue
+        
+        filtered_chapters.append(ch)
+        print(f"[MARKER] ✅ Chapter: '{ch['title']}' ({content_length} chars)")
+    
+    # Use filtered chapters if we found real chapters
+    if filtered_chapters:
+        chapters = filtered_chapters
     
     # Re-index chapters sequentially
     for i, ch in enumerate(chapters):
