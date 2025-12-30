@@ -71,8 +71,39 @@ function cleanChapterTitle(rawTitle, index) {
     title = '';
   }
 
-  // Byg den rene titel: "Chapter 1 - Title" eller bare "Chapter 1"
-  const chapterNumber = index;
+  // Forsøg at læse kapitelnummer fra rå titlen (behold tal, konverter ord/romertal)
+  const numberWords = {
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    eleven: 11, twelve: 12, thirteen: 13, fourteen: 14,
+    fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+    nineteen: 19, twenty: 20
+  };
+  const romanMap = {
+    i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7,
+    viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13,
+    xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20
+  };
+
+  let chapterNumber = index;
+  const prefixMatch = rawTitle.match(/^Chapter\s+([IVXLCDM]+|\d+|[A-Za-z]+)[\s:\.\-–]*(.*)$/i);
+  if (prefixMatch) {
+    const token = prefixMatch[1].trim();
+    const remainder = prefixMatch[2].trim();
+    if (token.match(/^\d+$/)) {
+      chapterNumber = parseInt(token, 10);
+    } else if (romanMap[token.toLowerCase()]) {
+      chapterNumber = romanMap[token.toLowerCase()];
+    } else if (numberWords[token.toLowerCase()]) {
+      chapterNumber = numberWords[token.toLowerCase()];
+    }
+    // If we found a remainder, use it as cleaned title
+    if (remainder) {
+      title = remainder;
+    }
+  }
+
+  // Byg den rene titel: "Chapter <tal> - Title" eller bare "Chapter <tal>"
   if (title) {
     return `Chapter ${chapterNumber} - ${title}`;
   } else {
