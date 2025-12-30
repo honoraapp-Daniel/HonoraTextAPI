@@ -1,8 +1,8 @@
 """
 Cover art generation module for Honora.
 Generates artistic book cover images using Nano Banana (via Kie.ai API).
-Nano Banana handles the title and author text directly.
-Generates 16:9 image then crops to 1:1 and 2:3 variants.
+Falls back to DALL-E 3 if Kie.ai fails.
+Generates 16:9 image then crops to 1:1 variant.
 """
 import os
 import requests
@@ -12,8 +12,15 @@ import json
 from io import BytesIO
 from PIL import Image
 from openai import OpenAI
+from supabase import create_client
 
-# ... (rest of imports)
+# Lazy initialization
+_supabase_client = None
+
+# Kie.ai API configuration
+KIE_API_BASE = "https://api.kie.ai/api/v1/jobs"
+KIE_MODEL = "google/nano-banana"
+
 
 def get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
@@ -22,126 +29,130 @@ def get_openai_client():
     return OpenAI(api_key=api_key)
 
 
-def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
-    """Fallback generator using DALL-E 3."""
-    client = get_openai_client()
+def get_kie_api_key():
+    """Get Kie.ai API key from environment."""
+    api_key = os.getenv("KIE_API_KEY")
+    if not api_key:
+        raise RuntimeError("KIE_API_KEY must be set")
+    return api_key
+
+
+def get_supabase():
+    global _supabase_client
+    if _supabase_client is None:
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not url or not key:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
+        _supabase_client = create_client(url, key)
+    return _supabase_client
+
+
+def generate_cover_art_prompt(metadata: dict) -> str:
+    """
+    Generates a Nano Banana prompt with creative freedom.
+    Includes title and author for the AI to render on the cover.
+    """
+    metadata = metadata or {}
     title = metadata.get("title", "Untitled")
-    print(f"[COVER ART] ⚠️ Using DALL-E 3 fallback for: {title}")
+    author = metadata.get("author", "Unknown")
+    category = metadata.get("category", "")
+    synopsis = metadata.get("synopsis", "")
+    
+    book_context = f'"{title}" by {author}'
+    if category:
+        book_context += f'. Genre: {category}'
+    if synopsis:
+        book_context += f'. Synopsis: {synopsis[:400]}'
+    
+    prompt = f"""Create a beautiful, professional book cover for:
 
-    # Simplified prompt for DALL-E (asks for NO text, as DALL-E isn't great at it)
-    prompt = f"""Book cover artwork for "{title}". 
-    Genre: {metadata.get('category', 'General')}. 
-    Synopsis: {metadata.get('synopsis', '')[:200]}.
-    Style: Professional, artistic, high quality, minimal text.
-    Do NOT include the book title or author name text on the image, just the artwork."""
+{book_context}
 
-    try:
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1024",
-            quality="standard",
-            n=1,
-        )
-        
-        image_url = response.data[0].url
-        print(f"[COVER ART] ✅ DALL-E image generated!")
-        
-        urls = {}
-        if not upload:
-            urls["cover_art_url"] = image_url
-            urls["cover_art_url_16x9"] = image_url
-            return urls
-            
-        # Process and upload (Reuse similar logic)
-        return process_and_upload_image(image_url, metadata, urls)
-        
-    except Exception as e:
-        raise Exception(f"DALL-E fallback also failed: {e}")
+The cover MUST include:
+- The title "{title}" prominently displayed
+- The author name "{author}" 
+
+You have complete creative freedom for the artwork! Choose any artistic style, colors, composition, mood, or visual approach that best captures the essence and themes of this book.
+
+The only rule: The artwork must be inspired by and reflect the book's content, themes, or mood.
+
+Make it stunning and professional - this is for an audiobook app."""
+
+    return prompt
 
 
-def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict:
-    """Shared helper to download, crop, and upload image from URL."""
-    print("[COVER ART] Downloading artwork...")
-    image_response = requests.get(image_url)
-    if image_response.status_code != 200:
-        raise Exception(f"Failed to download image: {image_response.status_code}")
+def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = "center") -> Image.Image:
+    """
+    Crops image to target aspect ratio.
+    target_ratio = width / height (e.g., 1.0 for 1:1)
+    """
+    width, height = image.size
+    current_ratio = width / height
     
-    # Open image with PIL
-    original = Image.open(BytesIO(image_response.content)).convert("RGB")
-    width, height = original.size
-    
-    # Create cropped versions
-    # For DALL-E (1:1 source), we crop to 16:9 (center) and keep 1:1
-    # For Kie/Nano (16:9 source), we keep 16:9 and crop to 1:1
-    
-    is_landscape = width > height
-    
-    if is_landscape:
-        img_16x9 = original
-        img_1x1 = crop_to_aspect_ratio(original, 1.0)
+    if current_ratio > target_ratio:
+        new_width = int(height * target_ratio)
+        left = (width - new_width) // 2
+        return image.crop((left, 0, left + new_width, height))
     else:
-        # Source is Square (DALL-E) or Portrait. Create 16:9 by cropping center voltage
-        # Actually DALL-E 3 is usually 1024x1024. 
-        # Making 16:9 from square means CROPPING top/bottom heavily.
-        img_1x1 = original
-        
-        target_ratio_16_9 = 16/9
-        # To get 16:9 from 1:1, we actually lose image data.
-        # Alternatively, we can't make 16:9 from 1:1 easily without losing top/bottom.
-        # Let's just crop to 16:9 center.
-        new_height = int(width / target_ratio_16_9)
-        top = (height - new_height) // 2
-        img_16x9 = original.crop((0, top, width, top + new_height))
-
-    # Upload to Supabase Storage
-    supabase = get_supabase()
-    book_id = metadata.get("book_id", str(uuid.uuid4()))
-    
-    # Upload 16:9
-    buffer = BytesIO()
-    img_16x9.save(buffer, format="PNG")
-    buffer.seek(0)
-    file_name_16x9 = f"covers/{book_id}_16x9.png"
-    supabase.storage.from_("audio").upload(
-        file_name_16x9,
-        buffer.getvalue(),
-        {"content-type": "image/png", "x-upsert": "true"}
-    )
-    urls["cover_art_url_16x9"] = supabase.storage.from_("audio").get_public_url(file_name_16x9)
-    
-    # Upload 1:1
-    buffer = BytesIO()
-    img_1x1.save(buffer, format="PNG")
-    buffer.seek(0)
-    file_name_1x1 = f"covers/{book_id}_1x1.png"
-    supabase.storage.from_("audio").upload(
-        file_name_1x1,
-        buffer.getvalue(),
-        {"content-type": "image/png", "x-upsert": "true"}
-    )
-    urls["cover_art_url"] = supabase.storage.from_("audio").get_public_url(file_name_1x1)
-    
-    print("[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
-    return urls
+        new_height = int(width / target_ratio)
+        if anchor == "top":
+            return image.crop((0, 0, width, new_height))
+        else:
+            top = (height - new_height) // 2
+            return image.crop((0, top, width, top + new_height))
 
 
 def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     """
     Generates book cover artwork.
     Tries Kie.ai (Nano Banana) first.
-    Fallbacks to DALL-E 3 if Kie.ai fails (e.g. no credits).
+    Falls back to DALL-E 3 if Kie.ai fails (e.g. no credits).
     """
     try:
         return generate_with_kie(metadata, upload)
     except Exception as e:
-        print(f"[COVER ART] ❌ Kie.ai extraction failed: {e}")
+        print(f"[COVER ART] ❌ Kie.ai failed: {e}")
         print("[COVER ART] 🔄 Switching to DALL-E fallback...")
         return generate_with_dalle(metadata, upload)
 
 
+def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
+    """Fallback generator using DALL-E 3."""
+    client = get_openai_client()
+    metadata = metadata or {}
+    title = metadata.get("title", "Untitled")
+    print(f"[COVER ART] ⚠️ Using DALL-E 3 fallback for: {title}")
+
+    prompt = f"""Book cover artwork for "{title}". 
+    Genre: {metadata.get('category', 'General')}. 
+    Synopsis: {metadata.get('synopsis', '')[:200]}.
+    Style: Professional, artistic, high quality.
+    Do NOT include any text on the image, just the artwork."""
+
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=prompt,
+        size="1024x1024",
+        quality="standard",
+        n=1,
+    )
+    
+    image_url = response.data[0].url
+    print(f"[COVER ART] ✅ DALL-E image generated!")
+    
+    urls = {}
+    if not upload:
+        urls["cover_art_url"] = image_url
+        urls["cover_art_url_16x9"] = image_url
+        return urls
+        
+    return process_and_upload_image(image_url, metadata, urls)
+
+
 def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
-    """Original Kie.ai generation logic."""
+    """Kie.ai (Nano Banana) generation logic."""
+    metadata = metadata or {}
     prompt = generate_cover_art_prompt(metadata)
     title = metadata.get("title", "Untitled")
     
@@ -150,7 +161,6 @@ def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
     
     api_key = get_kie_api_key()
     
-    # Create image generation task
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -165,7 +175,6 @@ def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
         }
     }
     
-    # Submit task to Kie.ai
     create_response = requests.post(
         f"{KIE_API_BASE}/createTask",
         headers=headers,
@@ -177,10 +186,8 @@ def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
     
     create_data = create_response.json()
     
-    # Safe extraction of taskId
     data_obj = create_data.get("data")
     if data_obj is None:
-        # Check for error msg
         error_msg = create_data.get("message") or create_data.get("msg") or "Unknown error"
         raise Exception(f"Kie.ai response missing 'data': {error_msg}")
         
@@ -195,7 +202,7 @@ def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
     image_url = None
     max_attempts = 30
     for attempt in range(max_attempts):
-        time.sleep(2)  # Wait 2 seconds between polls
+        time.sleep(2)
         
         poll_response = requests.get(
             f"{KIE_API_BASE}/recordInfo?taskId={task_id}",
@@ -228,20 +235,71 @@ def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
     
     urls = {}
     if not upload:
-        # Preview-only: return the generated URL without uploading to Supabase
         urls["cover_art_url"] = image_url
         urls["cover_art_url_16x9"] = image_url
         print("[COVER ART] Preview mode: returning generated URL without upload")
         return urls
         
-    # Use shared helper
     return process_and_upload_image(image_url, metadata, urls)
 
 
+def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict:
+    """Shared helper to download, crop, and upload image from URL."""
+    print("[COVER ART] Downloading artwork...")
+    image_response = requests.get(image_url)
+    if image_response.status_code != 200:
+        raise Exception(f"Failed to download image: {image_response.status_code}")
+    
+    original = Image.open(BytesIO(image_response.content)).convert("RGB")
+    width, height = original.size
+    
+    is_landscape = width > height
+    
+    if is_landscape:
+        img_16x9 = original
+        img_1x1 = crop_to_aspect_ratio(original, 1.0)
+    else:
+        img_1x1 = original
+        target_ratio_16_9 = 16/9
+        new_height = int(width / target_ratio_16_9)
+        top = (height - new_height) // 2
+        img_16x9 = original.crop((0, top, width, top + new_height))
+
+    supabase = get_supabase()
+    book_id = metadata.get("book_id", str(uuid.uuid4()))
+    
+    print("[COVER ART] Uploading to Supabase Storage...")
+    
+    # Upload 16:9
+    buffer = BytesIO()
+    img_16x9.save(buffer, format="PNG")
+    buffer.seek(0)
+    file_name_16x9 = f"covers/{book_id}_16x9.png"
+    supabase.storage.from_("audio").upload(
+        file_name_16x9,
+        buffer.getvalue(),
+        {"content-type": "image/png", "x-upsert": "true"}
+    )
+    urls["cover_art_url_16x9"] = supabase.storage.from_("audio").get_public_url(file_name_16x9)
+    
+    # Upload 1:1
+    buffer = BytesIO()
+    img_1x1.save(buffer, format="PNG")
+    buffer.seek(0)
+    file_name_1x1 = f"covers/{book_id}_1x1.png"
+    supabase.storage.from_("audio").upload(
+        file_name_1x1,
+        buffer.getvalue(),
+        {"content-type": "image/png", "x-upsert": "true"}
+    )
+    urls["cover_art_url"] = supabase.storage.from_("audio").get_public_url(file_name_1x1)
+    
+    print("[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
+    return urls
+
+
 def update_book_cover_url(book_id: str, cover_urls: dict):
-    """
-    Updates the book record with the cover art URLs.
-    """
+    """Updates the book record with the cover art URLs."""
     supabase = get_supabase()
     
     update_data = {}

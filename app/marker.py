@@ -141,6 +141,12 @@ def parse_chapters_from_markdown(markdown: str) -> list:
     chapters = []
     current_chapter = None
     
+    # DEBUG: Log first 50 lines to see markdown structure
+    print("[MARKER] DEBUG: First 50 lines of markdown:")
+    for i, line in enumerate(lines[:50]):
+        if line.strip():
+            print(f"[MARKER]   Line {i}: {line[:80]}{'...' if len(line) > 80 else ''}")
+    
     # Navigation pages to skip (common on sacred-texts.com scraped PDFs)
     navigation_patterns = [
         r'^start\s*reading$',
