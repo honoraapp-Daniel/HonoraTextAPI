@@ -265,13 +265,23 @@ async def phase_metadata(job_id: str) -> dict:
         
         update_job_phase(job_id, "cover_art", status="Generating cover art...")
         
-        # Generate cover art (without uploading yet)
-        cover_urls = generate_cover_image(metadata, upload=False)
+        # Generate cover art (without uploading yet) - OPTIONAL, continue if it fails
+        cover_urls = None
+        try:
+            cover_urls = generate_cover_image(metadata, upload=False)
+        except Exception as cover_err:
+            print(f"[PIPELINE_V2] ⚠️ Cover art generation failed: {cover_err}")
+            print("[PIPELINE_V2] Continuing without cover art (you can add it later)")
+            cover_urls = {
+                "cover_art_url": None,
+                "cover_art_url_16x9": None,
+                "error": str(cover_err)
+            }
         
         update_job_phase(
             job_id,
             "metadata_complete",
-            status="Metadata and cover art ready",
+            status="Metadata ready" + (" (cover art skipped)" if cover_urls.get("error") else " with cover art"),
             metadata=metadata,
             cover_urls=cover_urls
         )
