@@ -279,6 +279,63 @@ def extract_chapters_smart(full_text: str) -> tuple:
     Smart chapter extraction using GPT-detected structure.
     Returns (stories_list, chapters_list) where stories_list may be empty for novels.
     """
+    def normalize_chapter_title(title: str, chapter_index: int) -> str:
+        """
+        Normalize chapter titles to use Arabic numerals for display while keeping the original
+        wording for matching. Examples:
+        - "Chapter one: Rhythm" -> "Chapter 1: Rhythm"
+        - "Chapter IV - Breath" -> "Chapter 4: Breath"
+        - "I. The Hermetic Philosophy" -> "Chapter 1: The Hermetic Philosophy"
+        """
+        number_words = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+            "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+            "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+            "nineteen": 19, "twenty": 20
+        }
+        roman_map = {
+            "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5, "vi": 6, "vii": 7,
+            "viii": 8, "ix": 9, "x": 10, "xi": 11, "xii": 12, "xiii": 13,
+            "xiv": 14, "xv": 15, "xvi": 16, "xvii": 17, "xviii": 18, "xix": 19, "xx": 20
+        }
+
+        def roman_to_int(token: str) -> int:
+            return roman_map.get(token.lower())
+
+        clean = title.strip()
+        # Patterns to catch leading chapter markers
+        patterns = [
+            r"^chapter\s+(\d+)[\s:\.\-–]+(.*)$",
+            r"^chapter\s+([a-z]+)[\s:\.\-–]+(.*)$",
+            r"^chapter\s+([ivxlcdm]+)[\s:\.\-–]+(.*)$",
+            r"^([ivxlcdm]+)[\s:\.\-–]+(.*)$",
+        ]
+        number_value = None
+        remainder = None
+
+        for pat in patterns:
+            m = re.match(pat, clean, flags=re.IGNORECASE)
+            if m:
+                token = m.group(1)
+                remainder = m.group(2).strip()
+                if token.isdigit():
+                    number_value = int(token)
+                elif token.lower() in number_words:
+                    number_value = number_words[token.lower()]
+                else:
+                    number_value = roman_to_int(token)
+                break
+
+        if number_value is None:
+            # No explicit number parsed; use index and keep original remainder
+            remainder = clean
+            number_value = chapter_index
+        if not remainder:
+            remainder = clean
+
+        return f"Chapter {number_value}: {remainder}"
+
     structure = detect_book_structure(full_text)
     book_type = structure.get("book_type", "novel")
     items = structure.get("structure", [])
@@ -315,6 +372,7 @@ def extract_chapters_smart(full_text: str) -> tuple:
             chapters.append({
                 "chapter_index": chapter_index,
                 "title": title,
+                "display_title": normalize_chapter_title(title, chapter_index),
                 "parent_story": parent_story,
                 "text": ""  # Will be filled by text extraction
             })
@@ -406,6 +464,7 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
         result_chapters.append({
             "chapter_index": chapter["chapter_index"],
             "title": title,
+            "display_title": chapter.get("display_title", title),
             "parent_story": chapter.get("parent_story"),
             "text": chapter_text
         })
@@ -510,12 +569,12 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
         parent_story = chapter.get("parent_story")
         story_id = story_id_map.get(parent_story) if parent_story else None
         
-        insert_data = {
-            "book_id": book_id,
-            "chapter_index": chapter["chapter_index"],
-            "title": chapter["title"],
-            "text": chapter.get("text", "")
-        }
+            insert_data = {
+                "book_id": book_id,
+                "chapter_index": chapter["chapter_index"],
+                "title": chapter.get("display_title") or chapter["title"],
+                "text": chapter.get("text", "")
+            }
         
         if story_id:
             insert_data["story_id"] = story_id
