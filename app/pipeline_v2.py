@@ -585,10 +585,17 @@ async def phase_commit_to_supabase(job_id: str) -> dict:
             )
             
             # Create chapter record
+            # For JSON uploads, use stored content; for PDF, extract from markdown
+            if state.get("markdown"):
+                chapter_text = extract_chapter_text(state["markdown"], ch)
+            else:
+                # JSON uploads have content stored directly in chapter
+                chapter_text = ch.get("content", "") or ch.get("text", "") or ""
+            
             chapter_data = [{
                 "chapter_index": ch["index"],
                 "title": ch["title"],
-                "text": extract_chapter_text(state["markdown"], ch)
+                "text": chapter_text
             }]
             
             db_chapters = write_chapters_to_supabase(book_id, chapter_data)
