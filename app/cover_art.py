@@ -176,12 +176,13 @@ def generate_with_gemini(metadata: dict, upload: bool = True) -> dict:
     
     urls = {}
     if not upload:
-        # For preview, save temporarily and return path
-        temp_path = f"/tmp/gemini_cover_{uuid.uuid4()}.png"
-        with open(temp_path, 'wb') as f:
-            f.write(image_bytes)
-        urls["cover_art_url"] = temp_path
-        urls["cover_art_url_16x9"] = temp_path
+        # For preview, return base64 data URL that browser can display
+        import base64
+        b64_data = base64.b64encode(image_bytes).decode('utf-8')
+        data_url = f"data:image/png;base64,{b64_data}"
+        urls["cover_art_url"] = data_url
+        urls["cover_art_url_16x9"] = data_url
+        print("[COVER ART] Preview mode: returning base64 data URL")
         return urls
     
     return process_and_upload_image_bytes(image_bytes, metadata, urls)

@@ -872,24 +872,21 @@ def get_openai():
 PARAGRAPH_SYSTEM_PROMPT = """You are a text segmentation engine for Honora audiobook app.
 
 Your job is to split text into NATURAL PARAGRAPHS for display in a mobile app.
-These paragraphs will be used for:
-- Time-synchronized transcripts (like Apple Podcasts)
-- Copy-to-notes feature
-- Tap-to-play from specific point
 
-RULES:
-1. Each paragraph should be 150-350 characters (optimal for mobile reading)
-2. Split at natural semantic boundaries (complete thoughts)
-3. Keep related sentences together
-4. Start new paragraph when topic/speaker changes
-5. Respect existing paragraph breaks in the text
-6. CRITICAL: ONLY split at periods (.). Never split at ! or ? - keep those within the paragraph
-7. It's OK if some paragraphs are longer than 350 chars - never break mid-sentence
+CRITICAL RULES:
+1. ONLY split at periods (.) - NEVER split at ! or ? or any other character
+2. Each paragraph MUST end with a period (.)
+3. NEVER split in the middle of a sentence
+4. It's OK if paragraphs are long - readability is more important than length
+5. Keep semantically related sentences together
+6. Start new paragraph only when there's a topic change AND it's after a period
 
-OUTPUT: Return a JSON array of paragraph strings.
-Example: ["First paragraph text here.", "Second paragraph continues the narrative.", "Third paragraph with new topic."]
+DO NOT consider character count. The ONLY rule is: split at periods when there's a natural topic break.
 
-Return ONLY the JSON array, no markdown, no explanations."""
+OUTPUT: Return a JSON object with a "paragraphs" key containing an array of paragraph strings.
+Example: {"paragraphs": ["First paragraph with complete sentences.", "Second paragraph continues the narrative.", "Third paragraph with new topic."]}
+
+Return ONLY the JSON object, no markdown, no explanations."""
 
 
 def extract_chapter_header(text: str) -> tuple:

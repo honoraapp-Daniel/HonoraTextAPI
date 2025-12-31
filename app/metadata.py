@@ -7,7 +7,17 @@ import os
 import re
 from openai import OpenAI
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy initialization - only create client when needed
+_openai_client = None
+
+def get_openai():
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY must be set")
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 METADATA_SYSTEM_PROMPT = """
 You are a book metadata extractor for Honora audiobook platform. Given text from the first pages of a book, extract comprehensive metadata.
@@ -86,7 +96,7 @@ Extract comprehensive book metadata from this text:
 Return JSON with all metadata fields.
 """
 
-    response = client.chat.completions.create(
+    response = get_openai().chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": METADATA_SYSTEM_PROMPT},
@@ -289,7 +299,7 @@ Return JSON with synopsis, category, subcategory, and a real quote from the text
 """
 
     try:
-        response = client.chat.completions.create(
+        response = get_openai().chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": SYNOPSIS_SYSTEM_PROMPT},
