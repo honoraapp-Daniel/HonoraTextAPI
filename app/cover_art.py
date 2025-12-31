@@ -46,34 +46,50 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a Gemini/Nano Banana prompt with creative freedom.
-    Includes title and author for the AI to render on the cover.
+    Generates a Gemini/Nano Banana prompt for vintage-style book covers.
+    
+    Style: Classic vintage book cover with ornate borders, 
+    blurred background extension for flexible aspect ratios.
     """
     metadata = metadata or {}
     title = metadata.get("title", "Untitled")
     author = metadata.get("author", "Unknown")
+    year = metadata.get("publishing_year", "")
     category = metadata.get("category", "")
     synopsis = metadata.get("synopsis", "")
     
-    book_context = f'"{title}" by {author}'
+    # Build context for artwork inspiration
+    thematic_hints = ""
     if category:
-        book_context += f'. Genre: {category}'
+        thematic_hints += f"Genre: {category}. "
     if synopsis:
-        book_context += f'. Synopsis: {synopsis[:400]}'
+        thematic_hints += f"Themes: {synopsis[:300]}"
     
-    prompt = f"""Create a beautiful, professional book cover for:
+    # Format year if available
+    year_text = f"\n{year}" if year else ""
+    
+    prompt = f"""Create a beautiful vintage-style book cover artwork:
 
-{book_context}
+BOOK DETAILS:
+- Title: "{title}"
+- Author: {author}{year_text}
+{thematic_hints}
 
-The cover MUST include:
-- The title "{title}" prominently displayed
-- The author name "{author}" 
+REQUIRED DESIGN ELEMENTS:
+1. VINTAGE BOOK FORMAT: Design the cover in a classic, ornate vintage book style with decorative borders and frames (like antique 1900s-1920s book covers)
 
-You have complete creative freedom for the artwork! Choose any artistic style, colors, composition, mood, or visual approach that best captures the essence and themes of this book.
+2. TEXT PLACEMENT:
+   - Title "{title}" at the TOP in elegant vintage typography
+   - Author "{author}" at the BOTTOM with the year if known
+   - Text must be clearly readable and beautifully styled
 
-The only rule: The artwork must be inspired by and reflect the book's content, themes, or mood.
+3. CENTRAL ARTWORK: Create rich, detailed illustration in the center that captures the book's themes and essence. Use artistic elements that reflect the genre and content.
 
-Make it stunning and professional - this is for an audiobook app."""
+4. BLURRED BACKGROUND EXTENSION: The main cover design should be centered, with the background extending beyond the cover edges as a soft, blurred version of the artwork colors. This creates a seamless look when cropped to different aspect ratios (16:9 or 1:1).
+
+5. COLOR PALETTE: Rich, warm vintage tones - golds, deep reds, aged paper colors, ornate metallic accents. NO plain white backgrounds.
+
+This is for a premium audiobook app. Make it look like a treasured antique book cover."""
 
     return prompt
 
