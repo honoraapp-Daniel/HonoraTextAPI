@@ -299,6 +299,10 @@ Return JSON with synopsis, category, subcategory, and a real quote from the text
 """
 
     try:
+        print(f"[METADATA] Calling GPT-4o for synopsis generation...")
+        print(f"[METADATA] Chapter content length: {len(chapter_content)} chars")
+        print(f"[METADATA] URL hint: {url_hint[:100] if url_hint else 'None'}")
+        
         response = get_openai().chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -309,9 +313,14 @@ Return JSON with synopsis, category, subcategory, and a real quote from the text
         )
 
         content = response.choices[0].message.content
+        print(f"[METADATA] GPT response received: {len(content)} chars")
+        
         result = extract_json_from_text(content)
         
         if result:
+            print(f"[METADATA] ✅ JSON parsed successfully")
+            print(f"[METADATA] Synopsis: {result.get('synopsis', '')[:100]}...")
+            
             # Use URL-based category if GPT didn't provide one or if we have a URL hint
             final_category = result.get("category")
             if not final_category or (url_category and url_category != "Spirituality & Religion"):
@@ -323,10 +332,15 @@ Return JSON with synopsis, category, subcategory, and a real quote from the text
                 "subcategory": url_subcategory or result.get("subcategory"),
                 "book_of_the_day_quote": result.get("book_of_the_day_quote")
             }
+        else:
+            print(f"[METADATA] ❌ Failed to parse JSON from response: {content[:200]}")
     except Exception as e:
-        print(f"[METADATA] Error generating synopsis: {e}")
+        import traceback
+        print(f"[METADATA] ❌ Error generating synopsis: {e}")
+        print(f"[METADATA] Traceback: {traceback.format_exc()}")
     
     # Fallback with URL-based category if available
+    print(f"[METADATA] Using fallback - category: {url_category or 'Spirituality & Religion'}")
     return {
         "synopsis": None,
         "category": url_category or "Spirituality & Religion",
