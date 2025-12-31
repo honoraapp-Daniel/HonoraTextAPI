@@ -636,10 +636,116 @@ def clean_section_text(text: str) -> str:
     return text.strip()
 
 
+def split_into_sections_tts(text: str, chapter_title: str, max_chars: int = 250) -> list:
+    """
+    Split text into TTS-optimized sections.
+    
+    Section 0: Chapter title only (for TTS to announce the chapter)
+    Section 1+: Content split at natural pauses, max ~250 chars
+    
+    Priority for splitting:
+    1. Period (.) - best for TTS, natural sentence end
+    2. Comma (,) - if sentence too long, split at comma
+    3. Word boundary - absolute last resort
+    
+    Args:
+        text: The chapter text to split (may include title at start)
+        chapter_title: The chapter title to use as Section 0
+        max_chars: Maximum characters per section (default: 250)
+        
+    Returns:
+        List of sections where index 0 is the title
+    """
+    if not text or not text.strip():
+        return [chapter_title] if chapter_title else []
+    
+    sections = []
+    
+    # Section 0 is always the chapter title
+    sections.append(chapter_title.strip())
+    
+    # Remove chapter title from beginning of text if present
+    content = text.strip()
+    if content.startswith(chapter_title.strip()):
+        content = content[len(chapter_title.strip()):].strip()
+    
+    # Also try removing common chapter header patterns
+    content = re.sub(r'^Chapter\s+[\dIVXLCDM]+[:\.\s\-–]+[^\n]*\n*', '', content, flags=re.IGNORECASE).strip()
+    
+    if not content:
+        return sections
+    
+    # Normalize whitespace
+    content = " ".join(content.split())
+    
+    # Split by sentences first (period, exclamation, question mark)
+    sentences = re.split(r'(?<=[.!?])\s+', content)
+    
+    current_section = ""
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        
+        # If adding this sentence would exceed limit
+        if len(current_section) + len(sentence) + 1 > max_chars:
+            # Save current section if not empty
+            if current_section:
+                sections.append(current_section.strip())
+                current_section = ""
+            
+            # If single sentence is too long, try to split at commas
+            if len(sentence) > max_chars:
+                # Split at commas
+                comma_parts = sentence.split(',')
+                comma_chunk = ""
+                
+                for i, part in enumerate(comma_parts):
+                    part = part.strip()
+                    # Add comma back except for last part
+                    if i < len(comma_parts) - 1:
+                        part = part + ","
+                    
+                    if len(comma_chunk) + len(part) + 1 > max_chars:
+                        if comma_chunk:
+                            sections.append(comma_chunk.strip())
+                        comma_chunk = part
+                    else:
+                        comma_chunk = (comma_chunk + " " + part).strip()
+                
+                if comma_chunk:
+                    # If still too long, split by words as last resort
+                    if len(comma_chunk) > max_chars:
+                        words = comma_chunk.split()
+                        word_chunk = ""
+                        for word in words:
+                            if len(word_chunk) + len(word) + 1 > max_chars:
+                                if word_chunk:
+                                    sections.append(word_chunk.strip())
+                                word_chunk = word
+                            else:
+                                word_chunk = (word_chunk + " " + word).strip()
+                        if word_chunk:
+                            current_section = word_chunk
+                    else:
+                        current_section = comma_chunk
+            else:
+                current_section = sentence
+        else:
+            current_section = (current_section + " " + sentence).strip()
+    
+    # Don't forget the last section
+    if current_section:
+        sections.append(current_section.strip())
+    
+    return sections
+
+
 def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
     """
-    Splits text into chunks of max_chars, respecting sentence boundaries.
-    Falls back to word boundaries if a sentence exceeds max_chars.
+    LEGACY: Splits text into chunks of max_chars, respecting sentence boundaries.
+    Use split_into_sections_tts() for new code.
     
     Args:
         text: The chapter text to chunk
@@ -660,7 +766,6 @@ def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
     chunks = []
     
     # Split by sentence endings
-    import re
     sentences = re.split(r'(?<=[.!?])\s+', text)
     
     current_chunk = ""
@@ -949,3 +1054,41 @@ def write_paragraphs_to_supabase(chapter_id: str, paragraphs: list):
             "start_ms": None,  # Will be linked to sections after TTS
             "end_ms": None
         }).execute()
+
+
+def ensure_paragraph_0_is_title(paragraphs: list, chapter_title: str) -> list:
+    """
+    Ensure paragraph index 0 is the chapter title only.
+    
+    This guarantees that:
+    - Paragraph 0 = Chapter title (for display header)
+    - Paragraph 1+ = Actual content
+    
+    Args:
+        paragraphs: List of paragraph strings from GPT
+        chapter_title: The chapter title to use as Paragraph 0
+        
+    Returns:
+        List of paragraphs with title as first element
+    """
+    if not paragraphs:
+        return [chapter_title] if chapter_title else []
+    
+    clean_title = chapter_title.strip() if chapter_title else ""
+    
+    # Check if first paragraph is already the title
+    if paragraphs[0].strip() == clean_title:
+        return paragraphs
+    
+    # Check if first paragraph starts with the title (duplicate issue)
+    if paragraphs[0].strip().startswith(clean_title):
+        # Remove title from first paragraph content
+        first_content = paragraphs[0].strip()[len(clean_title):].strip()
+        if first_content:
+            return [clean_title, first_content] + paragraphs[1:]
+        else:
+            return [clean_title] + paragraphs[1:]
+    
+    # Title not present, add it as first paragraph
+    return [clean_title] + paragraphs
+

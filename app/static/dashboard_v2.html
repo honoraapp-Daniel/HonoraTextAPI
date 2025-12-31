@@ -476,6 +476,111 @@
       color: var(--muted);
       margin-top: 4px;
     }
+
+    /* Two-column editor styles */
+    .editor-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .editor-column {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .editor-column h3 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .editor-column>.muted {
+      margin-bottom: 8px;
+    }
+
+    .paragraph-item {
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .paragraph-item.title-paragraph {
+      background: rgba(125, 211, 252, 0.1);
+      border-color: var(--accent);
+    }
+
+    .paragraph-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .paragraph-index {
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--accent-2);
+    }
+
+    .paragraph-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .paragraph-actions button {
+      padding: 4px 8px;
+      font-size: 11px;
+    }
+
+    .paragraph-text {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.3);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .add-paragraph-btn {
+      margin-top: 8px;
+      width: 100%;
+      padding: 10px;
+      border: 2px dashed var(--border);
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .add-paragraph-btn:hover {
+      border-color: var(--accent-2);
+      color: var(--accent-2);
+      background: rgba(168, 85, 247, 0.1);
+    }
+
+    .section-item.title-section {
+      background: rgba(125, 211, 252, 0.1);
+      border-color: var(--accent);
+    }
+
+    .char-warning {
+      color: var(--warning);
+    }
+
+    .char-ok {
+      color: var(--success);
+    }
   </style>
 </head>
 
@@ -607,16 +712,30 @@
 
   <!-- Chapter Editor Modal -->
   <div class="modal" id="editor-modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 1200px;">
       <div class="modal-header">
         <h2 id="editor-chapter-title">Edit Chapter</h2>
         <button class="close-btn" id="close-editor">&times;</button>
       </div>
-      <div style="margin-bottom: 16px;">
-        <div class="muted">Sections (for TTS - each section is read separately)</div>
+
+      <div class="editor-columns">
+        <!-- Sections Column (TTS) -->
+        <div class="editor-column">
+          <h3>📢 Sections (TTS)</h3>
+          <div class="muted">Max 250 chars per section. Index 0 = chapter title.</div>
+          <div class="section-list" id="editor-sections"></div>
+        </div>
+
+        <!-- Paragraphs Column (Display) -->
+        <div class="editor-column">
+          <h3>📖 Paragraphs (Display)</h3>
+          <div class="muted">Natural sentences only. Index 0 = chapter title.</div>
+          <div class="section-list" id="editor-paragraphs"></div>
+          <button class="add-paragraph-btn" id="add-paragraph-btn">+ Add Paragraph</button>
+        </div>
       </div>
-      <div class="section-list" id="editor-sections"></div>
-      <div style="margin-top: 16px; display: flex; gap: 12px;">
+
+      <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: flex-end;">
         <button class="secondary" id="cancel-edit-btn">Cancel</button>
         <button class="primary" id="save-edit-btn">Save Changes</button>
       </div>
@@ -875,19 +994,73 @@
 
       document.getElementById('editor-chapter-title').textContent = `Edit Chapter ${index}: ${chapter.title}`;
 
+      // Render Sections (TTS)
       const sections = chapter.sections || [];
-      document.getElementById('editor-sections').innerHTML = sections.map((sec, i) => `
-        <div class="section-item">
+      document.getElementById('editor-sections').innerHTML = sections.map((sec, i) => {
+        const charClass = sec.length > 250 ? 'char-warning' : 'char-ok';
+        const isTitle = i === 0;
+        return `
+        <div class="section-item ${isTitle ? 'title-section' : ''}">
           <div class="section-header">
-            <span class="section-index">Section ${i}</span>
-            <span class="section-chars">${sec.length} chars</span>
+            <span class="section-index">${isTitle ? '📌 Section 0 (Title)' : `Section ${i}`}</span>
+            <span class="section-chars ${charClass}">${sec.length} chars ${sec.length > 250 ? '⚠️' : '✓'}</span>
           </div>
-          <textarea class="section-text" data-section="${i}">${sec}</textarea>
+          <textarea class="section-text" data-section="${i}" ${isTitle ? 'placeholder="Chapter title"' : ''}>${escapeHtml(sec)}</textarea>
         </div>
-      `).join('');
+      `}).join('');
+
+      // Render Paragraphs (Display)
+      const paragraphs = chapter.paragraphs || [];
+      renderParagraphs(paragraphs);
 
       editorModal.classList.add('open');
     }
+
+    function renderParagraphs(paragraphs) {
+      document.getElementById('editor-paragraphs').innerHTML = paragraphs.map((para, i) => {
+        const isTitle = i === 0;
+        return `
+        <div class="paragraph-item ${isTitle ? 'title-paragraph' : ''}" data-para-index="${i}">
+          <div class="paragraph-header">
+            <span class="paragraph-index">${isTitle ? '📌 Paragraph 0 (Title)' : `Paragraph ${i}`}</span>
+            <div class="paragraph-actions">
+              ${!isTitle ? `<button class="secondary small" onclick="insertParagraphAfter(${i - 1})">+ Insert Before</button>` : ''}
+              ${!isTitle ? `<button class="secondary small" onclick="deleteParagraph(${i})">🗑</button>` : ''}
+            </div>
+          </div>
+          <textarea class="paragraph-text" data-paragraph="${i}" ${isTitle ? 'placeholder="Chapter title"' : ''}>${escapeHtml(para)}</textarea>
+        </div>
+      `}).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function insertParagraphAfter(index) {
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+      paragraphs.splice(index + 1, 0, 'New paragraph...');
+      renderParagraphs(paragraphs);
+    }
+
+    function deleteParagraph(index) {
+      if (index === 0) return; // Can't delete title
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+      paragraphs.splice(index, 1);
+      renderParagraphs(paragraphs);
+    }
+
+    // Add paragraph at end
+    document.getElementById('add-paragraph-btn').addEventListener('click', () => {
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+      paragraphs.push('New paragraph...');
+      renderParagraphs(paragraphs);
+    });
 
     // Close editor
     document.getElementById('close-editor').addEventListener('click', () => {
@@ -904,14 +1077,17 @@
     document.getElementById('save-edit-btn').addEventListener('click', async () => {
       if (editingChapterIndex === null) return;
 
-      const textareas = document.querySelectorAll('#editor-sections .section-text');
-      const sections = Array.from(textareas).map(t => t.value);
+      const sectionTextareas = document.querySelectorAll('#editor-sections .section-text');
+      const sections = Array.from(sectionTextareas).map(t => t.value);
+
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
 
       try {
         const res = await fetch(`/v2/job/${jobId}/chapter/${editingChapterIndex}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sections, paragraphs: sections })
+          body: JSON.stringify({ sections, paragraphs })
         });
 
         if (!res.ok) {

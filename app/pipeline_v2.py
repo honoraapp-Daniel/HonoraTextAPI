@@ -22,6 +22,8 @@ from app.metadata import extract_book_metadata, generate_synopsis_and_category
 from app.cover_art import generate_cover_image, update_book_cover_url
 from app.chapters import (
     split_into_paragraphs_gpt,
+    split_into_sections_tts,
+    ensure_paragraph_0_is_title,
     write_sections_to_supabase,
     write_paragraphs_to_supabase,
     create_book_in_supabase,
@@ -443,14 +445,29 @@ async def phase_process_chapter(job_id: str, chapter_index: int) -> dict:
         # Clean the text (remove markdown artifacts)
         cleaned_text = clean_markdown_text(chapter_text)
         
-        # Create sections using GPT semantic splitting
-        sections = split_into_paragraphs_gpt(cleaned_text)
+        # Get chapter title for index 0
+        chapter_title = chapter.get("title", f"Chapter {chapter_index}")
         
-        # Apply final TTS cleanup to each section
-        sections = [clean_section_text(s) for s in sections if s.strip()]
+        # =====================================================
+        # SECTIONS: TTS-optimized, max ~250 chars
+        # Section 0 = chapter title, Section 1+ = content
+        # =====================================================
+        print(f"[PIPELINE_V2] Creating TTS sections (max 250 chars)...")
+        sections = split_into_sections_tts(cleaned_text, chapter_title, max_chars=250)
         
-        # Paragraphs are the same as sections (semantic splitting)
-        paragraphs = sections.copy()
+        # Apply final TTS cleanup to each section (except title at index 0)
+        sections = [sections[0]] + [clean_section_text(s) for s in sections[1:] if s.strip()]
+        
+        # =====================================================
+        # PARAGRAPHS: Natural sentence boundaries for app display
+        # Paragraph 0 = chapter title, Paragraph 1+ = content
+        # Split only at periods (.), never mid-sentence
+        # =====================================================
+        print(f"[PIPELINE_V2] Creating display paragraphs (natural sentences)...")
+        paragraphs = split_into_paragraphs_gpt(cleaned_text)
+        
+        # Ensure paragraph 0 is the chapter title
+        paragraphs = ensure_paragraph_0_is_title(paragraphs, chapter_title)
         
         # Update chapter with results
         chapter["status"] = "ready"
@@ -461,7 +478,7 @@ async def phase_process_chapter(job_id: str, chapter_index: int) -> dict:
         
         save_job_state(job_id, state)
         
-        print(f"[PIPELINE_V2] ✅ Chapter {chapter_index} complete: {len(sections)} sections")
+        print(f"[PIPELINE_V2] ✅ Chapter {chapter_index} complete: {len(sections)} sections, {len(paragraphs)} paragraphs")
         
         return {
             "chapter_index": chapter_index,
