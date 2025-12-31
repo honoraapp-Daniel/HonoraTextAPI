@@ -856,7 +856,11 @@
         const coverUrl = metaData.cover_urls?.cover_art_url;
         if (coverUrl) {
           document.getElementById('cover-img').src = coverUrl;
-          document.getElementById('cover-url').textContent = coverUrl;
+          // Don't show base64 URLs, just a friendly message
+          const displayUrl = coverUrl.startsWith('data:') 
+            ? '✅ Generated via Gemini (Nano Banana)' 
+            : coverUrl.substring(0, 50) + '...';
+          document.getElementById('cover-url').textContent = displayUrl;
         }
 
       } catch (err) {

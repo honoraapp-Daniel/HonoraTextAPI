@@ -293,13 +293,16 @@ def generate_synopsis_and_category(chapter_content: str, source_url: str = None)
     Returns:
         dict with synopsis, category, subcategory, book_of_the_day_quote
     """
-    # First, try to get category from URL
+    # First, try to get category from URL (most reliable for sacred-texts.com)
     url_subcategory, url_category = get_category_from_url(source_url)
+    
+    print(f"[METADATA] Source URL: {source_url}")
+    print(f"[METADATA] URL-based category: {url_subcategory} -> {url_category}")
     
     # Prepare the prompt with URL hint if available
     url_hint = ""
     if url_subcategory:
-        url_hint = f"\n\nHINT: This book is from the '{url_subcategory}' section, so the category is likely '{url_category}'."
+        url_hint = f"\n\nIMPORTANT: This book is from the '{url_subcategory}' section. Use category '{url_category}'."
     
     prompt = f"""
 {SYNOPSIS_SYSTEM_PROMPT}
@@ -337,11 +340,16 @@ Return ONLY valid JSON with synopsis, category, subcategory, and a real quote fr
         if result:
             print(f"[METADATA] ✅ JSON parsed successfully")
             print(f"[METADATA] Synopsis: {result.get('synopsis', '')[:100]}...")
+            print(f"[METADATA] Gemini category: {result.get('category')}")
             
-            # Use URL-based category if Gemini didn't provide one or if we have a URL hint
-            final_category = result.get("category")
-            if not final_category or (url_category and url_category != "Spirituality & Religion"):
-                final_category = url_category or "Spirituality & Religion"
+            # ALWAYS use URL-based category if available (most accurate for sacred-texts.com)
+            # Only fall back to Gemini's category if no URL category
+            if url_category:
+                final_category = url_category
+                print(f"[METADATA] Using URL-based category: {final_category}")
+            else:
+                final_category = result.get("category") or "Spirituality & Religion"
+                print(f"[METADATA] Using Gemini category: {final_category}")
             
             return {
                 "synopsis": result.get("synopsis"),
