@@ -955,26 +955,50 @@ def split_into_paragraphs_gpt(text: str) -> list:
     chunk_size = 10000
     chunks = [remaining_text[i:i + chunk_size] for i in range(0, len(remaining_text), chunk_size)]
     
-    client = get_openai()
+    print(f"[CHAPTERS] Splitting text into paragraphs using Gemini 2.0 Flash ({len(chunks)} chunks)...")
     
-    print(f"[CHAPTERS] Splitting text into paragraphs using GPT-4o-mini ({len(chunks)} chunks)...")
+    # Import Gemini client
+    from google import genai
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        print("[CHAPTERS] ⚠️ GEMINI_API_KEY not set, using fallback splitting")
+        return all_paragraphs + fallback_paragraph_split(remaining_text)
+    
+    client = genai.Client(api_key=gemini_api_key)
     
     for i, chunk in enumerate(chunks):
-        # Add context from previous chunk if not the first
-        current_prompt = chunk
-        
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini", # Use mini for speed, cost, and high rate limits
-                messages=[
-                    {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{current_prompt}"}
-                ],
-                response_format={"type": "json_object"}
+            prompt = f"""{PARAGRAPH_SYSTEM_PROMPT}
+
+Split this text into natural paragraphs:
+
+{chunk}"""
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[prompt]
             )
             
-            content = response.choices[0].message.content
-            result = json.loads(content)
+            # Extract text from response
+            content = ""
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'text') and part.text:
+                    content += part.text
+            
+            # Parse JSON from response
+            result = None
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError:
+                # Try to extract JSON from markdown code block
+                import re
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+                if json_match:
+                    result = json.loads(json_match.group(1))
+                else:
+                    json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                    if json_match:
+                        result = json.loads(json_match.group(0))
             
             chunk_paragraphs = []
             if isinstance(result, list):
