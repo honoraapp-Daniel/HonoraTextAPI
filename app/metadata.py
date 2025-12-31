@@ -1,14 +1,15 @@
 """
 Metadata extraction module for Honora.
-Uses GPT to extract book title, author, and additional metadata from PDF text.
+Uses Gemini for synopsis/category, OpenAI GPT for PDF metadata extraction.
 """
 import json
 import os
 import re
 from openai import OpenAI
 
-# Lazy initialization - only create client when needed
+# Lazy initialization - only create clients when needed
 _openai_client = None
+_gemini_client = None
 
 def get_openai():
     global _openai_client
@@ -18,6 +19,17 @@ def get_openai():
             raise RuntimeError("OPENAI_API_KEY must be set")
         _openai_client = OpenAI(api_key=api_key)
     return _openai_client
+
+def get_gemini():
+    """Get Google Gemini client for synopsis/category generation."""
+    global _gemini_client
+    if _gemini_client is None:
+        from google import genai
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY must be set")
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
 
 METADATA_SYSTEM_PROMPT = """
 You are a book metadata extractor for Honora audiobook platform. Given text from the first pages of a book, extract comprehensive metadata.
@@ -290,30 +302,35 @@ def generate_synopsis_and_category(chapter_content: str, source_url: str = None)
         url_hint = f"\n\nHINT: This book is from the '{url_subcategory}' section, so the category is likely '{url_category}'."
     
     prompt = f"""
+{SYNOPSIS_SYSTEM_PROMPT}
+
 Generate metadata for this book based on the following chapter content:
 
 {chapter_content[:6000]}
 {url_hint}
 
-Return JSON with synopsis, category, subcategory, and a real quote from the text.
+Return ONLY valid JSON with synopsis, category, subcategory, and a real quote from the text.
 """
 
     try:
-        print(f"[METADATA] Calling GPT-4o for synopsis generation...")
+        print(f"[METADATA] Calling Gemini 2.0 Flash for synopsis generation...")
         print(f"[METADATA] Chapter content length: {len(chapter_content)} chars")
         print(f"[METADATA] URL hint: {url_hint[:100] if url_hint else 'None'}")
         
-        response = get_openai().chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYNOPSIS_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            response_format={"type": "json_object"}
+        # Use Gemini 2.0 Flash for text generation
+        client = get_gemini()
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt]
         )
-
-        content = response.choices[0].message.content
-        print(f"[METADATA] GPT response received: {len(content)} chars")
+        
+        # Extract text from response
+        content = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text') and part.text:
+                content += part.text
+        
+        print(f"[METADATA] Gemini response received: {len(content)} chars")
         
         result = extract_json_from_text(content)
         
@@ -321,7 +338,7 @@ Return JSON with synopsis, category, subcategory, and a real quote from the text
             print(f"[METADATA] ✅ JSON parsed successfully")
             print(f"[METADATA] Synopsis: {result.get('synopsis', '')[:100]}...")
             
-            # Use URL-based category if GPT didn't provide one or if we have a URL hint
+            # Use URL-based category if Gemini didn't provide one or if we have a URL hint
             final_category = result.get("category")
             if not final_category or (url_category and url_category != "Spirituality & Religion"):
                 final_category = url_category or "Spirituality & Religion"
