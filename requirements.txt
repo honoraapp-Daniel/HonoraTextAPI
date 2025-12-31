@@ -6,3 +6,4 @@ openai>=1.0.0
 supabase
 Pillow
 requests
+google-genai>=0.5.0

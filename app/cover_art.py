@@ -1,14 +1,13 @@
 """
 Cover art generation module for Honora.
-Generates artistic book cover images using Nano Banana (via Kie.ai API).
-Falls back to DALL-E 3 if Kie.ai fails.
+Generates artistic book cover images using Google Gemini (Nano Banana).
+Falls back to DALL-E 3 if Gemini fails.
 Generates 16:9 image then crops to 1:1 variant.
 """
 import os
 import requests
 import uuid
-import time
-import json
+import base64
 from io import BytesIO
 from PIL import Image
 from openai import OpenAI
@@ -16,10 +15,6 @@ from supabase import create_client
 
 # Lazy initialization
 _supabase_client = None
-
-# Kie.ai API configuration
-KIE_API_BASE = "https://api.kie.ai/api/v1/jobs"
-KIE_MODEL = "google/nano-banana"
 
 
 def get_openai_client():
@@ -29,12 +24,13 @@ def get_openai_client():
     return OpenAI(api_key=api_key)
 
 
-def get_kie_api_key():
-    """Get Kie.ai API key from environment."""
-    api_key = os.getenv("KIE_API_KEY")
+def get_gemini_client():
+    """Get Google Gemini client."""
+    from google import genai
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("KIE_API_KEY must be set")
-    return api_key
+        raise RuntimeError("GEMINI_API_KEY must be set")
+    return genai.Client(api_key=api_key)
 
 
 def get_supabase():
@@ -50,7 +46,7 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a Nano Banana prompt with creative freedom.
+    Generates a Gemini/Nano Banana prompt with creative freedom.
     Includes title and author for the AI to render on the cover.
     """
     metadata = metadata or {}
@@ -106,15 +102,73 @@ def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = 
 def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     """
     Generates book cover artwork.
-    Tries Kie.ai (Nano Banana) first.
-    Falls back to DALL-E 3 if Kie.ai fails (e.g. no credits).
+    Tries Google Gemini (Nano Banana) first.
+    Falls back to DALL-E 3 if Gemini fails.
     """
     try:
-        return generate_with_kie(metadata, upload)
+        return generate_with_gemini(metadata, upload)
     except Exception as e:
-        print(f"[COVER ART] ❌ Kie.ai failed: {e}")
+        print(f"[COVER ART] ❌ Gemini failed: {e}")
         print("[COVER ART] 🔄 Switching to DALL-E fallback...")
         return generate_with_dalle(metadata, upload)
+
+
+def generate_with_gemini(metadata: dict, upload: bool = True) -> dict:
+    """
+    Generate cover art using Google Gemini (Nano Banana).
+    Uses gemini-2.5-flash-image model with 16:9 aspect ratio.
+    """
+    from google.genai import types
+    
+    metadata = metadata or {}
+    prompt = generate_cover_art_prompt(metadata)
+    title = metadata.get("title", "Untitled")
+    
+    print(f"[COVER ART] Generating artwork for: {title}")
+    print(f"[COVER ART] Using Google Gemini (Nano Banana)...")
+    
+    client = get_gemini_client()
+    
+    # Generate image with 16:9 aspect ratio
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-image",
+        contents=[prompt],
+        config=types.GenerateContentConfig(
+            response_modalities=['Image'],
+            image_config=types.ImageConfig(
+                aspect_ratio="16:9"
+            )
+        )
+    )
+    
+    # Extract image from response
+    image_bytes = None
+    for part in response.parts:
+        if hasattr(part, 'inline_data') and part.inline_data is not None:
+            # Get base64 encoded image data
+            image_data = part.inline_data.data
+            if isinstance(image_data, str):
+                image_bytes = base64.b64decode(image_data)
+            else:
+                image_bytes = image_data
+            break
+    
+    if not image_bytes:
+        raise Exception("No image returned from Gemini")
+    
+    print(f"[COVER ART] ✅ Image generated successfully!")
+    
+    urls = {}
+    if not upload:
+        # For preview, save temporarily and return path
+        temp_path = f"/tmp/gemini_cover_{uuid.uuid4()}.png"
+        with open(temp_path, 'wb') as f:
+            f.write(image_bytes)
+        urls["cover_art_url"] = temp_path
+        urls["cover_art_url_16x9"] = temp_path
+        return urls
+    
+    return process_and_upload_image_bytes(image_bytes, metadata, urls)
 
 
 def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
@@ -152,107 +206,11 @@ def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
     return process_and_upload_image(image_url, metadata, urls)
 
 
-def generate_with_kie(metadata: dict, upload: bool = True) -> dict:
-    """Kie.ai (Nano Banana) generation logic."""
-    metadata = metadata or {}
-    prompt = generate_cover_art_prompt(metadata)
-    title = metadata.get("title", "Untitled")
+def process_and_upload_image_bytes(image_bytes: bytes, metadata: dict, urls: dict) -> dict:
+    """Process image from bytes data and upload to Supabase."""
+    print("[COVER ART] Processing artwork...")
     
-    print(f"[COVER ART] Generating artwork for: {title}")
-    print(f"[COVER ART] Using Nano Banana via Kie.ai API...")
-    
-    api_key = get_kie_api_key()
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": KIE_MODEL,
-        "input": {
-            "prompt": prompt,
-            "output_format": "png",
-            "image_size": "16:9"
-        }
-    }
-    
-    create_response = requests.post(
-        f"{KIE_API_BASE}/createTask",
-        headers=headers,
-        json=payload
-    )
-    
-    if create_response.status_code != 200:
-        raise Exception(f"Kie.ai API error: {create_response.status_code} - {create_response.text}")
-    
-    create_data = create_response.json()
-    
-    data_obj = create_data.get("data")
-    if data_obj is None:
-        error_msg = create_data.get("message") or create_data.get("msg") or "Unknown error"
-        raise Exception(f"Kie.ai response missing 'data': {error_msg}")
-        
-    task_id = data_obj.get("taskId")
-    
-    if not task_id:
-        raise Exception(f"No taskId in response: {create_data}")
-    
-    print(f"[COVER ART] Task created: {task_id}, polling for result...")
-    
-    # Poll for result (max 60 seconds)
-    image_url = None
-    max_attempts = 30
-    for attempt in range(max_attempts):
-        time.sleep(2)
-        
-        poll_response = requests.get(
-            f"{KIE_API_BASE}/recordInfo?taskId={task_id}",
-            headers=headers
-        )
-        
-        if poll_response.status_code != 200:
-            print(f"[COVER ART] Poll error: {poll_response.status_code}")
-            continue
-        
-        poll_data = poll_response.json()
-        state = poll_data.get("data", {}).get("state", "")
-        
-        if state == "success":
-            result_json_str = poll_data.get("data", {}).get("resultJson", "{}")
-            result_json = json.loads(result_json_str)
-            result_urls = result_json.get("resultUrls", [])
-            if result_urls:
-                image_url = result_urls[0]
-                print(f"[COVER ART] ✅ Image generated successfully!")
-                break
-        elif state == "failed":
-            error_msg = poll_data.get("data", {}).get("errorMessage", "Unknown error")
-            raise Exception(f"Image generation failed: {error_msg}")
-        else:
-            print(f"[COVER ART] Status: {state} (attempt {attempt + 1}/{max_attempts})")
-    
-    if not image_url:
-        raise Exception("Timeout waiting for image generation")
-    
-    urls = {}
-    if not upload:
-        urls["cover_art_url"] = image_url
-        urls["cover_art_url_16x9"] = image_url
-        print("[COVER ART] Preview mode: returning generated URL without upload")
-        return urls
-        
-    return process_and_upload_image(image_url, metadata, urls)
-
-
-def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict:
-    """Shared helper to download, crop, and upload image from URL."""
-    print("[COVER ART] Downloading artwork...")
-    image_response = requests.get(image_url)
-    if image_response.status_code != 200:
-        raise Exception(f"Failed to download image: {image_response.status_code}")
-    
-    original = Image.open(BytesIO(image_response.content)).convert("RGB")
+    original = Image.open(BytesIO(image_bytes)).convert("RGB")
     width, height = original.size
     
     is_landscape = width > height
@@ -298,6 +256,16 @@ def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict
     
     print("[COVER ART] ✅ Upload complete! 2 cover versions uploaded")
     return urls
+
+
+def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict:
+    """Shared helper to download, crop, and upload image from URL."""
+    print("[COVER ART] Downloading artwork...")
+    image_response = requests.get(image_url)
+    if image_response.status_code != 200:
+        raise Exception(f"Failed to download image: {image_response.status_code}")
+    
+    return process_and_upload_image_bytes(image_response.content, metadata, urls)
 
 
 def update_book_cover_url(book_id: str, cover_urls: dict):
