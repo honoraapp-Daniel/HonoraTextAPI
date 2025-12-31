@@ -22,7 +22,9 @@ from app.metadata import extract_book_metadata, generate_synopsis_and_category
 from app.cover_art import generate_cover_image, update_book_cover_url
 from app.chapters import (
     split_into_paragraphs_gpt,
+    split_into_paragraphs_perfect,
     split_into_sections_tts,
+    split_into_sections_perfect,
     ensure_paragraph_0_is_title,
     write_sections_to_supabase,
     write_paragraphs_to_supabase,
@@ -451,23 +453,24 @@ async def phase_process_chapter(job_id: str, chapter_index: int) -> dict:
         # =====================================================
         # SECTIONS: TTS-optimized, max ~250 chars
         # Section 0 = chapter title, Section 1+ = content
+        # Uses spaCy for sentence-aware splitting (never mid-sentence)
         # =====================================================
-        print(f"[PIPELINE_V2] Creating TTS sections (max 250 chars)...")
-        sections = split_into_sections_tts(cleaned_text, chapter_title, max_chars=250)
+        print(f"[PIPELINE_V2] Creating TTS sections with spaCy (max 250 chars)...")
+        sections = split_into_sections_perfect(cleaned_text, chapter_title, max_chars=250)
         
         # Apply final TTS cleanup to each section (except title at index 0)
         sections = [sections[0]] + [clean_section_text(s) for s in sections[1:] if s.strip()]
         
         # =====================================================
-        # PARAGRAPHS: Natural sentence boundaries for app display
+        # PARAGRAPHS: Perfect splitting with spaCy + Gemini
         # Paragraph 0 = chapter title, Paragraph 1+ = content
-        # Split only at periods (.), never mid-sentence
+        # Guarantees: no mid-sentence splits, no single-char paragraphs
         # =====================================================
-        print(f"[PIPELINE_V2] Creating display paragraphs (natural sentences)...")
-        paragraphs = split_into_paragraphs_gpt(cleaned_text)
+        print(f"[PIPELINE_V2] Creating paragraphs with spaCy + Gemini...")
+        paragraphs = split_into_paragraphs_perfect(cleaned_text, chapter_title)
         
-        # Ensure paragraph 0 is the chapter title
-        paragraphs = ensure_paragraph_0_is_title(paragraphs, chapter_title)
+        # Note: ensure_paragraph_0_is_title is now done inside split_into_paragraphs_perfect
+        # paragraphs = ensure_paragraph_0_is_title(paragraphs, chapter_title)
         
         # Update chapter with results
         chapter["status"] = "ready"

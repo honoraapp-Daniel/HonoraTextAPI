@@ -229,6 +229,26 @@ export async function fetchChapterContent(chapterUrl) {
   $('header').remove();
   $('footer').remove();
 
+  // Fjern footnotes sektion
+  // Footnotes er typisk i et element med "Footnotes" overskrift
+  $('h2, h3, h4, p, div').each((_, el) => {
+    const text = $(el).text().trim().toLowerCase();
+    if (text === 'footnotes' || text === 'footnote') {
+      // Fjern dette element og alle efterfølgende siblings
+      $(el).nextAll().remove();
+      $(el).remove();
+    }
+  });
+
+  // Fjern footnote referencer (patterns som 5:1, 9:1, 20:1 etc.)
+  $('a').each((_, el) => {
+    const text = $(el).text().trim();
+    // Matcher footnote patterns som "5:1", "22:1" etc.
+    if (text.match(/^\d+:\d+$/)) {
+      $(el).remove();
+    }
+  });
+
   // Fjern "Next", "Previous", "Index" navigation links
   $('a').each((_, el) => {
     const text = $(el).text().toLowerCase().trim();
@@ -304,9 +324,25 @@ export async function fetchChapterContent(chapterUrl) {
   // Match: "Title, by Author Name, [Year]" pattern
   content = content.replace(/<[^>]*>[^<]*,\s*by\s+[^<]+,\s*\[\d{4}\][^<]*<\/[^>]*>/gi, '');
 
+  // Create plain text version for JSON output
+  // Strip HTML tags and normalize whitespace
+  let plainText = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
   return {
     title,
-    content
+    content,
+    plainText
   };
 }
 
@@ -553,6 +589,9 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   tocHtml += '</ul></div>';
   fullHtml += tocHtml;
 
+  // Collect JSON data for each chapter
+  const jsonChapters = [];
+
   // Hent hvert kapitel
   for (let i = 0; i < chapters.length; i++) {
     const chapter = chapters[i];
@@ -567,10 +606,16 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     console.log(`  📖 Henter kapitel ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
 
     try {
-      let { content } = await fetchChapterContent(chapter.url);
+      let { content, plainText } = await fetchChapterContent(chapter.url);
 
       // Fjern duplikerede kapitel-headers fra indholdet
       content = cleanChapterContent(content, formattedTitle);
+
+      // Clean plainText too (remove chapter headers)
+      plainText = plainText
+        .replace(/^Chapter\s+[IVXLCDM\d]+[:\.\s\-–]*/im, '')
+        .replace(new RegExp('^' + formattedTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'im'), '')
+        .trim();
 
       fullHtml += `
   <div class="chapter" data-chapter-index="${chapterIndex}">
@@ -580,6 +625,13 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     <!-- HONORA_CHAPTER_END: ${chapterIndex} -->
   </div>
 `;
+
+      // Add to JSON chapters
+      jsonChapters.push({
+        index: chapterIndex,
+        title: formattedTitle,
+        content: plainText
+      });
 
       // Rate limiting
       await delay(config.requestDelay);
@@ -594,6 +646,12 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     <!-- HONORA_CHAPTER_END: ${chapterIndex} -->
   </div>
 `;
+      // Add placeholder to JSON
+      jsonChapters.push({
+        index: chapterIndex,
+        title: formattedTitle,
+        content: "[Failed to fetch chapter content]"
+      });
     }
   }
 
@@ -601,9 +659,22 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 </body>
 </html>`;
 
+  // Build JSON data structure
+  const jsonData = {
+    title: bookTitle,
+    author: bookAuthor,
+    year: bookYear,
+    publisher: bookPublisher,
+    chapterCount: jsonChapters.length,
+    chapters: jsonChapters,
+    scrapedAt: new Date().toISOString(),
+    sourceUrl: bookUrl
+  };
+
   return {
     title: bookTitle,
-    html: fullHtml
+    html: fullHtml,
+    jsonData
   };
 }
 

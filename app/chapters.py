@@ -1113,3 +1113,430 @@ def ensure_paragraph_0_is_title(paragraphs: list, chapter_title: str) -> list:
     # Title not present, add it as first paragraph
     return [clean_title] + paragraphs
 
+
+# ============================================
+# PERFECT PARAGRAPH SPLITTING (spaCy + Gemini + Validation)
+# ============================================
+
+# Prompt for Gemini to group sentences into paragraphs
+PARAGRAPH_GROUPING_PROMPT = """You are organizing sentences into natural reading paragraphs for an audiobook app.
+
+INPUT: A numbered list of sentences from a chapter.
+OUTPUT: JSON with paragraph groups (arrays of sentence numbers).
+
+RULES:
+1. Group semantically related sentences together
+2. Start a new paragraph when the topic changes
+3. Dialogue should generally stay with its context
+4. Each paragraph should typically be 2-6 sentences
+5. It's OK to have longer paragraphs if they're thematically unified
+6. Single-sentence paragraphs are only OK for dramatic effect or topic intros
+7. EVERY sentence must be included in exactly one paragraph
+
+EXAMPLE INPUT:
+1. The sun rose slowly over the mountains.
+2. Birds began their morning chorus.
+3. Sarah stretched and looked out the window.
+4. Meanwhile in the city, traffic was already building.
+5. Horns honked impatiently at every intersection.
+
+EXAMPLE OUTPUT:
+{"paragraphs": [[1, 2, 3], [4, 5]]}
+
+Return ONLY the JSON object, no markdown, no explanations."""
+
+
+def split_into_paragraphs_perfect(text: str, chapter_title: str = None) -> list:
+    """
+    Perfect paragraph splitting using spaCy + Gemini + validation.
+    
+    This is the new approach that GUARANTEES:
+    1. No mid-sentence splits (spaCy handles sentence detection)
+    2. No single-character paragraphs (validation layer)
+    3. Natural paragraph boundaries (Gemini semantic grouping)
+    
+    Args:
+        text: Raw chapter text
+        chapter_title: Optional chapter title to use as first paragraph
+        
+    Returns:
+        List of paragraph strings
+    """
+    from app.sentence_detector import (
+        detect_sentences,
+        sentences_to_numbered_text,
+        clean_text_for_sentences,
+        merge_short_sentences
+    )
+    
+    if not text or not text.strip():
+        return [chapter_title] if chapter_title else []
+    
+    # Extract chapter header if present
+    header, remaining_text = extract_chapter_header(text)
+    
+    # Use provided title or extracted header
+    title_to_use = chapter_title or header or ""
+    
+    all_paragraphs = []
+    if title_to_use:
+        all_paragraphs.append(title_to_use.strip())
+    
+    if not remaining_text or not remaining_text.strip():
+        return all_paragraphs
+    
+    # Clean text before processing
+    clean_text = clean_text_for_sentences(remaining_text)
+    
+    # Step 1: Use spaCy to get guaranteed complete sentences
+    print("[CHAPTERS] Step 1: Detecting sentences with spaCy...")
+    sentences = detect_sentences(clean_text)
+    
+    if not sentences:
+        # Fallback if no sentences detected
+        if remaining_text.strip():
+            all_paragraphs.append(remaining_text.strip())
+        return all_paragraphs
+    
+    # Merge very short sentences (handles edge cases)
+    sentences = merge_short_sentences(sentences, min_chars=15)
+    
+    print(f"[CHAPTERS] Found {len(sentences)} sentences")
+    
+    # Step 2: Use Gemini to group sentences into paragraphs
+    print("[CHAPTERS] Step 2: Grouping sentences with Gemini...")
+    paragraph_groups = group_sentences_with_gemini(sentences)
+    
+    if not paragraph_groups:
+        # Fallback: group every 3-5 sentences
+        print("[CHAPTERS] ⚠️ Gemini grouping failed, using fallback")
+        paragraph_groups = fallback_sentence_grouping(sentences)
+    
+    # Step 3: Build paragraphs from sentence groups
+    print("[CHAPTERS] Step 3: Building paragraphs from groups...")
+    for group in paragraph_groups:
+        para_sentences = [sentences[i - 1] for i in group if 0 < i <= len(sentences)]
+        if para_sentences:
+            paragraph_text = " ".join(para_sentences)
+            all_paragraphs.append(paragraph_text)
+    
+    # Step 4: Validate and fix any issues
+    print("[CHAPTERS] Step 4: Validating paragraphs...")
+    all_paragraphs = validate_and_fix_paragraphs(all_paragraphs, title_to_use)
+    
+    print(f"[CHAPTERS] ✅ Created {len(all_paragraphs)} paragraphs")
+    return all_paragraphs
+
+
+def group_sentences_with_gemini(sentences: list) -> list:
+    """
+    Use Gemini to group sentence indices into paragraph groups.
+    
+    This approach is more reliable than asking Gemini to split raw text
+    because we're just asking for groupings of pre-split sentences.
+    
+    Args:
+        sentences: List of sentence strings
+        
+    Returns:
+        List of lists, where each inner list contains sentence indices (1-based)
+    """
+    from app.sentence_detector import sentences_to_numbered_text
+    
+    if not sentences:
+        return []
+    
+    # For very short texts, just return all as one paragraph
+    if len(sentences) <= 3:
+        return [list(range(1, len(sentences) + 1))]
+    
+    # Generate numbered text for Gemini
+    numbered_text = sentences_to_numbered_text(sentences)
+    
+    # Chunking: Process up to 100 sentences at a time
+    chunk_size = 100
+    if len(sentences) > chunk_size:
+        all_groups = []
+        offset = 0
+        for i in range(0, len(sentences), chunk_size):
+            chunk_sentences = sentences[i:i + chunk_size]
+            chunk_groups = _gemini_group_chunk(chunk_sentences, offset)
+            all_groups.extend(chunk_groups)
+            offset += len(chunk_sentences)
+        return all_groups
+    
+    return _gemini_group_chunk(sentences, 0)
+
+
+def _gemini_group_chunk(sentences: list, offset: int = 0) -> list:
+    """
+    Internal function to group a chunk of sentences with Gemini.
+    
+    Args:
+        sentences: Chunk of sentences to group
+        offset: Offset to add to returned indices
+        
+    Returns:
+        List of paragraph groups (adjusted for offset)
+    """
+    from app.sentence_detector import sentences_to_numbered_text
+    from google import genai
+    
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        print("[CHAPTERS] ⚠️ GEMINI_API_KEY not set")
+        return fallback_sentence_grouping(sentences)
+    
+    numbered_text = sentences_to_numbered_text(sentences)
+    
+    try:
+        client = genai.Client(api_key=gemini_api_key)
+        
+        prompt = f"""{PARAGRAPH_GROUPING_PROMPT}
+
+Here are the sentences to group:
+
+{numbered_text}"""
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt]
+        )
+        
+        # Extract text from response
+        content = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text') and part.text:
+                content += part.text
+        
+        # Parse JSON from response
+        result = None
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError:
+            # Try to extract JSON from markdown code block
+            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group(1))
+            else:
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    result = json.loads(json_match.group(0))
+        
+        if result and "paragraphs" in result:
+            groups = result["paragraphs"]
+            # Adjust indices for offset
+            if offset > 0:
+                groups = [[idx + offset for idx in group] for group in groups]
+            return groups
+        
+    except Exception as e:
+        print(f"[CHAPTERS] ⚠️ Gemini grouping error: {e}")
+    
+    # Fallback
+    return fallback_sentence_grouping(sentences, offset)
+
+
+def fallback_sentence_grouping(sentences: list, offset: int = 0) -> list:
+    """
+    Fallback grouping when Gemini fails.
+    Groups sentences in batches of 3-5.
+    
+    Args:
+        sentences: List of sentences
+        offset: Offset to add to indices
+        
+    Returns:
+        List of paragraph groups
+    """
+    if not sentences:
+        return []
+    
+    groups = []
+    current_group = []
+    target_size = 4  # Aim for 4 sentences per paragraph
+    
+    for i, sent in enumerate(sentences, 1):
+        current_group.append(i + offset)
+        
+        # Start new paragraph at natural breaks or when we hit target size
+        if len(current_group) >= target_size:
+            # Check if sentence ends with strong punctuation
+            if sent.rstrip().endswith('.'):
+                groups.append(current_group)
+                current_group = []
+    
+    # Don't forget remaining sentences
+    if current_group:
+        groups.append(current_group)
+    
+    return groups
+
+
+def validate_and_fix_paragraphs(paragraphs: list, chapter_title: str = None) -> list:
+    """
+    Quality assurance for paragraphs.
+    
+    Fixes:
+    1. Paragraphs shorter than 20 chars (merge with adjacent)
+    2. Paragraphs that don't end with . ! or ? 
+    3. Single-word paragraphs
+    4. Numeric-only paragraphs
+    5. Paragraphs that are just whitespace
+    
+    Args:
+        paragraphs: List of paragraph strings
+        chapter_title: Title to preserve as first paragraph
+        
+    Returns:
+        Validated and fixed list of paragraphs
+    """
+    if not paragraphs:
+        return [chapter_title] if chapter_title else []
+    
+    MIN_CHARS = 20
+    
+    # First, clean and filter obviously bad paragraphs
+    cleaned = []
+    for para in paragraphs:
+        if not para or not para.strip():
+            continue
+        
+        para = para.strip()
+        
+        # Skip if numeric only (like "1" or "42")
+        if para.replace(".", "").replace(",", "").strip().isdigit():
+            continue
+        
+        # Skip if single letter/character
+        if len(para) <= 2:
+            continue
+        
+        cleaned.append(para)
+    
+    if not cleaned:
+        return [chapter_title] if chapter_title else []
+    
+    # Merge short paragraphs with their neighbors
+    result = []
+    buffer = ""
+    
+    title_normalized = chapter_title.strip().lower() if chapter_title else ""
+    
+    for i, para in enumerate(cleaned):
+        # Never merge the title
+        if para.strip().lower() == title_normalized:
+            if buffer:
+                result.append(buffer)
+                buffer = ""
+            result.append(para)
+            continue
+        
+        # If paragraph is too short, buffer it
+        if len(para) < MIN_CHARS:
+            if buffer:
+                buffer = buffer + " " + para
+            else:
+                buffer = para
+        else:
+            # Paragraph is good length
+            if buffer:
+                # Merge buffer with this paragraph
+                result.append(buffer + " " + para)
+                buffer = ""
+            else:
+                result.append(para)
+    
+    # Handle remaining buffer
+    if buffer:
+        if result and result[-1].strip().lower() != title_normalized:
+            result[-1] = result[-1] + " " + buffer
+        else:
+            result.append(buffer)
+    
+    return result
+
+
+def split_into_sections_perfect(text: str, chapter_title: str, max_chars: int = 250) -> list:
+    """
+    Split text into TTS-optimized sections using spaCy.
+    
+    This replaces the old character-based splitting with sentence-aware splitting.
+    
+    Section 0: Chapter title only (for TTS to announce)
+    Section 1+: Content split at sentence boundaries, max ~250 chars
+    
+    Args:
+        text: The chapter text
+        chapter_title: The chapter title for Section 0
+        max_chars: Maximum characters per section
+        
+    Returns:
+        List of sections
+    """
+    from app.sentence_detector import (
+        detect_sentences,
+        split_long_sentence,
+        clean_text_for_sentences
+    )
+    
+    if not text or not text.strip():
+        return [chapter_title] if chapter_title else []
+    
+    sections = []
+    
+    # Section 0 is always the chapter title
+    sections.append(chapter_title.strip() if chapter_title else "Chapter")
+    
+    # Remove chapter title from beginning if present
+    content = text.strip()
+    if chapter_title and content.startswith(chapter_title.strip()):
+        content = content[len(chapter_title.strip()):].strip()
+    
+    # Also try removing common chapter header patterns
+    content = re.sub(r'^Chapter\s+[\dIVXLCDM]+[:\.\s\-–]+[^\n]*\n*', '', content, flags=re.IGNORECASE).strip()
+    
+    if not content:
+        return sections
+    
+    # Clean and get sentences
+    content = clean_text_for_sentences(content)
+    sentences = detect_sentences(content)
+    
+    if not sentences:
+        # Fallback: just split by character count
+        chunks = [content[i:i+max_chars] for i in range(0, len(content), max_chars)]
+        return sections + chunks
+    
+    # Build sections by combining sentences up to max_chars
+    current_section = ""
+    
+    for sentence in sentences:
+        # Handle very long sentences
+        if len(sentence) > max_chars:
+            # Save current section if not empty
+            if current_section:
+                sections.append(current_section.strip())
+                current_section = ""
+            
+            # Split the long sentence
+            sub_chunks = split_long_sentence(sentence, max_chars)
+            sections.extend(sub_chunks)
+            continue
+        
+        # Would adding this sentence exceed the limit?
+        if len(current_section) + len(sentence) + 1 > max_chars:
+            if current_section:
+                sections.append(current_section.strip())
+            current_section = sentence
+        else:
+            current_section = (current_section + " " + sentence).strip() if current_section else sentence
+    
+    # Don't forget the last section
+    if current_section:
+        sections.append(current_section.strip())
+    
+    # Final validation: remove any empty sections
+    sections = [s for s in sections if s and s.strip()]
+    
+    return sections

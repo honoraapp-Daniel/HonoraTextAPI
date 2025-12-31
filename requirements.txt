@@ -7,3 +7,4 @@ supabase
 Pillow
 requests
 google-genai>=0.5.0
+spacy>=3.7.0

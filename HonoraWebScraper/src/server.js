@@ -141,16 +141,29 @@ app.post('/api/download/book', async (req, res) => {
 
     try {
         sendLog(`Starter download af bog: ${requestedTitle || url}`);
-        const { title: scrapedTitle, html } = await scrapeFullBook(url, (current, total, chapterTitle) => {
+        const { title: scrapedTitle, html, jsonData } = await scrapeFullBook(url, (current, total, chapterTitle) => {
             sendProgress(current, total, chapterTitle);
         });
 
         const finalTitle = requestedTitle || scrapedTitle;
+
+        // Save PDF
         sendLog(`Genererer PDF for: ${finalTitle}`);
         const pdfPath = await bookToPdf(html, finalTitle, categoryName || 'Uncategorized');
 
-        sendLog(`Færdig! PDF gemt i ${pdfPath}`, 'success');
-        broadcast('complete', { title: finalTitle, path: pdfPath });
+        // Save JSON file for pipeline
+        const safeTitle = sanitizeFilename(finalTitle);
+        const safeCategory = sanitizeFilename(categoryName || 'Uncategorized');
+        const jsonDir = path.resolve(config.outputDir, safeCategory);
+        if (!fs.existsSync(jsonDir)) {
+            fs.mkdirSync(jsonDir, { recursive: true });
+        }
+        const jsonPath = path.join(jsonDir, `${safeTitle}.json`);
+        fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2), 'utf8');
+        console.log(`  ✅ JSON gemt: ${jsonPath}`);
+
+        sendLog(`Færdig! PDF gemt i ${pdfPath}, JSON gemt i ${jsonPath}`, 'success');
+        broadcast('complete', { title: finalTitle, pdfPath, jsonPath });
     } catch (error) {
         sendLog(`Fejl ved download: ${error.message}`, 'error');
     }
