@@ -18,7 +18,7 @@ from typing import Optional
 
 # Import existing modules
 from app.marker import extract_pdf_to_markdown, parse_chapters_from_markdown, extract_chapter_text
-from app.metadata import extract_book_metadata
+from app.metadata import extract_book_metadata, generate_synopsis_and_category
 from app.cover_art import generate_cover_image, update_book_cover_url
 from app.chapters import (
     split_into_paragraphs_gpt,
@@ -239,10 +239,22 @@ async def phase_metadata(job_id: str) -> dict:
         
         metadata = None
         
-        # For JSON files, use metadata directly
+        # For JSON files, use metadata directly + generate synopsis/category
         if state.get("file_type") == "json" and state.get("json_data"):
             json_data = state["json_data"]
             print(f"[PIPELINE_V2] Using metadata from JSON: {json_data.get('title')}")
+            
+            # Generate synopsis and category from chapter content
+            print("[PIPELINE_V2] Generating synopsis and category from chapter content...")
+            chapter_sample = "\n\n".join([
+                ch.get("content", "")[:2000] 
+                for ch in json_data.get("chapters", [])[:3]
+            ])
+            source_url = json_data.get("sourceUrl")
+            
+            generated = generate_synopsis_and_category(chapter_sample, source_url)
+            print(f"[PIPELINE_V2] Generated: category='{generated.get('category')}', synopsis length={len(generated.get('synopsis') or '')}")
+            
             metadata = {
                 "title": json_data.get("title", "Unknown"),
                 "author": json_data.get("author", "Unknown"),
@@ -250,9 +262,10 @@ async def phase_metadata(job_id: str) -> dict:
                 "publisher": json_data.get("publisher", None),
                 "language": "English",
                 "original_language": "English",
-                "category": "Spirituality & Religion",  # Default for sacred-texts books
-                "synopsis": None,
-                "book_of_the_day_quote": None
+                "category": generated.get("category", "Spirituality & Religion"),
+                "subcategory": generated.get("subcategory"),
+                "synopsis": generated.get("synopsis"),
+                "book_of_the_day_quote": generated.get("book_of_the_day_quote")
             }
         
         # For PDF files, use GPT extraction
