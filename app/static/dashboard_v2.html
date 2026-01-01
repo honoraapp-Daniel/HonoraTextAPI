@@ -668,6 +668,30 @@
             <label>Category</label>
             <input type="text" id="meta-category" />
           </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="field">
+              <label>Publisher</label>
+              <input type="text" id="meta-publisher" placeholder="Optional" />
+            </div>
+            <div class="field">
+              <label>Publication Year</label>
+              <input type="number" id="meta-year" placeholder="Optional" />
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="field">
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="meta-translated" style="width: auto; height: auto;" />
+                <span>Translated</span>
+              </label>
+            </div>
+            <div class="field">
+              <label style="display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="meta-explicit" style="width: auto; height: auto;" />
+                <span>Explicit Content</span>
+              </label>
+            </div>
+          </div>
           <div class="field">
             <label>Synopsis</label>
             <textarea id="meta-synopsis"></textarea>
@@ -872,14 +896,23 @@
         document.getElementById('meta-language').value = meta.language || '';
         document.getElementById('meta-category').value = meta.category || '';
         document.getElementById('meta-synopsis').value = meta.synopsis || '';
+        document.getElementById('meta-publisher').value = meta.publisher || '';
+        document.getElementById('meta-year').value = meta.publishing_year || '';
+        document.getElementById('meta-translated').checked = meta.translated || false;
+        document.getElementById('meta-explicit').checked = meta.explicit || false;
 
         const coverUrl = metaData.cover_urls?.cover_art_url;
         const coverPreview = document.getElementById('cover-img');
         const coverUrlText = document.getElementById('cover-url');
         
-        if (coverUrl && coverUrl !== 'null' && coverUrl !== null) {
+        if (coverUrl && coverUrl !== 'null' && coverUrl !== null && coverUrl !== '') {
           coverPreview.src = coverUrl;
           coverPreview.style.display = 'block';
+          coverPreview.onerror = function() {
+            console.error('Cover image failed to load:', coverUrl);
+            coverPreview.style.display = 'none';
+            coverUrlText.textContent = '⚠️ Cover art generation failed or image unavailable';
+          };
           // Don't show base64 URLs, just a friendly message
           const displayUrl = coverUrl.startsWith('data:') 
             ? '✅ Generated via DALL-E 3' 
@@ -900,12 +933,39 @@
 
     // Approve metadata and detect chapters
     document.getElementById('approve-metadata-btn').addEventListener('click', async () => {
-      setActivePhase('chapters');
-      progressSection.classList.remove('hidden');
-      currentPhase.textContent = 'Detecting chapters...';
-      progressFill.style.width = '55%';
-
       try {
+        // First, save the edited metadata
+        const updatedMetadata = {
+          title: document.getElementById('meta-title').value,
+          author: document.getElementById('meta-author').value,
+          language: document.getElementById('meta-language').value,
+          category: document.getElementById('meta-category').value,
+          synopsis: document.getElementById('meta-synopsis').value,
+          publisher: document.getElementById('meta-publisher').value || null,
+          publishing_year: document.getElementById('meta-year').value ? parseInt(document.getElementById('meta-year').value) : null,
+          translated: document.getElementById('meta-translated').checked,
+          explicit: document.getElementById('meta-explicit').checked
+        };
+        
+        console.log('Saving metadata edits:', updatedMetadata);
+        
+        const saveRes = await fetch(`/v2/job/${jobId}/metadata`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedMetadata)
+        });
+        
+        const saveData = await saveRes.json();
+        if (!saveRes.ok) throw new Error(saveData.error || 'Failed to save metadata');
+        
+        console.log('Metadata saved successfully');
+        
+        // Now detect chapters
+        setActivePhase('chapters');
+        progressSection.classList.remove('hidden');
+        currentPhase.textContent = 'Detecting chapters...';
+        progressFill.style.width = '55%';
+        
         const res = await fetch(`/v2/job/${jobId}/detect-chapters`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Chapter detection failed');
@@ -923,6 +983,7 @@
       } catch (err) {
         console.error(err);
         currentPhase.textContent = `Error: ${err.message}`;
+        alert('Error: ' + err.message);
       }
     });
 

@@ -269,7 +269,9 @@ async def phase_metadata(job_id: str) -> dict:
                 "category": generated.get("category", "Spirituality & Religion"),
                 "subcategory": generated.get("subcategory"),
                 "synopsis": generated.get("synopsis"),
-                "book_of_the_day_quote": generated.get("book_of_the_day_quote")
+                "book_of_the_day_quote": generated.get("book_of_the_day_quote"),
+                "translated": False,
+                "explicit": False
             }
         
         # For PDF files, use GPT extraction

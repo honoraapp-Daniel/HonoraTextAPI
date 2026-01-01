@@ -1190,6 +1190,62 @@ async def v2_extract_metadata(job_id: str):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.put("/v2/job/{job_id}/metadata", tags=["Pipeline V2"])
+async def v2_update_metadata(job_id: str, payload: dict):
+    """
+    Update metadata with user edits from dashboard.
+    This ensures dashboard edits are persisted and sent to Supabase.
+    
+    payload: {
+        "title": "Book Title",
+        "author": "Author Name",
+        "language": "English",
+        "category": "...",
+        "synopsis": "...",
+        "publisher": "...",
+        "publishing_year": 1925,
+        "translated": false,
+        "explicit": false
+    }
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    # Update metadata in job state
+    metadata = state.get("metadata", {})
+    
+    # Update all fields that are provided
+    if "title" in payload:
+        metadata["title"] = payload["title"]
+    if "author" in payload:
+        metadata["author"] = payload["author"]
+    if "language" in payload:
+        metadata["language"] = payload["language"]
+    if "category" in payload:
+        metadata["category"] = payload["category"]
+    if "synopsis" in payload:
+        metadata["synopsis"] = payload["synopsis"]
+    if "publisher" in payload:
+        metadata["publisher"] = payload["publisher"]
+    if "publishing_year" in payload:
+        metadata["publishing_year"] = payload["publishing_year"]
+    if "translated" in payload:
+        metadata["translated"] = payload["translated"]
+    if "explicit" in payload:
+        metadata["explicit"] = payload["explicit"]
+    
+    state["metadata"] = metadata
+    
+    from app.pipeline_v2 import save_job_state
+    save_job_state(job_id, state)
+    
+    return {
+        "status": "updated",
+        "metadata": metadata
+    }
+
+
 @app.post("/v2/job/{job_id}/detect-chapters", tags=["Pipeline V2"])
 async def v2_detect_chapters(job_id: str):
     """

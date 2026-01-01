@@ -93,6 +93,7 @@ def extract_json_from_text(text: str) -> dict:
 def extract_book_metadata(first_pages_text: str) -> dict:
     """
     Uses GPT to extract comprehensive metadata from the first pages of a book.
+    Falls back to Gemini for any fields that return as "Unknown".
     
     Args:
         first_pages_text: Combined text from the first few pages of the PDF
@@ -121,19 +122,112 @@ Return JSON with all metadata fields.
     result = extract_json_from_text(content)
     
     if result:
-        return {
+        metadata = {
             "title": result.get("title") or "Unknown",
             "author": result.get("author") or "Unknown",
-            "language": result.get("language") or "en",
+            "language": result.get("language") or "English",
             "original_language": result.get("original_language"),
             "publisher": result.get("publisher"),
             "publishing_year": result.get("publishing_year"),
             "synopsis": result.get("synopsis"),
             "book_of_the_day_quote": result.get("book_of_the_day_quote"),
-            "category": result.get("category")
+            "category": result.get("category"),
+            "translated": False,
+            "explicit": False
         }
+        
+        # Use Gemini fallback for any "Unknown" fields
+        if metadata["title"] == "Unknown" or metadata["author"] == "Unknown":
+            print("[METADATA] GPT returned 'Unknown' for title/author - trying Gemini fallback...")
+            gemini_metadata = extract_metadata_with_gemini(first_pages_text)
+            
+            if gemini_metadata:
+                if metadata["title"] == "Unknown" and gemini_metadata.get("title"):
+                    metadata["title"] = gemini_metadata["title"]
+                    print(f"[METADATA] ✅ Gemini found title: {metadata['title']}")
+                
+                if metadata["author"] == "Unknown" and gemini_metadata.get("author"):
+                    metadata["author"] = gemini_metadata["author"]
+                    print(f"[METADATA] ✅ Gemini found author: {metadata['author']}")
+                
+                # Fill in other missing fields
+                if not metadata.get("publisher") and gemini_metadata.get("publisher"):
+                    metadata["publisher"] = gemini_metadata["publisher"]
+                
+                if not metadata.get("publishing_year") and gemini_metadata.get("publishing_year"):
+                    metadata["publishing_year"] = gemini_metadata["publishing_year"]
+        
+        return metadata
     
-    return {"title": "Unknown", "author": "Unknown", "language": "en"}
+    # If GPT fails completely, try Gemini
+    print("[METADATA] GPT failed to extract - using Gemini fallback...")
+    gemini_metadata = extract_metadata_with_gemini(first_pages_text)
+    if gemini_metadata:
+        return gemini_metadata
+    
+    return {
+        "title": "Unknown", 
+        "author": "Unknown", 
+        "language": "English",
+        "translated": False,
+        "explicit": False
+    }
+
+
+def extract_metadata_with_gemini(first_pages_text: str) -> dict:
+    """
+    Fallback metadata extraction using Gemini when GPT returns "Unknown".
+    
+    Args:
+        first_pages_text: Text from first pages of the book
+        
+    Returns:
+        dict with metadata fields
+    """
+    try:
+        client = get_gemini()
+        
+        prompt = f"""
+{METADATA_SYSTEM_PROMPT}
+
+Extract metadata from this book text:
+
+{first_pages_text[:8000]}
+
+Return ONLY valid JSON with all metadata fields.
+"""
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt]
+        )
+        
+        # Extract text from response
+        content = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text') and part.text:
+                content += part.text
+        
+        result = extract_json_from_text(content)
+        
+        if result:
+            return {
+                "title": result.get("title") or "Unknown",
+                "author": result.get("author") or "Unknown",
+                "language": result.get("language") or "English",
+                "original_language": result.get("original_language"),
+                "publisher": result.get("publisher"),
+                "publishing_year": result.get("publishing_year"),
+                "synopsis": result.get("synopsis"),
+                "book_of_the_day_quote": result.get("book_of_the_day_quote"),
+                "category": result.get("category"),
+                "translated": False,
+                "explicit": False
+            }
+    except Exception as e:
+        print(f"[METADATA] Gemini fallback failed: {e}")
+    
+    return None
 
 
 # URL path to category mapping for sacred-texts.com
