@@ -8,26 +8,30 @@ import json
 import time
 import requests
 from flask import Flask, render_template, request, jsonify, Response
-from supabase import create_client
 from functools import wraps
 
 app = Flask(__name__)
 
-# Environment variables
+# Environment variables - normalize URL (remove trailing slash for consistency)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY", "")
 RUNPOD_ENDPOINT_ID = os.getenv("RUNPOD_ENDPOINT_ID", "")
 
-# Supabase client
+# Supabase client - lazy initialization
 _supabase = None
 
 def get_supabase():
     global _supabase
     if _supabase is None:
         if not SUPABASE_URL or not SUPABASE_KEY:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-        _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            return None  # Return None instead of raising to avoid crashes
+        try:
+            from supabase import create_client
+            _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception as e:
+            print(f"Supabase init error: {e}")
+            return None
     return _supabase
 
 
