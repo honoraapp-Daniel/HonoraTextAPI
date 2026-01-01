@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honora Mini TTS Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="card">
+            <h1>Honora Mini TTS Engine</h1>
+
+            <!-- Progress Stepper -->
+            <div class="stepper">
+                <div class="step active" id="step1">1</div>
+                <div class="step" id="step2">2</div>
+                <div class="step" id="step3">3</div>
+            </div>
+
+            <!-- Step 1: Voice Upload -->
+            <div class="section active" id="section1">
+                <h2>1. Upload Voice Model</h2>
+                <div class="file-upload">
+                    <label for="voiceFile" class="btn-upload">Choose Voice File (.wav)</label>
+                    <input type="file" id="voiceFile" accept=".wav"
+                        onchange="handleFileSelect(this, 'voiceName', 'clearVoice')">
+                    <span class="file-name" id="voiceName">No file chosen</span>
+                    <button class="btn-clear" id="clearVoice"
+                        onclick="clearFile('voiceFile', 'voiceName', 'clearVoice', 'btnUploadVoice')"
+                        style="display: none;">✕</button>
+                </div>
+                <button class="btn-primary" onclick="uploadVoice()" id="btnUploadVoice" disabled>Upload Voice</button>
+                <div id="voiceStatus" class="status"></div>
+            </div>
+
+            <!-- Step 2: Book Upload -->
+            <div class="section" id="section2">
+                <h2>2. Upload Book Text</h2>
+                <div class="file-upload">
+                    <label for="bookFile" class="btn-upload">Choose Book File (.txt or .zip)</label>
+                    <input type="file" id="bookFile" accept=".txt,.zip"
+                        onchange="handleFileSelect(this, 'bookName', 'clearBook')">
+                    <span class="file-name" id="bookName">No file chosen</span>
+                    <button class="btn-clear" id="clearBook"
+                        onclick="clearFile('bookFile', 'bookName', 'clearBook', 'btnUploadBook')"
+                        style="display: none;">✕</button>
+                </div>
+                <button class="btn-primary" onclick="uploadBook()" id="btnUploadBook" disabled>Upload Book</button>
+                <div id="bookStatus" class="status"></div>
+            </div>
+
+            <!-- Step 3: Generate -->
+            <div class="section" id="section3">
+                <h2>3. Generate Audiobook</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+                    Ready to generate. This process might take a while depending on the text length.
+                </p>
+
+                <form id="generateForm" method="POST" action="/generate" style="width: 100%;">
+                    <!-- Model Selection -->
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="font-size: 1rem; margin-bottom: 10px; color: var(--text);">Voice Model:</h3>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="model" value="clone" checked style="margin-right: 8px;">
+                                <span>Clone voice (6s reference)</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="radio" name="model" value="own" style="margin-right: 8px;">
+                                <span>My trained voice (Frederick)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary" id="btnGenerate">Start Generation</button>
+                </form>
+                <div id="genStatus" class="status"></div>
+
+                <!-- Progress Bar -->
+                <div id="progressContainer" class="progress-container" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                        <div class="progress-text" id="progressText">Processing...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State management
+        let currentStep = 1;
+
+        function handleFileSelect(input, nameId, clearBtnId) {
+            const fileName = input.files[0] ? input.files[0].name : "No file chosen";
+            document.getElementById(nameId).textContent = fileName;
+
+            const hasFile = !!input.files[0];
+
+            // Toggle clear button
+            document.getElementById(clearBtnId).style.display = hasFile ? 'inline-block' : 'none';
+
+            // Enable upload button if file is selected
+            if (input.id === 'voiceFile') {
+                document.getElementById('btnUploadVoice').disabled = !hasFile;
+            } else if (input.id === 'bookFile') {
+                document.getElementById('btnUploadBook').disabled = !hasFile;
+            }
+        }
+
+        function clearFile(inputId, nameId, clearBtnId, uploadBtnId) {
+            const input = document.getElementById(inputId);
+            input.value = ""; // Clear input
+
+            document.getElementById(nameId).textContent = "No file chosen";
+            document.getElementById(clearBtnId).style.display = 'none';
+            document.getElementById(uploadBtnId).disabled = true;
+        }
+
+        function updateStepper(step) {
+            // Update step circles
+            for (let i = 1; i <= 3; i++) {
+                const stepEl = document.getElementById(`step${i}`);
+                if (i < step) {
+                    stepEl.classList.add('completed');
+                    stepEl.classList.remove('active');
+                    stepEl.innerHTML = '✓';
+                } else if (i === step) {
+                    stepEl.classList.add('active');
+                    stepEl.classList.remove('completed');
+                    stepEl.innerHTML = i;
+                } else {
+                    stepEl.classList.remove('active', 'completed');
+                    stepEl.innerHTML = i;
+                }
+            }
+
+            // Update sections
+            for (let i = 1; i <= 3; i++) {
+                const sectionEl = document.getElementById(`section${i}`);
+                if (i === step) {
+                    sectionEl.classList.add('active');
+                } else {
+                    sectionEl.classList.remove('active');
+                }
+            }
+
+            currentStep = step;
+        }
+
+        function uploadVoice() {
+            let file = document.getElementById("voiceFile").files[0];
+            if (!file) return;
+
+            let btn = document.getElementById("btnUploadVoice");
+            let status = document.getElementById("voiceStatus");
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loader"></span>Uploading...';
+
+            let formData = new FormData();
+            formData.append("voice_file", file);
+
+            fetch("/upload_voice", {
+                method: "POST",
+                body: formData
+            })
+                .then(res => res.text())
+                .then(msg => {
+                    status.innerHTML = msg;
+                    status.className = "status success";
+                    btn.innerHTML = "Upload Voice";
+
+                    // Move to next step after short delay
+                    setTimeout(() => {
+                        updateStepper(2);
+                    }, 500);
+                })
+                .catch(err => {
+                    status.innerHTML = "Upload failed.";
+                    status.className = "status error";
+                    btn.disabled = false;
+                    btn.innerHTML = "Upload Voice";
+                });
+        }
+
+        function uploadBook() {
+            let file = document.getElementById("bookFile").files[0];
+            if (!file) return;
+
+            let btn = document.getElementById("btnUploadBook");
+            let status = document.getElementById("bookStatus");
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loader"></span>Uploading...';
+
+            let formData = new FormData();
+            formData.append("book_file", file);
+
+            fetch("/upload_book", {
+                method: "POST",
+                body: formData
+            })
+                .then(res => res.text())
+                .then(msg => {
+                    status.innerHTML = msg;
+                    status.className = "status success";
+                    btn.innerHTML = "Upload Book";
+
+                    // Move to next step after short delay
+                    setTimeout(() => {
+                        updateStepper(3);
+                    }, 500);
+                })
+                .catch(err => {
+                    status.innerHTML = "Upload failed.";
+                    status.className = "status error";
+                    btn.disabled = false;
+                    btn.innerHTML = "Upload Book";
+                });
+        }
+
+        // Intercept form submission
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('generateForm').addEventListener('submit', function (e) {
+                e.preventDefault();
+                generateAudio();
+            });
+        });
+
+        function generateAudio() {
+            let btn = document.getElementById("btnGenerate");
+            let status = document.getElementById("genStatus");
+            let progressContainer = document.getElementById("progressContainer");
+            let progressFill = document.getElementById("progressFill");
+            let progressText = document.getElementById("progressText");
+
+            // Get selected model
+            const formData = new FormData(document.getElementById("generateForm"));
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loader"></span>Generating...';
+            status.innerHTML = "This may take a few minutes...";
+            status.className = "status";
+
+            // Show progress bar
+            progressContainer.style.display = "block";
+
+            // Connect to SSE for progress updates
+            const eventSource = new EventSource("/progress");
+
+            eventSource.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+
+                if (data.total > 0) {
+                    const percent = Math.round((data.current / data.total) * 100);
+                    progressFill.style.width = percent + "%";
+
+                    // Include model info in progress text
+                    const modelName = data.model === "own" ? "Frederick" : "Clone";
+                    progressText.textContent = `[${modelName}] Processing ${data.current} of ${data.total}: ${data.filename}`;
+                }
+
+                if (data.status === "complete") {
+                    eventSource.close();
+                }
+            };
+
+            fetch("/generate", {
+                method: "POST",
+                body: formData
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error("Generation failed");
+
+                    // Get the filename from Content-Disposition header or use default
+                    const contentDisposition = res.headers.get('Content-Disposition');
+                    let filename = "audiobook.wav";
+
+                    if (contentDisposition) {
+                        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                        if (filenameMatch && filenameMatch[1]) {
+                            filename = filenameMatch[1].replace(/['"]/g, '');
+                        }
+                    }
+
+                    return res.blob().then(blob => ({ blob, filename }));
+                })
+                .then(({ blob, filename }) => {
+                    let url = window.URL.createObjectURL(blob);
+                    let a = document.createElement("a");
+                    a.href = url;
+                    a.download = filename;
+                    a.click();
+
+                    status.innerHTML = "Audiobook generated successfully!";
+                    status.className = "status success";
+                    btn.innerHTML = "Start Generation";
+                    btn.disabled = false;
+
+                    // Hide progress bar
+                    setTimeout(() => {
+                        progressContainer.style.display = "none";
+                    }, 2000);
+                })
+                .catch(err => {
+                    status.innerHTML = "Error: " + err;
+                    status.className = "status error";
+                    btn.innerHTML = "Start Generation";
+                    btn.disabled = false;
+                    progressContainer.style.display = "none";
+                    eventSource.close();
+                });
+        }
+    </script>
+
+</body>
+
+</html>

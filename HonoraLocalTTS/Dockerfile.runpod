@@ -1,0 +1,26 @@
+# RunPod GPU Worker Dockerfile
+# XTTS v2 with CUDA support
+
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+
+WORKDIR /app
+
+# System dependencies for audio
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements_runpod.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download XTTS model (faster cold starts)
+RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || true
+
+# Copy handler
+COPY runpod_handler.py /handler.py
+
+# Run handler
+CMD ["python", "-u", "/handler.py"]

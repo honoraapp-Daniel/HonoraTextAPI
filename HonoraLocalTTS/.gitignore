@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Audio/Media files (too large for git)
+*.wav
+*.mp3
+*.zip
+*.mp4
+
+# Training data
+train_dataset/
+train_output/
+train_uploads/
+training_data/
+voice_train_fred copy/
+
+# Uploads and outputs
+uploads/
+output/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Temp files
+~$*

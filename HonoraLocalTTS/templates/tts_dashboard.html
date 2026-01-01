@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Honora TTS Dashboard</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap');
+
+        :root {
+            --bg: #0c0f16;
+            --panel: rgba(20, 24, 34, 0.8);
+            --panel-strong: rgba(32, 38, 52, 0.9);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #e8ecf8;
+            --muted: #9aa4bd;
+            --accent: #7dd3fc;
+            --accent-2: #a855f7;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --error: #f87171;
+            --shadow: 0 25px 80px rgba(0, 0, 0, 0.35);
+            --radius: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 20%, rgba(125, 211, 252, 0.08), transparent 25%),
+                radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.1), transparent 30%),
+                linear-gradient(135deg, #0b1020, #0c0f16 40%, #0b1121 80%);
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            padding: 32px 16px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        .hero {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            margin-bottom: 16px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: linear-gradient(120deg, rgba(125, 211, 252, 0.15), rgba(168, 85, 247, 0.15));
+            border: 1px solid var(--border);
+            font-size: 12px;
+        }
+
+        h1 {
+            margin: 12px 0 8px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 320px 1fr 400px;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--panel-strong);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+
+        select,
+        input[type="file"] {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        select option {
+            background: #1a1f2e;
+        }
+
+        button {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s;
+        }
+
+        button.primary {
+            background: linear-gradient(120deg, var(--accent), var(--accent-2));
+            color: #0b1020;
+        }
+
+        button.primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        button.primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        button.success {
+            background: var(--success);
+            color: #0b1020;
+        }
+
+        button.warning {
+            background: var(--warning);
+            color: #0b1020;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .chapter-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .chapter-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .chapter-item:hover {
+            border-color: var(--accent);
+        }
+
+        .chapter-item.selected {
+            border-color: var(--accent);
+            background: rgba(125, 211, 252, 0.1);
+        }
+
+        .chapter-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+        }
+
+        .chapter-item.complete .chapter-status {
+            background: var(--success);
+        }
+
+        .chapter-item.partial .chapter-status {
+            background: var(--warning);
+        }
+
+        .chapter-item.processing .chapter-status {
+            background: var(--accent);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .chapter-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chapter-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .chapter-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .section-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .section-item {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .section-item.has-audio {
+            border-color: var(--success);
+        }
+
+        .section-item.title {
+            border-color: var(--accent);
+            background: rgba(125, 211, 252, 0.1);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .section-index {
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--accent);
+        }
+
+        .section-chars {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        .section-text {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text);
+            max-height: 60px;
+            overflow: hidden;
+        }
+
+        .section-audio {
+            margin-top: 8px;
+        }
+
+        .section-audio audio {
+            width: 100%;
+            height: 32px;
+        }
+
+        .progress-container {
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            transition: width 0.3s;
+        }
+
+        .log {
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--muted);
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .upload-box {
+            border: 2px dashed rgba(255, 255, 255, 0.18);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 12px;
+        }
+
+        .upload-box:hover {
+            border-color: var(--accent);
+            background: rgba(125, 211, 252, 0.05);
+        }
+
+        .upload-box input {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <!-- Hero -->
+        <section class="hero">
+            <span class="badge">🎙️ TTS Dashboard · RunPod GPU</span>
+            <h1>Honora Audio Generator</h1>
+            <p class="muted">Generate audiobook audio from Supabase sections using XTTS v2 on RunPod Serverless.</p>
+        </section>
+
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Left: Controls -->
+            <div class="card">
+                <h2>📚 Select Book</h2>
+                <select id="book-select">
+                    <option value="">Loading books...</option>
+                </select>
+
+                <h2 style="margin-top: 16px;">🎤 Voice Reference</h2>
+                <select id="voice-select">
+                    <option value="">Select voice...</option>
+                </select>
+
+                <label class="upload-box" id="voice-upload">
+                    <input type="file" id="voice-file" accept=".wav">
+                    <div>📂 Upload new voice (.wav)</div>
+                </label>
+
+                <h2 style="margin-top: 16px;">🎚️ Test Controls</h2>
+                <div class="btn-group">
+                    <button class="secondary" id="test-1-btn">Test 1</button>
+                    <button class="secondary" id="test-3-btn">Test 3</button>
+                    <button class="primary" id="chapter-btn" disabled>Full Chapter</button>
+                </div>
+
+                <div class="btn-group" style="margin-top: 8px;">
+                    <button class="success" id="book-btn" disabled>📖 Full Book</button>
+                </div>
+
+                <!-- Progress -->
+                <div class="progress-container" id="progress-container">
+                    <div class="muted">Processing...</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div id="progress-text" class="muted">0 / 0 sections</div>
+                    <div class="log" id="log"></div>
+                </div>
+            </div>
+
+            <!-- Middle: Chapters -->
+            <div class="card">
+                <h2>📖 Chapters</h2>
+                <div id="chapters-summary" class="muted" style="margin-bottom: 12px;">Select a book</div>
+                <div class="chapter-list" id="chapter-list"></div>
+            </div>
+
+            <!-- Right: Sections -->
+            <div class="card">
+                <h2>📝 Sections</h2>
+                <div id="sections-summary" class="muted" style="margin-bottom: 12px;">Select a chapter</div>
+                <div class="section-list" id="section-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let selectedBook = null;
+        let selectedChapter = null;
+        let selectedVoice = null;
+        let chapters = [];
+        let sections = [];
+        let currentJobId = null;
+
+        // Elements
+        const bookSelect = document.getElementById('book-select');
+        const voiceSelect = document.getElementById('voice-select');
+        const voiceFile = document.getElementById('voice-file');
+        const chapterList = document.getElementById('chapter-list');
+        const sectionList = document.getElementById('section-list');
+        const chaptersSummary = document.getElementById('chapters-summary');
+        const sectionsSummary = document.getElementById('sections-summary');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const progressText = document.getElementById('progress-text');
+        const logDiv = document.getElementById('log');
+
+        // Load books on start
+        async function loadBooks() {
+            try {
+                const res = await fetch('/api/books');
+                const books = await res.json();
+                bookSelect.innerHTML = '<option value="">Select a book...</option>' +
+                    books.map(b => `<option value="${b.id}">${b.title} - ${b.author || 'Unknown'}</option>`).join('');
+            } catch (e) {
+                bookSelect.innerHTML = '<option value="">Error loading books</option>';
+            }
+        }
+
+        // Load voices
+        async function loadVoices() {
+            try {
+                const res = await fetch('/api/voices');
+                const data = await res.json();
+                const voices = data.voices || data;
+                if (voices.length > 0) {
+                    voiceSelect.innerHTML = voices.map(v =>
+                        `<option value="${v.url}">${v.name}</option>`
+                    ).join('');
+                    selectedVoice = voices[0].url;
+                } else {
+                    voiceSelect.innerHTML = '<option value="">No voices - upload one</option>';
+                }
+            } catch (e) {
+                voiceSelect.innerHTML = '<option value="">Upload a voice file</option>';
+            }
+        }
+
+        // Load chapters for book
+        async function loadChapters(bookId) {
+            try {
+                const res = await fetch(`/api/books/${bookId}/chapters`);
+                chapters = await res.json();
+
+                const totalSections = chapters.reduce((a, c) => a + (c.section_count || 0), 0);
+                const totalAudio = chapters.reduce((a, c) => a + (c.audio_count || 0), 0);
+                chaptersSummary.textContent = `${chapters.length} chapters · ${totalAudio}/${totalSections} audio generated`;
+
+                chapterList.innerHTML = chapters.map(ch => {
+                    const status = ch.audio_count === ch.section_count && ch.section_count > 0 ? 'complete' :
+                        ch.audio_count > 0 ? 'partial' : '';
+                    return `
+            <div class="chapter-item ${status}" data-id="${ch.id}">
+              <div class="chapter-status"></div>
+              <div class="chapter-info">
+                <div class="chapter-title">${ch.title || `Chapter ${ch.chapter_index}`}</div>
+                <div class="chapter-meta">${ch.audio_count || 0}/${ch.section_count || 0} sections</div>
+              </div>
+            </div>
+          `;
+                }).join('');
+
+                // Add click handlers
+                document.querySelectorAll('.chapter-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        document.querySelectorAll('.chapter-item').forEach(e => e.classList.remove('selected'));
+                        el.classList.add('selected');
+                        loadSections(el.dataset.id);
+                    });
+                });
+
+                document.getElementById('book-btn').disabled = false;
+            } catch (e) {
+                chapterList.innerHTML = '<div class="muted">Error loading chapters</div>';
+            }
+        }
+
+        // Load sections for chapter
+        async function loadSections(chapterId) {
+            selectedChapter = chapterId;
+            try {
+                const res = await fetch(`/api/chapters/${chapterId}/sections`);
+                sections = await res.json();
+
+                const withAudio = sections.filter(s => s.audio_url).length;
+                sectionsSummary.textContent = `${sections.length} sections · ${withAudio} with audio`;
+
+                sectionList.innerHTML = sections.map((s, i) => `
+          <div class="section-item ${s.audio_url ? 'has-audio' : ''} ${i === 0 ? 'title' : ''}">
+            <div class="section-header">
+              <span class="section-index">${i === 0 ? '🎬 Title' : `Section ${s.section_index}`}</span>
+              <span class="section-chars">${(s.text_ref || '').length} chars</span>
+            </div>
+            <div class="section-text">${s.text_ref || ''}</div>
+            ${s.audio_url ? `
+              <div class="section-audio">
+                <audio controls src="${s.audio_url}"></audio>
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
+
+                document.getElementById('chapter-btn').disabled = false;
+            } catch (e) {
+                sectionList.innerHTML = '<div class="muted">Error loading sections</div>';
+            }
+        }
+
+        // Start TTS job
+        async function startTTS(sectionIds) {
+            if (!selectedVoice) {
+                alert('Please select or upload a voice first');
+                return;
+            }
+
+            try {
+                progressContainer.classList.add('active');
+                progressFill.style.width = '0%';
+                progressText.textContent = `Starting job for ${sectionIds.length} sections...`;
+                logDiv.textContent = '';
+
+                const res = await fetch('/api/tts/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ section_ids: sectionIds, voice_url: selectedVoice })
+                });
+
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                currentJobId = data.job_id;
+                log(`Job started: ${currentJobId}`);
+                pollStatus();
+            } catch (e) {
+                log(`Error: ${e.message}`);
+            }
+        }
+
+        // Poll job status
+        async function pollStatus() {
+            if (!currentJobId) return;
+
+            try {
+                const res = await fetch(`/api/tts/status/${currentJobId}`);
+                const data = await res.json();
+
+                if (data.status === 'COMPLETED') {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = 'Complete!';
+                    log('✅ Job completed!');
+                    currentJobId = null;
+                    // Reload sections to show new audio
+                    if (selectedChapter) loadSections(selectedChapter);
+                    if (selectedBook) loadChapters(selectedBook);
+                } else if (data.status === 'FAILED') {
+                    log(`❌ Job failed: ${data.error || 'Unknown error'}`);
+                    currentJobId = null;
+                } else {
+                    // Still in progress
+                    const output = data.output || {};
+                    const processed = output.processed || 0;
+                    const total = output.total || sections.length;
+                    const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+                    progressFill.style.width = `${pct}%`;
+                    progressText.textContent = `${processed} / ${total} sections`;
+                    setTimeout(pollStatus, 2000);
+                }
+            } catch (e) {
+                log(`Poll error: ${e.message}`);
+                setTimeout(pollStatus, 5000);
+            }
+        }
+
+        function log(msg) {
+            logDiv.textContent += msg + '\n';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Event Handlers
+        bookSelect.addEventListener('change', () => {
+            selectedBook = bookSelect.value;
+            if (selectedBook) loadChapters(selectedBook);
+        });
+
+        voiceSelect.addEventListener('change', () => {
+            selectedVoice = voiceSelect.value;
+        });
+
+        voiceFile.addEventListener('change', async () => {
+            const file = voiceFile.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/voices/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Voice uploaded!');
+                    loadVoices();
+                } else {
+                    alert('Upload failed: ' + data.error);
+                }
+            } catch (e) {
+                alert('Upload error: ' + e.message);
+            }
+        });
+
+        document.getElementById('test-1-btn').addEventListener('click', () => {
+            if (sections.length > 0) startTTS([sections[0].id]);
+        });
+
+        document.getElementById('test-3-btn').addEventListener('click', () => {
+            const ids = sections.slice(0, 3).map(s => s.id);
+            if (ids.length > 0) startTTS(ids);
+        });
+
+        document.getElementById('chapter-btn').addEventListener('click', () => {
+            const ids = sections.map(s => s.id);
+            if (ids.length > 0) startTTS(ids);
+        });
+
+        document.getElementById('book-btn').addEventListener('click', async () => {
+            if (!selectedVoice) {
+                alert('Please select or upload a voice first');
+                return;
+            }
+            // Get all section IDs for entire book
+            let allIds = [];
+            for (const ch of chapters) {
+                const res = await fetch(`/api/chapters/${ch.id}/sections`);
+                const secs = await res.json();
+                allIds = allIds.concat(secs.map(s => s.id));
+            }
+            if (allIds.length > 0) startTTS(allIds);
+        });
+
+        // Init
+        loadBooks();
+        loadVoices();
+    </script>
+</body>
+
+</html>

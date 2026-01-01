@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Honora TTS Training</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <h1>Honora TTS Training</h1>
+
+        <!-- Stepper -->
+        <div class="stepper">
+            <div class="step active" id="step1">1</div>
+            <div class="step" id="step2">2</div>
+            <div class="step" id="step3">3</div>
+        </div>
+
+        <!-- Step 1: Upload dataset -->
+        <div class="section active" id="section1">
+            <h2>1. Upload training dataset</h2>
+            <p class="status" id="datasetHelp">
+                Upload a ZIP with <code>wavs/</code> and <code>metadata.csv</code>.
+            </p>
+
+            <div class="file-upload">
+                <label for="datasetZip" class="btn-upload">Choose dataset (.zip)</label>
+                <input type="file" id="datasetZip" accept=".zip">
+                <span class="file-name" id="datasetName">No file chosen</span>
+                <button class="btn-clear" id="clearDataset" style="display:none;">✕</button>
+            </div>
+
+            <button class="btn-primary" id="btnUploadDataset" disabled>Upload Dataset</button>
+            <div id="datasetStatus" class="status"></div>
+        </div>
+
+        <!-- Step 2: Training config -->
+        <div class="section" id="section2">
+            <h2>2. Training config</h2>
+
+            <label style="font-size:0.9rem;color:var(--text-muted);">
+                Run name
+                <input type="text" id="runName"
+                       style="width:100%;margin-top:5px;padding:8px;border-radius:8px;border:1px solid #333;background:#111;color:#fff;"
+                       placeholder="frederick_v1">
+            </label>
+
+            <label style="font-size:0.9rem;color:var(--text-muted);display:block;margin-top:15px;">
+                Approx. training steps
+                <input type="number" id="totalSteps"
+                       style="width:100%;margin-top:5px;padding:8px;border-radius:8px;border:1px solid #333;background:#111;color:#fff;"
+                       value="200" min="10">
+            </label>
+
+            <button class="btn-primary" id="btnStartTraining">Start Training</button>
+            <div id="configStatus" class="status"></div>
+        </div>
+
+        <!-- Step 3: Progress -->
+        <div class="section" id="section3">
+            <h2>3. Training progress</h2>
+
+            <div id="progressContainer" class="progress-container" style="display:block;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                    <div class="progress-text" id="progressText">Idle</div>
+                </div>
+            </div>
+
+            <div id="progressDetails" class="status" style="margin-top:15px;"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentStep = 1;
+
+    function updateStepper(step) {
+        for (let i = 1; i <= 3; i++) {
+            const s = document.getElementById('step' + i);
+            const sec = document.getElementById('section' + i);
+            if (i < step) {
+                s.classList.add('completed');
+                s.classList.remove('active');
+                s.innerHTML = '✓';
+            } else if (i === step) {
+                s.classList.add('active');
+                s.classList.remove('completed');
+                s.innerHTML = i;
+            } else {
+                s.classList.remove('active', 'completed');
+                s.innerHTML = i;
+            }
+            if (sec) {
+                if (i === step) sec.classList.add('active');
+                else sec.classList.remove('active');
+            }
+        }
+        currentStep = step;
+    }
+
+    const datasetInput = document.getElementById('datasetZip');
+    const datasetName = document.getElementById('datasetName');
+    const clearDatasetBtn = document.getElementById('clearDataset');
+    const btnUploadDataset = document.getElementById('btnUploadDataset');
+    const datasetStatus = document.getElementById('datasetStatus');
+
+    datasetInput.addEventListener('change', () => {
+        if (datasetInput.files[0]) {
+            datasetName.textContent = datasetInput.files[0].name;
+            clearDatasetBtn.style.display = 'inline-block';
+            btnUploadDataset.disabled = false;
+        } else {
+            datasetName.textContent = 'No file chosen';
+            clearDatasetBtn.style.display = 'none';
+            btnUploadDataset.disabled = true;
+        }
+    });
+
+    clearDatasetBtn.addEventListener('click', () => {
+        datasetInput.value = '';
+        datasetName.textContent = 'No file chosen';
+        clearDatasetBtn.style.display = 'none';
+        btnUploadDataset.disabled = true;
+        datasetStatus.textContent = '';
+    });
+
+    btnUploadDataset.addEventListener('click', () => {
+        if (!datasetInput.files[0]) return;
+
+        const formData = new FormData();
+        formData.append('dataset_zip', datasetInput.files[0]);
+
+        btnUploadDataset.disabled = true;
+        btnUploadDataset.innerHTML = '<span class="loader"></span>Uploading...';
+
+        fetch('/upload_dataset', {
+            method: 'POST',
+            body: formData
+        }).then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    datasetStatus.textContent = data.message;
+                    datasetStatus.className = 'status success';
+                    updateStepper(2);
+                } else {
+                    datasetStatus.textContent = data.error || 'Upload failed';
+                    datasetStatus.className = 'status error';
+                }
+            }).catch(err => {
+                datasetStatus.textContent = 'Error: ' + err;
+                datasetStatus.className = 'status error';
+            }).finally(() => {
+                btnUploadDataset.disabled = false;
+                btnUploadDataset.innerHTML = 'Upload Dataset';
+            });
+    });
+
+    const btnStartTraining = document.getElementById('btnStartTraining');
+    const configStatus = document.getElementById('configStatus');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const progressDetails = document.getElementById('progressDetails');
+
+    btnStartTraining.addEventListener('click', () => {
+        const runName = document.getElementById('runName').value || 'frederick_run';
+        const totalSteps = parseInt(document.getElementById('totalSteps').value) || 200;
+
+        btnStartTraining.disabled = true;
+        btnStartTraining.innerHTML = '<span class="loader"></span>Starting...';
+
+        fetch('/start_training', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({run_name: runName, total_steps: totalSteps})
+        }).then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    configStatus.textContent = data.message;
+                    configStatus.className = 'status success';
+                    updateStepper(3);
+                } else {
+                    configStatus.textContent = data.error || 'Failed to start training';
+                    configStatus.className = 'status error';
+                }
+            }).catch(err => {
+                configStatus.textContent = 'Error: ' + err;
+                configStatus.className = 'status error';
+            }).finally(() => {
+                btnStartTraining.disabled = false;
+                btnStartTraining.innerHTML = 'Start Training';
+            });
+    });
+
+    function pollProgress() {
+        fetch('/training_progress')
+            .then(res => res.json())
+            .then(state => {
+                const total = state.total_steps || 0;
+                const current = state.current_step || 0;
+                let percent = 0;
+                if (total > 0) percent = Math.round((current / total) * 100);
+
+                progressFill.style.width = percent + '%';
+                progressText.textContent = `${state.status.toUpperCase()} – ${current}/${total} steps`;
+
+                let details = `Status: ${state.status}`;
+                if (state.loss !== null) details += ` | Loss: ${state.loss}`;
+                if (state.message) details += ` | ${state.message}`;
+                progressDetails.textContent = details;
+            })
+            .catch(err => {
+                progressDetails.textContent = 'Error fetching progress: ' + err;
+            });
+    }
+
+    setInterval(pollProgress, 2000);
+</script>
+
+</body>
+</html>
+
