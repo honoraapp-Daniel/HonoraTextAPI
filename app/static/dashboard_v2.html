@@ -956,18 +956,18 @@
         const coverUrl = metaData.cover_urls?.cover_art_url;
         const coverPreview = document.getElementById('cover-img');
         const coverUrlText = document.getElementById('cover-url');
-        
+
         if (coverUrl && coverUrl !== 'null' && coverUrl !== null && coverUrl !== '') {
           coverPreview.src = coverUrl;
           coverPreview.style.display = 'block';
-          coverPreview.onerror = function() {
+          coverPreview.onerror = function () {
             console.error('Cover image failed to load:', coverUrl);
             coverPreview.style.display = 'none';
             coverUrlText.textContent = '⚠️ Cover art generation failed or image unavailable';
           };
           // Don't show base64 URLs, just a friendly message
-          const displayUrl = coverUrl.startsWith('data:') 
-            ? '✅ Generated via DALL-E 3' 
+          const displayUrl = coverUrl.startsWith('data:')
+            ? '✅ Generated via DALL-E 3'
             : coverUrl.substring(0, 50) + '...';
           coverUrlText.textContent = displayUrl;
         } else {
@@ -998,26 +998,26 @@
           translated: document.getElementById('meta-translated').checked,
           explicit: document.getElementById('meta-explicit').checked
         };
-        
+
         console.log('Saving metadata edits:', updatedMetadata);
-        
+
         const saveRes = await fetch(`/v2/job/${jobId}/metadata`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedMetadata)
         });
-        
+
         const saveData = await saveRes.json();
         if (!saveRes.ok) throw new Error(saveData.error || 'Failed to save metadata');
-        
+
         console.log('Metadata saved successfully');
-        
+
         // Now detect chapters
         setActivePhase('chapters');
         progressSection.classList.remove('hidden');
         currentPhase.textContent = 'Detecting chapters...';
         progressFill.style.width = '55%';
-        
+
         const res = await fetch(`/v2/job/${jobId}/detect-chapters`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Chapter detection failed');
@@ -1069,7 +1069,8 @@
           </div>
           <div class="chapter-actions">
             ${ch.status === 'pending' ? `<button class="secondary small" onclick="processChapter(${ch.index})">Process</button>` : ''}
-            ${ch.status === 'ready' ? `<button class="secondary small" onclick="editChapter(${ch.index})">Edit</button>` : ''}
+            ${ch.status === 'ready' ? `<button class="secondary small" onclick="editChapter(${ch.index})">Quick Edit</button>` : ''}
+            ${ch.status === 'ready' ? `<button class="primary small" onclick="openInEditor(${ch.index})">📝 Full Editor</button>` : ''}
             ${ch.status === 'error' ? `<button class="warning small" onclick="processChapter(${ch.index})">Retry</button>` : ''}
             ${ch.status === 'processing' ? `<span class="muted">Processing...</span>` : ''}
           </div>
@@ -1128,6 +1129,11 @@
 
     // Edit chapter
     let editingChapterIndex = null;
+
+    // Open in standalone Chapter Editor
+    function openInEditor(chapterIndex) {
+      window.location.href = `/v2/editor?job_id=${jobId}&chapter=${chapterIndex}`;
+    }
 
     async function editChapter(index) {
       editingChapterIndex = index;
@@ -1196,7 +1202,7 @@
     // Check if text contains numbers, symbols, or special characters that need editing
     function needsEditing(text) {
       if (!text) return false;
-      
+
       // Pattern to detect:
       // - Digits (0-9)
       // - Currency symbols (£, $, €, ¥, ¢, ₹)
@@ -1206,7 +1212,7 @@
       // - Mathematical symbols (×, ÷, ±, ≈, ≠, ≤, ≥, √, ∞, π, ∑, ∫, etc.)
       // - Alchemical symbols (🜁, 🜂, 🜃, 🜄, etc.)
       const pattern = /[0-9]|[£$€¥¢₹]|[½⅓¼¾⅕⅙⅐⅛⅑⅒⅔⅖⅗⅘⅚⅜⅝⅞]|[♄✶△♂☉☽☿♀♃♅♆♇♈♉♊♋♌♍♎♏♐♑♒♓]|[°'"‰‱]|[×÷±≈≠≤≥√∞π∑∫∂∆∇]|[🜁🜂🜃🜄🜅🜆🜇🜈🜉🜊🜋🜌🜍🜎🜏🜐🜑🜒🜓🜔🜕🜖🜗🜘🜙🜚🜛🜜🜝🜞🜟🜠🜡🜢🜣🜤🜥🜦🜧🜨🜩🜪🜫🜬🜭🜮🜯🜰🜱🜲🜳🜴🜵🜶🜷🜸🜹🜺🜻🜼🜽🜾🜿🝀🝁🝂🝃🝄🝅🝆🝇🝈🝉🝊🝋🝌🝍🝎🝏🝐🝑🝒🝓🝔🝕🝖🝗🝘🝙🝚🝛🝜🝝🝞🝟🝠🝡🝢🝣🝤🝥🝦🝧🝨🝩🝪🝫🝬🝭🝮🝯]|[★☆✦✧✩✪✫✬✭✮✯✰⭐]/;
-      
+
       return pattern.test(text);
     }
 
