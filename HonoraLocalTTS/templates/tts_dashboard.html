@@ -593,6 +593,9 @@
             }
         }
 
+        // Current job tracking
+        let currentJobTotal = 0;
+
         // Start TTS job
         async function startTTS(sectionIds) {
             if (!selectedVoice) {
@@ -600,10 +603,13 @@
                 return;
             }
 
+            // Track how many sections we're processing
+            currentJobTotal = sectionIds.length;
+
             try {
                 progressContainer.classList.add('active');
                 progressFill.style.width = '0%';
-                progressText.textContent = `Starting job for ${sectionIds.length} sections...`;
+                progressText.textContent = `Starting job for ${sectionIds.length} section${sectionIds.length > 1 ? 's' : ''}...`;
                 logDiv.textContent = '';
 
                 const res = await fetch('/api/tts/start', {
@@ -616,10 +622,11 @@
                 if (data.error) throw new Error(data.error);
 
                 currentJobId = data.job_id;
-                log(`Job started: ${currentJobId}`);
+                log(`Job started: ${currentJobId} (${currentJobTotal} section${currentJobTotal > 1 ? 's' : ''})`);
                 pollStatus();
             } catch (e) {
                 log(`Error: ${e.message}`);
+                progressContainer.classList.remove('active');
             }
         }
 
@@ -633,7 +640,7 @@
 
                 if (data.status === 'COMPLETED') {
                     progressFill.style.width = '100%';
-                    progressText.textContent = 'Complete!';
+                    progressText.textContent = `✅ Complete! (${currentJobTotal} section${currentJobTotal > 1 ? 's' : ''})`;
                     log('✅ Job completed!');
                     currentJobId = null;
                     // Reload sections to show new audio
@@ -641,15 +648,16 @@
                     if (selectedBook) loadChapters(selectedBook);
                 } else if (data.status === 'FAILED') {
                     log(`❌ Job failed: ${data.error || 'Unknown error'}`);
+                    progressText.textContent = '❌ Failed';
                     currentJobId = null;
                 } else {
-                    // Still in progress
+                    // Still in progress - use currentJobTotal for accurate count
                     const output = data.output || {};
                     const processed = output.processed || 0;
-                    const total = output.total || sections.length;
+                    const total = output.total || currentJobTotal || 1;
                     const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
                     progressFill.style.width = `${pct}%`;
-                    progressText.textContent = `${processed} / ${total} sections`;
+                    progressText.textContent = `${processed} / ${total} section${total > 1 ? 's' : ''}`;
                     setTimeout(pollStatus, 2000);
                 }
             } catch (e) {
