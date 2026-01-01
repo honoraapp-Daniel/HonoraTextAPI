@@ -530,9 +530,14 @@
 
         <div class="sidebar-section">
             <div class="sidebar-section-title">Metadata</div>
-            <button class="btn btn-secondary btn-small" onclick="toggleMetadata()" style="width: 100%">
-                ✏️ Edit Metadata
-            </button>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+                <button class="btn btn-secondary btn-small" onclick="toggleMetadata()" style="width: 100%">
+                    ✏️ Edit Metadata
+                </button>
+                <button class="btn btn-secondary btn-small" onclick="aiLookupMetadata()" style="width: 100%">
+                    🤖 AI Lookup
+                </button>
+            </div>
         </div>
 
         <div class="sidebar-section">
@@ -584,7 +589,10 @@
                         </div>
                     </div>
                     <div class="metadata-field" style="margin-top: 16px">
-                        <label class="metadata-label">Synopsis</label>
+                        <label class="metadata-label">Synopsis <button class="btn btn-secondary btn-small"
+                                onclick="aiGenerateSynopsis()"
+                                style="padding: 4px 8px; font-size: 11px; margin-left: 8px;">🤖 AI
+                                Generate</button></label>
                         <textarea class="metadata-input" id="meta-synopsis" rows="3" style="resize: vertical"
                             oninput="onMetadataChange()"></textarea>
                     </div>
@@ -860,8 +868,19 @@
         }
 
         function segmentText() {
+            // Get chapter title
+            const chapterTitle = state.currentChapter?.title ? 
+                `Chapter ${state.currentChapter.index}: ${state.currentChapter.title}` : '';
+            
+            // Split text into sentences for sections
             const sentences = state.text.split(/(?<=[.!?])\s+/);
             state.sections = [];
+            
+            // Section 1 is always the chapter title
+            if (chapterTitle) {
+                state.sections.push(chapterTitle);
+            }
+            
             let currentSection = '';
             for (const sentence of sentences) {
                 if ((currentSection + ' ' + sentence).trim().length <= state.maxSectionChars) {
@@ -873,7 +892,9 @@
             }
             if (currentSection) state.sections.push(currentSection);
 
-            state.paragraphs = state.text.split(/\n\n+/).filter(p => p.trim());
+            // Paragraphs - also start with chapter title
+            const textParagraphs = state.text.split(/\n\n+/).filter(p => p.trim());
+            state.paragraphs = chapterTitle ? [chapterTitle, ...textParagraphs] : textParagraphs;
 
             document.getElementById('section-count').textContent = state.sections.length;
             document.getElementById('paragraph-count').textContent = state.paragraphs.length;
@@ -892,6 +913,7 @@
                 const chars = text.length;
                 const isOver = chars > state.maxSectionChars;
                 const charClass = isOver ? 'over' : (chars > 200 ? 'warn' : 'ok');
+                const isTitle = i === 0;
                 return `
                     <div class="segment ${isOver ? 'overlength' : ''}">
                         <div class="segment-header">
@@ -997,14 +1019,67 @@
         async function optimizeAll() {
             if (!state.jobId) { alert('Demo mode - optimize disabled'); return; }
             try {
+                updateStatus('Optimizing...', true);
                 const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/optimize`, { method: 'POST' });
                 const data = await res.json();
-                state.text = data.text;
-                document.getElementById('document-editor').innerText = state.text;
-                onTextChange();
-                alert('Optimized!');
+                if (data.text) {
+                    state.text = data.text;
+                    document.getElementById('document-editor').innerText = state.text;
+                    onTextChange();
+                    updateStatus('Optimized!', false);
+                } else {
+                    updateStatus('Optimization returned no text', true);
+                }
             } catch (e) {
-                alert('Optimize failed');
+                updateStatus('Optimize failed', true);
+                console.error('Optimize error:', e);
+            }
+        }
+
+        // AI Lookup Metadata
+        async function aiLookupMetadata() {
+            if (!state.jobId) { alert('Demo mode - AI disabled'); return; }
+            const title = state.metadata.title || '';
+            if (!title) { alert('Enter a book title first'); return; }
+            try {
+                updateStatus('Looking up metadata...', true);
+                const res = await fetch(`/v2/job/${state.jobId}/ai-metadata-lookup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                const data = await res.json();
+                if (data.author) document.getElementById('meta-author').value = data.author;
+                if (data.publishing_year) document.getElementById('meta-year').value = data.publishing_year;
+                if (data.publisher) document.getElementById('meta-publisher').value = data.publisher;
+                if (data.category) document.getElementById('meta-category').value = data.category;
+                state.metadataDirty = true;
+                updateStatus('Metadata found!', false);
+            } catch (e) {
+                updateStatus('AI lookup failed', true);
+            }
+        }
+
+        // AI Generate Synopsis
+        async function aiGenerateSynopsis() {
+            if (!state.jobId) { alert('Demo mode - AI disabled'); return; }
+            const title = state.metadata.title || '';
+            if (!title) { alert('Enter a book title first'); return; }
+            try {
+                updateStatus('Generating synopsis...', true);
+                const res = await fetch(`/v2/job/${state.jobId}/ai-synopsis`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, author: state.metadata.author })
+                });
+                const data = await res.json();
+                if (data.synopsis) {
+                    document.getElementById('meta-synopsis').value = data.synopsis;
+                    state.metadataDirty = true;
+                }
+                updateStatus('Synopsis generated!', false);
+            } catch (e) {
+                updateStatus('AI synopsis failed', true);
             }
         }
 
