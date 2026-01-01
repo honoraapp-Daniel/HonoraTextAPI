@@ -1690,6 +1690,9 @@ async def ai_metadata_lookup(job_id: str, request: Request):
     Use Gemini to look up book metadata (author, year, publisher, category).
     """
     import google.generativeai as genai
+    import json
+    import re
+    import logging
     
     body = await request.json()
     title = body.get("title", "")
@@ -1697,29 +1700,39 @@ async def ai_metadata_lookup(job_id: str, request: Request):
     if not title:
         return JSONResponse({"error": "Title required"}, status_code=400)
     
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return JSONResponse({"error": "GEMINI_API_KEY not configured"}, status_code=500)
+    
     try:
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
         
         prompt = f"""Look up information about this book: "{title}"
         
 Return a JSON object with:
 - author: The author's full name
-- publishing_year: Year first published (just the number)
+- publishing_year: Year first published (just the number as string)
 - publisher: Original publisher name
 - category: Category like "Philosophy", "Religion", "Occultism", "History", etc.
 
-Return ONLY the JSON object, no markdown or explanations. If unknown, use empty string."""
+Return ONLY valid JSON, no markdown code blocks. Example: {{"author": "John Doe", "publishing_year": "1900", "publisher": "ABC", "category": "Philosophy"}}
+If unknown, use empty string."""
         
         response = model.generate_content(prompt)
         text = response.text.strip()
+        logging.info(f"AI Metadata response: {text[:200]}")
         
-        # Parse JSON from response
-        import json
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
+        # Clean JSON from response - handle markdown code blocks
+        if "```json" in text:
+            text = re.search(r'```json\s*([\s\S]*?)```', text).group(1).strip()
+        elif "```" in text:
+            text = re.search(r'```\s*([\s\S]*?)```', text).group(1).strip()
+        
+        # Find JSON object in text
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            text = json_match.group(0)
         
         data = json.loads(text)
         
@@ -1730,7 +1743,7 @@ Return ONLY the JSON object, no markdown or explanations. If unknown, use empty 
             if data.get("author"):
                 metadata["author"] = data["author"]
             if data.get("publishing_year"):
-                metadata["publishing_year"] = data["publishing_year"]
+                metadata["publishing_year"] = str(data["publishing_year"])
             if data.get("publisher"):
                 metadata["publisher"] = data["publisher"]
             if data.get("category"):
@@ -1740,7 +1753,11 @@ Return ONLY the JSON object, no markdown or explanations. If unknown, use empty 
         
         return data
         
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON parse error: {e}, text: {text[:200]}")
+        return JSONResponse({"error": f"Failed to parse AI response: {str(e)}"}, status_code=500)
     except Exception as e:
+        logging.error(f"AI metadata lookup error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -1750,6 +1767,7 @@ async def ai_synopsis(job_id: str, request: Request):
     Use Gemini to generate a brief synopsis/background about the book.
     """
     import google.generativeai as genai
+    import logging
     
     body = await request.json()
     title = body.get("title", "")
@@ -1758,8 +1776,12 @@ async def ai_synopsis(job_id: str, request: Request):
     if not title:
         return JSONResponse({"error": "Title required"}, status_code=400)
     
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return JSONResponse({"error": "GEMINI_API_KEY not configured"}, status_code=500)
+    
     try:
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
         
         prompt = f"""Write a brief synopsis for the book "{title}" by {author or "unknown author"}.
@@ -1774,6 +1796,7 @@ Do not include the title or author in your response, just the description."""
         
         response = model.generate_content(prompt)
         synopsis = response.text.strip()
+        logging.info(f"AI Synopsis generated: {synopsis[:100]}...")
         
         # Update job state
         state = get_job_state(job_id)
@@ -1786,4 +1809,5 @@ Do not include the title or author in your response, just the description."""
         return {"synopsis": synopsis}
         
     except Exception as e:
+        logging.error(f"AI synopsis error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)

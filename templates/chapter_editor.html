@@ -858,7 +858,15 @@
         // ============================================
         function onTextChange() {
             const editor = document.getElementById('document-editor');
-            state.text = editor.innerText;
+            let rawText = editor.innerText;
+
+            // Normalize whitespace: collapse multiple newlines to max 2, trim lines
+            state.text = rawText
+                .replace(/\n{3,}/g, '\n\n')  // Collapse 3+ newlines to 2
+                .replace(/[ \t]+\n/g, '\n')  // Remove trailing spaces before newlines
+                .replace(/\n[ \t]+/g, '\n')  // Remove leading spaces after newlines
+                .trim();
+
             state.dirty = true;
             updateStatus('Unsaved changes', true);
             document.getElementById('total-chars').textContent = state.text.length.toLocaleString();
@@ -869,18 +877,18 @@
 
         function segmentText() {
             // Get chapter title
-            const chapterTitle = state.currentChapter?.title ? 
+            const chapterTitle = state.currentChapter?.title ?
                 `Chapter ${state.currentChapter.index}: ${state.currentChapter.title}` : '';
-            
+
             // Split text into sentences for sections
             const sentences = state.text.split(/(?<=[.!?])\s+/);
             state.sections = [];
-            
+
             // Section 1 is always the chapter title
             if (chapterTitle) {
                 state.sections.push(chapterTitle);
             }
-            
+
             let currentSection = '';
             for (const sentence of sentences) {
                 if ((currentSection + ' ' + sentence).trim().length <= state.maxSectionChars) {
@@ -942,12 +950,13 @@
             const container = document.getElementById('paragraphs-list');
             container.innerHTML = state.paragraphs.map((text, i) => {
                 const chars = text.length;
+                const isTitle = i === 0;
                 return `
-                    <div class="segment">
+                    <div class="segment ${isTitle ? 'title-segment' : ''}">
                         <div class="segment-header">
                             <div class="segment-header-left">
                                 <div class="segment-bar paragraph"></div>
-                                <span class="segment-index">¶${i + 1}</span>
+                                <span class="segment-index">${isTitle ? '📌 Title' : `¶${i}`}</span>
                             </div>
                             <div class="segment-header-right">
                                 <span class="segment-chars">${chars} chars</span>
@@ -958,6 +967,7 @@
                         </div>
                         <div class="segment-actions">
                             <button class="segment-btn" onclick="optimizeSegment('paragraph', ${i})">✨ Optimize</button>
+                            ${!isTitle ? `<button class="segment-btn" onclick="deleteParagraph(${i})">🗑️ Delete</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -994,13 +1004,35 @@
 
         function splitSection(index) {
             const text = state.sections[index];
-            const midpoint = Math.floor(text.length / 2);
-            let splitPoint = midpoint;
-            const nearestPeriod = text.lastIndexOf('.', midpoint);
-            if (nearestPeriod > midpoint / 2) splitPoint = nearestPeriod + 1;
-            state.sections.splice(index, 1, text.substring(0, splitPoint).trim(), text.substring(splitPoint).trim());
-            renderSections();
-            state.dirty = true;
+
+            // Try to get cursor position from the contenteditable
+            const selection = window.getSelection();
+            let splitPoint = Math.floor(text.length / 2);
+
+            // If user has cursor in section text, split at cursor
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const sectionEl = document.querySelector(`.segment:nth-child(${index + 1}) .segment-text`);
+                if (sectionEl && sectionEl.contains(range.startContainer)) {
+                    splitPoint = range.startOffset;
+                }
+            }
+
+            // If no cursor, find nearest sentence boundary
+            if (splitPoint === Math.floor(text.length / 2)) {
+                const nearestPeriod = text.lastIndexOf('.', splitPoint);
+                if (nearestPeriod > splitPoint / 2) splitPoint = nearestPeriod + 1;
+            }
+
+            const part1 = text.substring(0, splitPoint).trim();
+            const part2 = text.substring(splitPoint).trim();
+
+            if (part1 && part2) {
+                state.sections.splice(index, 1, part1, part2);
+                renderSections();
+                state.dirty = true;
+                updateStatus('Section split - click Save', true);
+            }
         }
 
         function mergeWithPrevious(index) {
@@ -1008,6 +1040,19 @@
             state.sections.splice(index - 1, 2, state.sections[index - 1] + ' ' + state.sections[index]);
             renderSections();
             state.dirty = true;
+            updateStatus('Sections merged - click Save', true);
+        }
+
+        function deleteParagraph(index) {
+            if (index === 0) return; // Cannot delete title
+            if (!confirm(`Delete paragraph ${index}?`)) return;
+            state.paragraphs.splice(index, 1);
+            // Rebuild text without chapter title
+            state.text = state.paragraphs.slice(1).join('\n\n');
+            document.getElementById('document-editor').innerText = state.text;
+            renderParagraphs();
+            state.dirty = true;
+            updateStatus('Paragraph deleted - click Save', true);
         }
 
         async function optimizeSegment(type, index) {
