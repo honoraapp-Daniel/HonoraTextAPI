@@ -1,5 +1,6 @@
 # RunPod GPU Worker Dependencies
-TTS>=0.22.0
+# TTS package with specific compatible version
+TTS==0.22.0
 supabase>=2.0.0
 requests>=2.31.0
 runpod>=1.6.0

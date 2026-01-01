@@ -11,14 +11,17 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY HonoraLocalTTS/requirements_runpod.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip first
+RUN pip install --upgrade pip
+
+# Install TTS and dependencies
+RUN pip install --no-cache-dir TTS==0.22.0 supabase requests runpod
 
 # Pre-download XTTS model (faster cold starts)
-RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || true
+RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || echo "Model will download on first use"
 
 # Copy handler
 COPY HonoraLocalTTS/runpod_handler.py /handler.py
