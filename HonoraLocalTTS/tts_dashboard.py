@@ -47,6 +47,17 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/api/status")
+def get_status():
+    """Get configuration status - useful for debugging"""
+    return jsonify({
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "runpod_configured": bool(RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID),
+        "runpod_endpoint_id": RUNPOD_ENDPOINT_ID[:8] + "..." if RUNPOD_ENDPOINT_ID else None,
+        "supabase_url": SUPABASE_URL[:30] + "..." if SUPABASE_URL else None
+    })
+
+
 # =============================================================================
 # API - Books & Chapters from Supabase
 # =============================================================================

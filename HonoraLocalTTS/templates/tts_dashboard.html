@@ -361,6 +361,10 @@
             <span class="badge">🎙️ TTS Dashboard · RunPod GPU</span>
             <h1>Honora Audio Generator</h1>
             <p class="muted">Generate audiobook audio from Supabase sections using XTTS v2 on RunPod Serverless.</p>
+            <div id="status-bar" style="margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
+                <span id="status-supabase" class="badge" style="opacity: 0.5;">⏳ Supabase</span>
+                <span id="status-runpod" class="badge" style="opacity: 0.5;">⏳ RunPod</span>
+            </div>
         </section>
 
         <!-- Main Grid -->
@@ -381,6 +385,21 @@
                     <input type="file" id="voice-file" accept=".wav">
                     <div>📂 Upload new voice (.wav)</div>
                 </label>
+
+                <h2 style="margin-top: 16px;">🌍 Language</h2>
+                <select id="language-select">
+                    <option value="en">English</option>
+                    <option value="da">Dansk</option>
+                    <option value="de">Deutsch</option>
+                    <option value="es">Español</option>
+                    <option value="fr">Français</option>
+                    <option value="it">Italiano</option>
+                    <option value="nl">Nederlands</option>
+                    <option value="pl">Polski</option>
+                    <option value="pt">Português</option>
+                    <option value="ru">Русский</option>
+                    <option value="zh-cn">中文</option>
+                </select>
 
                 <h2 style="margin-top: 16px;">🎚️ Test Controls</h2>
                 <div class="btn-group">
@@ -425,6 +444,7 @@
         let selectedBook = null;
         let selectedChapter = null;
         let selectedVoice = null;
+        let selectedLanguage = 'en';
         let chapters = [];
         let sections = [];
         let currentJobId = null;
@@ -433,6 +453,7 @@
         const bookSelect = document.getElementById('book-select');
         const voiceSelect = document.getElementById('voice-select');
         const voiceFile = document.getElementById('voice-file');
+        const languageSelect = document.getElementById('language-select');
         const chapterList = document.getElementById('chapter-list');
         const sectionList = document.getElementById('section-list');
         const chaptersSummary = document.getElementById('chapters-summary');
@@ -441,6 +462,35 @@
         const progressFill = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
         const logDiv = document.getElementById('log');
+
+        // Check configuration status
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const status = await res.json();
+
+                const supabaseEl = document.getElementById('status-supabase');
+                const runpodEl = document.getElementById('status-runpod');
+
+                if (status.supabase_configured) {
+                    supabaseEl.textContent = '✅ Supabase';
+                    supabaseEl.style.opacity = '1';
+                } else {
+                    supabaseEl.textContent = '❌ Supabase';
+                    supabaseEl.style.opacity = '1';
+                }
+
+                if (status.runpod_configured) {
+                    runpodEl.textContent = '✅ RunPod';
+                    runpodEl.style.opacity = '1';
+                } else {
+                    runpodEl.textContent = '⚠️ RunPod (missing)';
+                    runpodEl.style.opacity = '1';
+                }
+            } catch (e) {
+                console.error('Status check failed:', e);
+            }
+        }
 
         // Load books on start
         async function loadBooks() {
@@ -673,7 +723,13 @@
             if (allIds.length > 0) startTTS(allIds);
         });
 
+        // Language selector
+        languageSelect.addEventListener('change', () => {
+            selectedLanguage = languageSelect.value;
+        });
+
         // Init
+        checkStatus();
         loadBooks();
         loadVoices();
     </script>
