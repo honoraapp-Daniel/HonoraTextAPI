@@ -480,8 +480,31 @@
     /* Two-column editor styles */
     .editor-columns {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 24px;
+    }
+
+    .editor-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .editor-tab {
+      padding: 6px 12px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .editor-tab.active {
+      color: var(--accent-2);
+      border-bottom-color: var(--accent-2);
     }
 
     .editor-column {
@@ -754,20 +777,14 @@
         <button class="close-btn" id="close-editor">&times;</button>
       </div>
 
-      <div class="editor-columns">
-        <!-- Sections Column (TTS) -->
-        <div class="editor-column">
-          <h3>📢 Sections (TTS)</h3>
-          <div class="muted">Max 250 chars per section. Index 0 = chapter title.</div>
-          <div style="margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="secondary small" id="rewrite-all-sections-btn">✨ Rewrite All (Remove Symbols)</button>
-            <button class="secondary small" id="add-section-btn">+ Add Section</button>
-          </div>
-          <div class="section-list" id="editor-sections"></div>
-        </div>
+      <div class="editor-tabs">
+        <button class="editor-tab active" id="tab-paragraphs">📖 Paragraphs View</button>
+        <button class="editor-tab" id="tab-sections">📢 Sections View</button>
+      </div>
 
+      <div class="editor-columns">
         <!-- Paragraphs Column (Display) -->
-        <div class="editor-column">
+        <div class="editor-column" id="paragraphs-column">
           <h3>📖 Paragraphs (Display)</h3>
           <div class="muted">Natural sentences only. Index 0 = chapter title.</div>
           <div style="margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -776,6 +793,17 @@
             <button class="add-paragraph-btn" id="add-paragraph-btn">+ Add Paragraph</button>
           </div>
           <div class="section-list" id="editor-paragraphs"></div>
+        </div>
+
+        <!-- Sections Column (TTS) -->
+        <div class="editor-column hidden" id="sections-column">
+          <h3>📢 Sections (TTS)</h3>
+          <div class="muted">Max 250 chars per section. Index 0 = chapter title.</div>
+          <div style="margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="secondary small" id="rewrite-all-sections-btn">✨ Rewrite All (Remove Symbols)</button>
+            <button class="secondary small" id="add-section-btn">+ Add Section</button>
+          </div>
+          <div class="section-list" id="editor-sections"></div>
         </div>
       </div>
 
@@ -805,6 +833,30 @@
     const commitBtn = document.getElementById('commit-btn');
     const resultSection = document.getElementById('result-section');
     const editorModal = document.getElementById('editor-modal');
+    const tabParagraphs = document.getElementById('tab-paragraphs');
+    const tabSections = document.getElementById('tab-sections');
+    const paragraphsColumn = document.getElementById('paragraphs-column');
+    const sectionsColumn = document.getElementById('sections-column');
+
+    function activateEditorTab(view) {
+      if (!tabParagraphs || !tabSections || !paragraphsColumn || !sectionsColumn) return;
+      if (view === 'paragraphs') {
+        tabParagraphs.classList.add('active');
+        tabSections.classList.remove('active');
+        paragraphsColumn.classList.remove('hidden');
+        sectionsColumn.classList.add('hidden');
+      } else {
+        tabParagraphs.classList.remove('active');
+        tabSections.classList.add('active');
+        paragraphsColumn.classList.add('hidden');
+        sectionsColumn.classList.remove('hidden');
+      }
+    }
+
+    if (tabParagraphs && tabSections) {
+      tabParagraphs.addEventListener('click', () => activateEditorTab('paragraphs'));
+      tabSections.addEventListener('click', () => activateEditorTab('sections'));
+    }
 
     // Phase indicators
     const phases = ['upload', 'extract', 'metadata', 'chapters', 'process', 'commit'];
@@ -1086,6 +1138,9 @@
 
       document.getElementById('editor-chapter-title').textContent = `Edit Chapter ${index}: ${chapter.title}`;
 
+      // Default to Paragraphs view when opening editor
+      activateEditorTab('paragraphs');
+
       // Render Sections (TTS)
       const sections = chapter.sections || [];
       document.getElementById('editor-sections').innerHTML = sections.map((sec, i) => {
@@ -1097,7 +1152,7 @@
           <div class="section-header">
             <span class="section-index">${isTitle ? '📌 Section 0 (Title)' : `Section ${i}`}</span>
             <div style="display: flex; gap: 4px; align-items: center;">
-              <span class="section-chars ${charClass}">${sec.length} chars ${sec.length > 250 ? '⚠️' : '✓'}</span>
+              <span class="section-chars ${charClass}">${sec.length} / 250 ${sec.length > 250 ? '⚠️' : '✓'}</span>
               ${needsEdit ? '<span class="needs-editing">⚠️ NEEDS EDITING</span>' : ''}
               ${!isTitle ? `<button class="secondary small" onclick="rewriteSection(${i})" style="padding: 4px 8px; font-size: 11px;">✨ Rewrite</button>` : ''}
               ${!isTitle ? `<button class="secondary small" onclick="deleteSection(${i})" style="padding: 4px 8px; font-size: 11px;">🗑</button>` : ''}
@@ -1247,7 +1302,7 @@
           if (charSpan) {
             const len = data.rewritten.length;
             charSpan.className = len > 250 ? 'section-chars char-warning' : 'section-chars char-ok';
-            charSpan.textContent = `${len} chars ${len > 250 ? '⚠️' : '✓'}`;
+            charSpan.textContent = `${len} / 250 ${len > 250 ? '⚠️' : '✓'}`;
           }
         } else {
           alert('✓ No special characters or numbers found in this section.');
