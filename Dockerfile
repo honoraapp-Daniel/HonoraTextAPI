@@ -1,14 +1,27 @@
-FROM python:3.10-slim
+# RunPod GPU Worker Dockerfile
+# XTTS v2 with CUDA support
+# NOTE: This Dockerfile is in the repo root for RunPod GitHub integration
+
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 WORKDIR /app
 
-COPY requirements.txt .
+# System dependencies for audio
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir -r requirements.txt && \
-    python -m spacy download en_core_web_sm
+# Install Python dependencies
+COPY HonoraLocalTTS/requirements_runpod.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Pre-download XTTS model (faster cold starts)
+RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || true
 
-EXPOSE 8000
+# Copy handler
+COPY HonoraLocalTTS/runpod_handler.py /handler.py
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run handler
+CMD ["python", "-u", "/handler.py"]
