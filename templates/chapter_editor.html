@@ -10,12 +10,14 @@
             --bg-dark: #0f1419;
             --bg-card: #1a1f26;
             --bg-hover: #242b33;
+            --bg-sidebar: #151a20;
             --text-primary: #f5f5f5;
             --text-muted: #8899a6;
             --accent: #7dd3fc;
             --accent-green: #4ade80;
             --accent-red: #f87171;
             --accent-yellow: #fbbf24;
+            --accent-purple: #a78bfa;
             --border: rgba(255, 255, 255, 0.08);
         }
 
@@ -29,6 +31,119 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg-dark);
             color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .book-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .book-author {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .cover-preview {
+            width: 100%;
+            aspect-ratio: 2/3;
+            background: var(--bg-card);
+            border-radius: 8px;
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 12px;
+            overflow: hidden;
+        }
+
+        .cover-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .sidebar-section {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
+        }
+
+        .chapter-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .chapter-item {
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chapter-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .chapter-item.active {
+            background: rgba(125, 211, 252, 0.15);
+            border-left: 3px solid var(--accent);
+        }
+
+        .chapter-item-title {
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chapter-item-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             min-height: 100vh;
         }
 
@@ -51,30 +166,24 @@
             gap: 16px;
         }
 
-        .back-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-size: 20px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 8px;
-            transition: all 0.2s;
+        .chapter-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        .back-btn:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
+        .chapter-number {
+            background: var(--accent);
+            color: #000;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
         }
 
-        .chapter-title {
+        .chapter-title-text {
             font-size: 18px;
             font-weight: 600;
-        }
-
-        .chapter-meta {
-            color: var(--text-muted);
-            font-size: 13px;
         }
 
         .header-actions {
@@ -90,6 +199,9 @@
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .btn-primary {
@@ -109,6 +221,16 @@
 
         .btn-secondary:hover {
             background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-success {
+            background: var(--accent-green);
+            color: #000;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
         }
 
         /* Tabs */
@@ -156,9 +278,51 @@
 
         /* Editor Container */
         .editor-container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 32px 24px;
+            flex: 1;
+            padding: 32px 48px;
+            overflow-y: auto;
+            padding-bottom: 80px;
+        }
+
+        /* Metadata Section */
+        .metadata-section {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .metadata-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .metadata-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .metadata-input {
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .metadata-input:focus {
+            outline: none;
+            border-color: var(--accent);
         }
 
         /* Document View */
@@ -166,7 +330,7 @@
             background: var(--bg-card);
             border-radius: 12px;
             padding: 32px 40px;
-            min-height: 500px;
+            min-height: 400px;
             border: 1px solid var(--border);
         }
 
@@ -175,6 +339,7 @@
             line-height: 1.8;
             font-size: 16px;
             white-space: pre-wrap;
+            min-height: 300px;
         }
 
         .document-editor:empty:before {
@@ -182,7 +347,7 @@
             color: var(--text-muted);
         }
 
-        /* Sections/Paragraphs View */
+        /* Segments View */
         .segments-view {
             display: none;
         }
@@ -215,15 +380,15 @@
             border-bottom: 1px solid var(--border);
         }
 
-        .segment-marker {
+        .segment-header-left {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
         }
 
         .segment-bar {
             width: 4px;
-            height: 20px;
+            height: 24px;
             background: var(--accent-green);
             border-radius: 2px;
         }
@@ -232,26 +397,41 @@
             background: var(--accent-red);
         }
 
+        .segment-bar.paragraph {
+            background: var(--accent-purple);
+        }
+
         .segment-index {
             color: var(--text-muted);
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
+        }
+
+        .segment-header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .segment-chars {
             font-size: 13px;
-            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: var(--bg-hover);
         }
 
         .segment-chars.ok {
+            background: rgba(74, 222, 128, 0.15);
             color: var(--accent-green);
         }
 
         .segment-chars.warn {
+            background: rgba(251, 191, 36, 0.15);
             color: var(--accent-yellow);
         }
 
         .segment-chars.over {
+            background: rgba(248, 113, 113, 0.15);
             color: var(--accent-red);
         }
 
@@ -281,6 +461,9 @@
             border-radius: 6px;
             cursor: pointer;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .segment-btn:hover {
@@ -292,7 +475,7 @@
         .status-bar {
             position: fixed;
             bottom: 0;
-            left: 0;
+            left: 280px;
             right: 0;
             padding: 12px 24px;
             background: var(--bg-card);
@@ -330,7 +513,6 @@
             background: var(--accent-red);
         }
 
-        /* Hidden views */
         .hidden {
             display: none !important;
         }
@@ -338,75 +520,139 @@
 </head>
 
 <body>
-    <!-- Header -->
-    <header class="header">
-        <div class="header-left">
-            <button class="back-btn" onclick="goBack()">←</button>
-            <div>
-                <div class="chapter-title" id="chapter-title">Chapter 1: The Hermetic Philosophy</div>
-                <div class="chapter-meta" id="chapter-meta">The Kybalion - Three Initiates</div>
-            </div>
-        </div>
-        <div class="header-actions">
-            <button class="btn btn-secondary" onclick="optimize()">✨ Optimize</button>
-            <button class="btn btn-primary" onclick="save()">💾 Save</button>
-        </div>
-    </header>
-
-    <!-- Tabs -->
-    <div class="tabs">
-        <button class="tab active" data-view="document" onclick="switchTab('document')">
-            📄 Document
-        </button>
-        <button class="tab" data-view="sections" onclick="switchTab('sections')">
-            🔖 Sections
-            <span class="tab-count" id="section-count">0</span>
-        </button>
-        <button class="tab" data-view="paragraphs" onclick="switchTab('paragraphs')">
-            📝 Paragraphs
-            <span class="tab-count" id="paragraph-count">0</span>
-        </button>
-    </div>
-
-    <!-- Editor Container -->
-    <div class="editor-container">
-        <!-- Document View (Primary) -->
-        <div id="document-view" class="document-view">
-            <div class="document-editor" id="document-editor" contenteditable="true" spellcheck="true"></div>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="book-title" id="book-title">Loading...</div>
+            <div class="book-author" id="book-author"></div>
+            <div class="cover-preview" id="cover-preview">No cover</div>
         </div>
 
-        <!-- Sections View (Derived) -->
-        <div id="sections-view" class="segments-view">
-            <div id="sections-list"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Metadata</div>
+            <button class="btn btn-secondary btn-small" onclick="toggleMetadata()" style="width: 100%">
+                ✏️ Edit Metadata
+            </button>
         </div>
 
-        <!-- Paragraphs View (Derived) -->
-        <div id="paragraphs-view" class="segments-view">
-            <div id="paragraphs-list"></div>
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Chapters (<span id="chapter-count">0</span>)</div>
         </div>
-    </div>
 
-    <!-- Status Bar -->
-    <div class="status-bar">
-        <div class="status-stats">
-            <div class="status-item">
-                <span class="status-indicator" id="save-indicator"></span>
-                <span id="save-status">Saved</span>
-            </div>
-            <div class="status-item">
-                Total: <span id="total-chars">0</span> chars
-            </div>
-            <div class="status-item">
-                Sections: <span id="total-sections">0</span>
-            </div>
-            <div class="status-item">
-                Overlength: <span id="overlength-count">0</span>
+        <div class="chapter-list" id="chapter-list">
+            <!-- Populated by JS -->
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="btn btn-success" onclick="commitToSupabase()" style="width: 100%">
+                📤 Upload to Supabase
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Metadata Editor (hidden by default) -->
+        <div id="metadata-editor" class="hidden">
+            <div class="editor-container">
+                <div class="metadata-section">
+                    <div class="sidebar-section-title" style="margin-bottom: 16px">Book Metadata</div>
+                    <div class="metadata-grid">
+                        <div class="metadata-field">
+                            <label class="metadata-label">Title</label>
+                            <input type="text" class="metadata-input" id="meta-title" oninput="onMetadataChange()">
+                        </div>
+                        <div class="metadata-field">
+                            <label class="metadata-label">Author</label>
+                            <input type="text" class="metadata-input" id="meta-author" oninput="onMetadataChange()">
+                        </div>
+                        <div class="metadata-field">
+                            <label class="metadata-label">Language</label>
+                            <input type="text" class="metadata-input" id="meta-language" oninput="onMetadataChange()">
+                        </div>
+                        <div class="metadata-field">
+                            <label class="metadata-label">Category</label>
+                            <input type="text" class="metadata-input" id="meta-category" oninput="onMetadataChange()">
+                        </div>
+                        <div class="metadata-field">
+                            <label class="metadata-label">Publisher</label>
+                            <input type="text" class="metadata-input" id="meta-publisher" oninput="onMetadataChange()">
+                        </div>
+                        <div class="metadata-field">
+                            <label class="metadata-label">Year</label>
+                            <input type="text" class="metadata-input" id="meta-year" oninput="onMetadataChange()">
+                        </div>
+                    </div>
+                    <div class="metadata-field" style="margin-top: 16px">
+                        <label class="metadata-label">Synopsis</label>
+                        <textarea class="metadata-input" id="meta-synopsis" rows="3" style="resize: vertical"
+                            oninput="onMetadataChange()"></textarea>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 12px">
+                        <button class="btn btn-primary" onclick="saveMetadata()">💾 Save Metadata</button>
+                        <button class="btn btn-secondary" onclick="toggleMetadata()">← Back</button>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="status-item">
-            <span id="cursor-position">Line 1, Col 1</span>
+
+        <!-- Chapter Editor -->
+        <div id="chapter-editor">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <div class="chapter-indicator">
+                        <span class="chapter-number" id="current-chapter-num">Ch. 0</span>
+                        <span class="chapter-title-text" id="chapter-title">Select a chapter</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" onclick="optimizeAll()">✨ Optimize All</button>
+                    <button class="btn btn-primary" onclick="saveChapter()">💾 Save</button>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" data-view="document" onclick="switchTab('document')">📄 Document</button>
+                <button class="tab" data-view="sections" onclick="switchTab('sections')">
+                    🔖 Sections <span class="tab-count" id="section-count">0</span>
+                </button>
+                <button class="tab" data-view="paragraphs" onclick="switchTab('paragraphs')">
+                    📝 Paragraphs <span class="tab-count" id="paragraph-count">0</span>
+                </button>
+            </div>
+
+            <!-- Editor Container -->
+            <div class="editor-container">
+                <div id="document-view" class="document-view">
+                    <div class="document-editor" id="document-editor" contenteditable="true" spellcheck="true"></div>
+                </div>
+
+                <div id="sections-view" class="segments-view">
+                    <div id="sections-list"></div>
+                </div>
+
+                <div id="paragraphs-view" class="segments-view">
+                    <div id="paragraphs-list"></div>
+                </div>
+            </div>
         </div>
-    </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-stats">
+                <div class="status-item">
+                    <span class="status-indicator" id="save-indicator"></span>
+                    <span id="save-status">Ready</span>
+                </div>
+                <div class="status-item">Total: <span id="total-chars">0</span> chars</div>
+                <div class="status-item">Sections: <span id="total-sections">0</span></div>
+                <div class="status-item">Overlength: <span id="overlength-count">0</span></div>
+            </div>
+            <div class="status-item"><span id="cursor-position">Line 1, Col 1</span></div>
+        </div>
+    </main>
 
     <script>
         // ============================================
@@ -414,11 +660,15 @@
         // ============================================
         const state = {
             jobId: null,
-            chapterIndex: null,
+            chapters: [],
+            currentChapter: null,
+            currentChapterIndex: 0,
+            metadata: {},
             text: '',
             sections: [],
             paragraphs: [],
             dirty: false,
+            metadataDirty: false,
             currentView: 'document',
             maxSectionChars: 250
         };
@@ -427,21 +677,20 @@
         // INITIALIZATION
         // ============================================
         document.addEventListener('DOMContentLoaded', () => {
-            // Get job_id and chapter_index from URL params
             const params = new URLSearchParams(window.location.search);
             state.jobId = params.get('job_id');
-            state.chapterIndex = parseInt(params.get('chapter')) || 0;
+            state.currentChapterIndex = parseInt(params.get('chapter')) || 0;
 
-            // Load chapter
-            loadChapter();
+            if (state.jobId) {
+                loadJob();
+            } else {
+                loadDemoData();
+            }
 
-            // Setup document editor events
             const editor = document.getElementById('document-editor');
             editor.addEventListener('input', onTextChange);
             editor.addEventListener('keyup', updateCursorPosition);
             editor.addEventListener('mouseup', updateCursorPosition);
-
-            // Keyboard shortcuts
             document.addEventListener('keydown', handleKeyboard);
         });
 
@@ -449,171 +698,187 @@
         // KEYBOARD SHORTCUTS
         // ============================================
         function handleKeyboard(e) {
-            // Ctrl/Cmd + S = Save
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                e.preventDefault();
-                save();
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveChapter(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') { e.preventDefault(); optimizeAll(); }
+        }
+
+        // ============================================
+        // DATA LOADING
+        // ============================================
+        async function loadJob() {
+            try {
+                const res = await fetch(`/v2/job/${state.jobId}`);
+                const data = await res.json();
+
+                state.metadata = data.metadata || {};
+                state.chapters = data.chapters || [];
+
+                updateSidebar();
+                if (state.chapters.length > 0) {
+                    selectChapter(state.currentChapterIndex);
+                }
+            } catch (e) {
+                console.error('Failed to load job:', e);
             }
-            // Ctrl/Cmd + O = Optimize
-            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-                e.preventDefault();
-                optimize();
+        }
+
+        function loadDemoData() {
+            state.metadata = {
+                title: 'The Kybalion',
+                author: 'Three Initiates',
+                language: 'English',
+                category: 'Philosophy'
+            };
+            state.chapters = [
+                { index: 0, title: 'Introduction', content: 'This is the introduction chapter...', section_count: 5 },
+                { index: 1, title: 'The Hermetic Philosophy', content: 'We take great pleasure in presenting to the attention of students and investigators of the Secret Doctrines this little work based upon the world-old Hermetic Teachings.\n\nThere has been so little written upon this subject, notwithstanding the countless references to the teachings in the many works upon occultism, that the many earnest searchers after the Arcane Truths will doubtless welcome the appearance of this present volume.\n\nThe purpose of this work is not the enunciation of any special philosophy or doctrine, but rather is to give to the students a statement of the Truth that will serve to reconcile the many bits of occult knowledge that they may have acquired.', section_count: 12 },
+                { index: 2, title: 'The Seven Hermetic Principles', content: 'The seven principles upon which Hermetic Philosophy is based...', section_count: 8 }
+            ];
+            updateSidebar();
+            selectChapter(1);
+        }
+
+        function updateSidebar() {
+            // Book info
+            document.getElementById('book-title').textContent = state.metadata.title || 'Untitled';
+            document.getElementById('book-author').textContent = state.metadata.author || '';
+            document.getElementById('chapter-count').textContent = state.chapters.length;
+
+            // Cover preview
+            const coverEl = document.getElementById('cover-preview');
+            if (state.metadata.cover_art_url) {
+                coverEl.innerHTML = `<img src="${state.metadata.cover_art_url}" alt="Cover">`;
+            } else {
+                coverEl.textContent = 'No cover';
             }
-            // Tab/Shift+Tab to navigate sections
-            if (e.key === 'Tab' && state.currentView === 'sections') {
-                e.preventDefault();
-                const segments = document.querySelectorAll('.segment');
-                const focused = document.activeElement.closest('.segment');
-                if (focused) {
-                    const idx = Array.from(segments).indexOf(focused);
-                    const next = e.shiftKey ? idx - 1 : idx + 1;
-                    if (next >= 0 && next < segments.length) {
-                        segments[next].querySelector('.segment-text')?.focus();
-                    }
+
+            // Chapter list
+            const listEl = document.getElementById('chapter-list');
+            listEl.innerHTML = state.chapters.map((ch, i) => `
+                <div class="chapter-item ${i === state.currentChapterIndex ? 'active' : ''}" onclick="selectChapter(${i})">
+                    <div>
+                        <div class="chapter-item-title">Ch. ${ch.index}: ${ch.title || 'Untitled'}</div>
+                        <div class="chapter-item-meta">${ch.section_count || 0} sections</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ============================================
+        // CHAPTER SELECTION
+        // ============================================
+        function selectChapter(index) {
+            if (state.dirty && !confirm('Unsaved changes. Switch anyway?')) return;
+
+            state.currentChapterIndex = index;
+            state.currentChapter = state.chapters[index];
+            state.text = state.currentChapter?.content || '';
+            state.dirty = false;
+
+            // Update UI
+            document.getElementById('current-chapter-num').textContent = `Ch. ${state.currentChapter?.index || 0}`;
+            document.getElementById('chapter-title').textContent = state.currentChapter?.title || 'Untitled';
+            document.getElementById('document-editor').innerText = state.text;
+
+            // Update sidebar active state
+            document.querySelectorAll('.chapter-item').forEach((el, i) => {
+                el.classList.toggle('active', i === index);
+            });
+
+            segmentText();
+            renderSections();
+            renderParagraphs();
+            updateStatus('Ready', false);
+        }
+
+        // ============================================
+        // METADATA
+        // ============================================
+        function toggleMetadata() {
+            const metaEditor = document.getElementById('metadata-editor');
+            const chapterEditor = document.getElementById('chapter-editor');
+            const isHidden = metaEditor.classList.contains('hidden');
+
+            if (isHidden) {
+                // Load metadata into form
+                document.getElementById('meta-title').value = state.metadata.title || '';
+                document.getElementById('meta-author').value = state.metadata.author || '';
+                document.getElementById('meta-language').value = state.metadata.language || '';
+                document.getElementById('meta-category').value = state.metadata.category || '';
+                document.getElementById('meta-publisher').value = state.metadata.publisher || '';
+                document.getElementById('meta-year').value = state.metadata.publishing_year || '';
+                document.getElementById('meta-synopsis').value = state.metadata.synopsis || '';
+            }
+
+            metaEditor.classList.toggle('hidden');
+            chapterEditor.classList.toggle('hidden');
+        }
+
+        function onMetadataChange() {
+            state.metadataDirty = true;
+        }
+
+        async function saveMetadata() {
+            state.metadata.title = document.getElementById('meta-title').value;
+            state.metadata.author = document.getElementById('meta-author').value;
+            state.metadata.language = document.getElementById('meta-language').value;
+            state.metadata.category = document.getElementById('meta-category').value;
+            state.metadata.publisher = document.getElementById('meta-publisher').value;
+            state.metadata.publishing_year = document.getElementById('meta-year').value;
+            state.metadata.synopsis = document.getElementById('meta-synopsis').value;
+
+            if (state.jobId) {
+                try {
+                    await fetch(`/v2/job/${state.jobId}/metadata`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(state.metadata)
+                    });
+                    alert('Metadata saved!');
+                } catch (e) {
+                    alert('Failed to save metadata');
                 }
             }
-            // 1, 2, 3 keys to switch tabs quickly
-            if (e.key === '1' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
-                switchTab('document');
-            }
-            if (e.key === '2' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
-                switchTab('sections');
-            }
-            if (e.key === '3' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
-                switchTab('paragraphs');
-            }
+
+            state.metadataDirty = false;
+            updateSidebar();
+            toggleMetadata();
         }
 
         // ============================================
-        // API CALLS
-        // ============================================
-        async function loadChapter() {
-            if (!state.jobId) {
-                // Demo mode - load sample text
-                const sampleText = `We take great pleasure in presenting to the attention of students and investigators of the Secret Doctrines this little work based upon the world-old Hermetic Teachings.
-
-There has been so little written upon this subject, notwithstanding the countless references to the teachings in the many works upon occultism, that the many earnest searchers after the Arcane Truths will doubtless welcome the appearance of this present volume.
-
-The purpose of this work is not the enunciation of any special philosophy or doctrine, but rather is to give to the students a statement of the Truth that will serve to reconcile the many bits of occult knowledge that they may have acquired.`;
-
-                document.getElementById('document-editor').innerText = sampleText;
-                state.text = sampleText;
-                onTextChange();
-                return;
-            }
-
-            try {
-                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/text`);
-                const data = await res.json();
-
-                document.getElementById('document-editor').innerText = data.text;
-                state.text = data.text;
-
-                document.getElementById('chapter-title').textContent = data.title || `Chapter ${state.chapterIndex}`;
-                document.getElementById('chapter-meta').textContent = data.book_title || '';
-
-                onTextChange();
-            } catch (e) {
-                console.error('Failed to load chapter:', e);
-            }
-        }
-
-        async function save() {
-            if (!state.jobId) {
-                alert('Demo mode - save disabled');
-                return;
-            }
-
-            document.getElementById('save-status').textContent = 'Saving...';
-            document.getElementById('save-indicator').classList.add('warning');
-
-            try {
-                await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/text`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: state.text, sections: state.sections, paragraphs: state.paragraphs })
-                });
-
-                document.getElementById('save-status').textContent = 'Saved';
-                document.getElementById('save-indicator').classList.remove('warning');
-                state.dirty = false;
-            } catch (e) {
-                document.getElementById('save-status').textContent = 'Save failed';
-                document.getElementById('save-indicator').classList.add('error');
-            }
-        }
-
-        async function optimize() {
-            if (!state.jobId) {
-                alert('Demo mode - optimize disabled');
-                return;
-            }
-
-            try {
-                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/optimize`, {
-                    method: 'POST'
-                });
-                const data = await res.json();
-
-                document.getElementById('document-editor').innerText = data.text;
-                state.text = data.text;
-                onTextChange();
-            } catch (e) {
-                console.error('Optimize failed:', e);
-            }
-        }
-
-        // ============================================
-        // TEXT PROCESSING
+        // TEXT EDITING
         // ============================================
         function onTextChange() {
             const editor = document.getElementById('document-editor');
             state.text = editor.innerText;
             state.dirty = true;
-
-            document.getElementById('save-status').textContent = 'Unsaved changes';
-            document.getElementById('save-indicator').classList.add('warning');
-
-            // Update stats
+            updateStatus('Unsaved changes', true);
             document.getElementById('total-chars').textContent = state.text.length.toLocaleString();
-
-            // Auto-segment
             segmentText();
-
-            // Update UI
             renderSections();
             renderParagraphs();
         }
 
         function segmentText() {
-            // Simple sentence-based segmentation for sections (max 250 chars)
             const sentences = state.text.split(/(?<=[.!?])\s+/);
             state.sections = [];
-
             let currentSection = '';
             for (const sentence of sentences) {
                 if ((currentSection + ' ' + sentence).trim().length <= state.maxSectionChars) {
                     currentSection = (currentSection + ' ' + sentence).trim();
                 } else {
-                    if (currentSection) {
-                        state.sections.push(currentSection);
-                    }
+                    if (currentSection) state.sections.push(currentSection);
                     currentSection = sentence;
                 }
             }
-            if (currentSection) {
-                state.sections.push(currentSection);
-            }
+            if (currentSection) state.sections.push(currentSection);
 
-            // Paragraphs: split by double newline
             state.paragraphs = state.text.split(/\n\n+/).filter(p => p.trim());
 
-            // Update counts
             document.getElementById('section-count').textContent = state.sections.length;
             document.getElementById('paragraph-count').textContent = state.paragraphs.length;
             document.getElementById('total-sections').textContent = state.sections.length;
 
-            // Count overlength
             const overlength = state.sections.filter(s => s.length > state.maxSectionChars).length;
             document.getElementById('overlength-count').textContent = overlength;
         }
@@ -627,24 +892,24 @@ The purpose of this work is not the enunciation of any special philosophy or doc
                 const chars = text.length;
                 const isOver = chars > state.maxSectionChars;
                 const charClass = isOver ? 'over' : (chars > 200 ? 'warn' : 'ok');
-
                 return `
-                    <div class="segment ${isOver ? 'overlength' : ''}" data-index="${i}">
+                    <div class="segment ${isOver ? 'overlength' : ''}">
                         <div class="segment-header">
-                            <div class="segment-marker">
+                            <div class="segment-header-left">
                                 <div class="segment-bar"></div>
                                 <span class="segment-index">§${i + 1}</span>
                             </div>
-                            <span class="segment-chars ${charClass}">${chars}/${state.maxSectionChars} ${isOver ? '⚠️' : '✓'}</span>
+                            <div class="segment-header-right">
+                                <span class="segment-chars ${charClass}">${chars}/${state.maxSectionChars}</span>
+                            </div>
                         </div>
                         <div class="segment-content">
-                            <div class="segment-text" contenteditable="true" 
-                                 oninput="onSectionEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
+                            <div class="segment-text" contenteditable="true" oninput="onSectionEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
                         </div>
                         <div class="segment-actions">
                             <button class="segment-btn" onclick="splitSection(${i})">✂️ Split</button>
                             ${i > 0 ? `<button class="segment-btn" onclick="mergeWithPrevious(${i})">🔗 Merge ↑</button>` : ''}
-                            <button class="segment-btn" onclick="optimizeSection(${i})">✨ Optimize</button>
+                            <button class="segment-btn" onclick="optimizeSegment('section', ${i})">✨ Optimize</button>
                         </div>
                     </div>
                 `;
@@ -655,19 +920,22 @@ The purpose of this work is not the enunciation of any special philosophy or doc
             const container = document.getElementById('paragraphs-list');
             container.innerHTML = state.paragraphs.map((text, i) => {
                 const chars = text.length;
-
                 return `
-                    <div class="segment" data-index="${i}">
+                    <div class="segment">
                         <div class="segment-header">
-                            <div class="segment-marker">
-                                <div class="segment-bar" style="background: var(--accent)"></div>
+                            <div class="segment-header-left">
+                                <div class="segment-bar paragraph"></div>
                                 <span class="segment-index">¶${i + 1}</span>
                             </div>
-                            <span class="segment-chars">${chars} chars</span>
+                            <div class="segment-header-right">
+                                <span class="segment-chars">${chars} chars</span>
+                            </div>
                         </div>
                         <div class="segment-content">
-                            <div class="segment-text" contenteditable="true"
-                                 oninput="onParagraphEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
+                            <div class="segment-text" contenteditable="true" oninput="onParagraphEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
+                        </div>
+                        <div class="segment-actions">
+                            <button class="segment-btn" onclick="optimizeSegment('paragraph', ${i})">✨ Optimize</button>
                         </div>
                     </div>
                 `;
@@ -679,13 +947,7 @@ The purpose of this work is not the enunciation of any special philosophy or doc
         // ============================================
         function switchTab(view) {
             state.currentView = view;
-
-            // Update tabs
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.view === view);
-            });
-
-            // Show/hide views
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
             document.getElementById('document-view').classList.toggle('hidden', view !== 'document');
             document.getElementById('sections-view').classList.toggle('hidden', view !== 'sections');
             document.getElementById('sections-view').classList.toggle('active', view === 'sections');
@@ -696,20 +958,14 @@ The purpose of this work is not the enunciation of any special philosophy or doc
         function onSectionEdit(index, newText) {
             state.sections[index] = newText;
             state.dirty = true;
-
-            // Rebuild full text from sections
             state.text = state.sections.join(' ');
             document.getElementById('document-editor').innerText = state.text;
-
-            // Re-render to update char counts
             renderSections();
         }
 
         function onParagraphEdit(index, newText) {
             state.paragraphs[index] = newText;
             state.dirty = true;
-
-            // Rebuild full text from paragraphs
             state.text = state.paragraphs.join('\n\n');
             document.getElementById('document-editor').innerText = state.text;
         }
@@ -717,59 +973,88 @@ The purpose of this work is not the enunciation of any special philosophy or doc
         function splitSection(index) {
             const text = state.sections[index];
             const midpoint = Math.floor(text.length / 2);
-
-            // Find nearest sentence boundary
             let splitPoint = midpoint;
             const nearestPeriod = text.lastIndexOf('.', midpoint);
-            if (nearestPeriod > midpoint / 2) {
-                splitPoint = nearestPeriod + 1;
-            }
-
-            const part1 = text.substring(0, splitPoint).trim();
-            const part2 = text.substring(splitPoint).trim();
-
-            state.sections.splice(index, 1, part1, part2);
+            if (nearestPeriod > midpoint / 2) splitPoint = nearestPeriod + 1;
+            state.sections.splice(index, 1, text.substring(0, splitPoint).trim(), text.substring(splitPoint).trim());
             renderSections();
-
-            document.getElementById('section-count').textContent = state.sections.length;
             state.dirty = true;
         }
 
         function mergeWithPrevious(index) {
             if (index < 1) return;
-
-            const merged = state.sections[index - 1] + ' ' + state.sections[index];
-            state.sections.splice(index - 1, 2, merged);
+            state.sections.splice(index - 1, 2, state.sections[index - 1] + ' ' + state.sections[index]);
             renderSections();
-
-            document.getElementById('section-count').textContent = state.sections.length;
             state.dirty = true;
         }
 
-        function optimizeSection(index) {
-            // TODO: Call Gemini API
-            alert('Gemini optimization coming soon!');
+        async function optimizeSegment(type, index) {
+            if (!state.jobId) { alert('Demo mode - optimize disabled'); return; }
+            // TODO: Implement single segment optimization via API
+            alert(`Optimizing ${type} ${index + 1}...`);
         }
 
-        function goBack() {
-            if (state.dirty && !confirm('You have unsaved changes. Leave anyway?')) {
-                return;
+        async function optimizeAll() {
+            if (!state.jobId) { alert('Demo mode - optimize disabled'); return; }
+            try {
+                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/optimize`, { method: 'POST' });
+                const data = await res.json();
+                state.text = data.text;
+                document.getElementById('document-editor').innerText = state.text;
+                onTextChange();
+                alert('Optimized!');
+            } catch (e) {
+                alert('Optimize failed');
             }
-            window.history.back();
+        }
+
+        async function saveChapter() {
+            if (!state.jobId) { alert('Demo mode - save disabled'); return; }
+            updateStatus('Saving...', true);
+            try {
+                await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/text`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: state.text, sections: state.sections, paragraphs: state.paragraphs })
+                });
+                state.dirty = false;
+                if (state.currentChapter) {
+                    state.currentChapter.content = state.text;
+                    state.currentChapter.section_count = state.sections.length;
+                }
+                updateSidebar();
+                updateStatus('Saved', false);
+            } catch (e) {
+                updateStatus('Save failed', false);
+            }
+        }
+
+        async function commitToSupabase() {
+            if (!state.jobId) { alert('Demo mode - commit disabled'); return; }
+            if (state.dirty) { alert('Please save your changes first!'); return; }
+            if (!confirm('Upload all chapters and metadata to Supabase?')) return;
+            try {
+                const res = await fetch(`/v2/job/${state.jobId}/commit`, { method: 'POST' });
+                const data = await res.json();
+                alert(`Success! Book ID: ${data.book_id}`);
+            } catch (e) {
+                alert('Commit failed: ' + e.message);
+            }
+        }
+
+        function updateStatus(text, isWarning) {
+            document.getElementById('save-status').textContent = text;
+            document.getElementById('save-indicator').classList.toggle('warning', isWarning);
         }
 
         function updateCursorPosition() {
             const editor = document.getElementById('document-editor');
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
-
             const range = selection.getRangeAt(0);
             const text = editor.innerText.substring(0, range.startOffset);
             const lines = text.split('\n');
-            const line = lines.length;
-            const col = lines[lines.length - 1].length + 1;
-
-            document.getElementById('cursor-position').textContent = `Line ${line}, Col ${col}`;
+            document.getElementById('cursor-position').textContent = `Line ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
         }
 
         function escapeHtml(text) {
