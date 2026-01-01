@@ -581,6 +581,18 @@
     .char-ok {
       color: var(--success);
     }
+
+    .needs-editing {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(248, 113, 113, 0.2);
+      color: var(--error);
+      border: 1px solid var(--error);
+      margin-left: 6px;
+    }
   </style>
 </head>
 
@@ -862,13 +874,20 @@
         document.getElementById('meta-synopsis').value = meta.synopsis || '';
 
         const coverUrl = metaData.cover_urls?.cover_art_url;
-        if (coverUrl) {
-          document.getElementById('cover-img').src = coverUrl;
+        const coverPreview = document.getElementById('cover-img');
+        const coverUrlText = document.getElementById('cover-url');
+        
+        if (coverUrl && coverUrl !== 'null' && coverUrl !== null) {
+          coverPreview.src = coverUrl;
+          coverPreview.style.display = 'block';
           // Don't show base64 URLs, just a friendly message
           const displayUrl = coverUrl.startsWith('data:') 
-            ? '✅ Generated via Gemini (Nano Banana)' 
+            ? '✅ Generated via DALL-E 3' 
             : coverUrl.substring(0, 50) + '...';
-          document.getElementById('cover-url').textContent = displayUrl;
+          coverUrlText.textContent = displayUrl;
+        } else {
+          coverPreview.style.display = 'none';
+          coverUrlText.textContent = '⚠️ Cover art generation failed or skipped';
         }
 
       } catch (err) {
@@ -1011,12 +1030,14 @@
       document.getElementById('editor-sections').innerHTML = sections.map((sec, i) => {
         const charClass = sec.length > 250 ? 'char-warning' : 'char-ok';
         const isTitle = i === 0;
+        const needsEdit = needsEditing(sec);
         return `
         <div class="section-item ${isTitle ? 'title-section' : ''}" data-section-index="${i}">
           <div class="section-header">
             <span class="section-index">${isTitle ? '📌 Section 0 (Title)' : `Section ${i}`}</span>
             <div style="display: flex; gap: 4px; align-items: center;">
               <span class="section-chars ${charClass}">${sec.length} chars ${sec.length > 250 ? '⚠️' : '✓'}</span>
+              ${needsEdit ? '<span class="needs-editing">⚠️ NEEDS EDITING</span>' : ''}
               ${!isTitle ? `<button class="secondary small" onclick="rewriteSection(${i})" style="padding: 4px 8px; font-size: 11px;">✨ Rewrite</button>` : ''}
               ${!isTitle ? `<button class="secondary small" onclick="deleteSection(${i})" style="padding: 4px 8px; font-size: 11px;">🗑</button>` : ''}
             </div>
@@ -1054,6 +1075,23 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Check if text contains numbers, symbols, or special characters that need editing
+    function needsEditing(text) {
+      if (!text) return false;
+      
+      // Pattern to detect:
+      // - Digits (0-9)
+      // - Currency symbols (£, $, €, ¥, ¢, ₹)
+      // - Fractions (½, ⅓, ¼, ¾, ⅕, ⅙, ⅐, ⅛, ⅑, ⅒, etc.)
+      // - Special symbols (♄, ✶, △, ♂, ☉, ☽, ☿, ♀, ♃, ♅, ♆, ♇, etc.)
+      // - Degrees and measurements (°, ', ", %, ‰, ‱)
+      // - Mathematical symbols (×, ÷, ±, ≈, ≠, ≤, ≥, √, ∞, π, ∑, ∫, etc.)
+      // - Alchemical symbols (🜁, 🜂, 🜃, 🜄, etc.)
+      const pattern = /[0-9]|[£$€¥¢₹]|[½⅓¼¾⅕⅙⅐⅛⅑⅒⅔⅖⅗⅘⅚⅜⅝⅞]|[♄✶△♂☉☽☿♀♃♅♆♇♈♉♊♋♌♍♎♏♐♑♒♓]|[°'"‰‱]|[×÷±≈≠≤≥√∞π∑∫∂∆∇]|[🜁🜂🜃🜄🜅🜆🜇🜈🜉🜊🜋🜌🜍🜎🜏🜐🜑🜒🜓🜔🜕🜖🜗🜘🜙🜚🜛🜜🜝🜞🜟🜠🜡🜢🜣🜤🜥🜦🜧🜨🜩🜪🜫🜬🜭🜮🜯🜰🜱🜲🜳🜴🜵🜶🜷🜸🜹🜺🜻🜼🜽🜾🜿🝀🝁🝂🝃🝄🝅🝆🝇🝈🝉🝊🝋🝌🝍🝎🝏🝐🝑🝒🝓🝔🝕🝖🝗🝘🝙🝚🝛🝜🝝🝞🝟🝠🝡🝢🝣🝤🝥🝦🝧🝨🝩🝪🝫🝬🝭🝮🝯]|[★☆✦✧✩✪✫✬✭✮✯✰⭐]/;
+      
+      return pattern.test(text);
     }
 
     function insertParagraphAfter(index) {
@@ -1101,13 +1139,12 @@
 
         if (data.changes_detected) {
           textarea.value = data.rewritten;
-          alert(`✨ Paragraph ${index} rewritten!
-
-Original: ${originalText.substring(0, 100)}...
-
-Rewritten: ${data.rewritten.substring(0, 100)}...`);
+          const maxPreview = 500;
+          const origPreview = originalText.length > maxPreview ? originalText.substring(0, maxPreview) + '...' : originalText;
+          const rewritePreview = data.rewritten.length > maxPreview ? data.rewritten.substring(0, maxPreview) + '...' : data.rewritten;
+          alert('✨ Paragraph ' + index + ' rewritten!\n\nOriginal (' + originalText.length + ' chars):\n' + origPreview + '\n\n→\n\nRewritten (' + data.rewritten.length + ' chars):\n' + rewritePreview);
         } else {
-          alert('✓ No special characters found in this paragraph.');
+          alert('✓ No special characters or numbers found in this paragraph.');
         }
       } catch (err) {
         console.error(err);
@@ -1140,11 +1177,10 @@ Rewritten: ${data.rewritten.substring(0, 100)}...`);
 
         if (data.changes_detected) {
           textarea.value = data.rewritten;
-          alert(`✨ Section ${index} rewritten!
-
-Original: ${originalText.substring(0, 100)}...
-
-Rewritten: ${data.rewritten.substring(0, 100)}...`);
+          const maxPreview = 500;
+          const origPreview = originalText.length > maxPreview ? originalText.substring(0, maxPreview) + '...' : originalText;
+          const rewritePreview = data.rewritten.length > maxPreview ? data.rewritten.substring(0, maxPreview) + '...' : data.rewritten;
+          alert('✨ Section ' + index + ' rewritten!\n\nOriginal (' + originalText.length + ' chars):\n' + origPreview + '\n\n→\n\nRewritten (' + data.rewritten.length + ' chars):\n' + rewritePreview);
           // Update character count
           const charSpan = document.querySelector(`[data-section-index="${index}"] .section-chars`);
           if (charSpan) {
@@ -1153,7 +1189,7 @@ Rewritten: ${data.rewritten.substring(0, 100)}...`);
             charSpan.textContent = `${len} chars ${len > 250 ? '⚠️' : '✓'}`;
           }
         } else {
-          alert('✓ No special characters found in this section.');
+          alert('✓ No special characters or numbers found in this section.');
         }
       } catch (err) {
         console.error(err);

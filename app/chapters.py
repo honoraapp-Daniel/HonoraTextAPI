@@ -452,6 +452,8 @@ def extract_chapter_text(full_text: str, chapters: list, book_type: str) -> list
             # FLEXIBLE: Match "Chapter X" where X is the chapter_index (no title required)
             rf"(?:^|\n)Chapter\s+{re.escape(str(chapter['chapter_index']))}[:\.\s\-–]",
             rf"(?:^|\n)Chapter\s+{roman_pattern}[:\.\s\-–]",  # Any Chapter + Roman numeral
+            # Chapter 0 triggers: "The life of" or "life of" at start of line
+            rf"(?:^|\n)(?:The\s+)?[Ll]ife\s+of\s+.+",
         ]
         
         start_pos = None
