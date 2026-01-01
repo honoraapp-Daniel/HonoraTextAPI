@@ -127,13 +127,24 @@ def create_book_in_supabase(metadata: dict) -> str:
     
     # Add optional text fields (keep for backwards compatibility)
     optional_text_fields = [
-        "original_language", "publisher", "publishing_year",
+        "original_language", "publisher",
         "synopsis", "book_of_the_day_quote", "category"
     ]
     
     for field in optional_text_fields:
-        if metadata.get(field) is not None:
-            insert_data[field] = metadata[field]
+        value = metadata.get(field)
+        # Skip None and empty strings
+        if value is not None and value != "":
+            insert_data[field] = value
+    
+    # Handle publishing_year separately (must be integer, not empty string)
+    publishing_year = metadata.get("publishing_year")
+    if publishing_year is not None and publishing_year != "":
+        try:
+            insert_data["publishing_year"] = int(publishing_year)
+        except (ValueError, TypeError):
+            # If it can't be converted to int, skip it
+            print(f"[SUPABASE] Warning: Skipping invalid publishing_year: {publishing_year}")
     
     # === 3NF: Add foreign keys ===
     
