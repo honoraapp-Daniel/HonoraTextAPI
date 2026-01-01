@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter Editor - Honora</title>
+    <style>
+        :root {
+            --bg-dark: #0f1419;
+            --bg-card: #1a1f26;
+            --bg-hover: #242b33;
+            --text-primary: #f5f5f5;
+            --text-muted: #8899a6;
+            --accent: #7dd3fc;
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-yellow: #fbbf24;
+            --border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .chapter-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .chapter-meta {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            padding: 0 24px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            padding: 14px 24px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 14px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+        }
+
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        .tab-count {
+            background: var(--bg-hover);
+            color: var(--text-muted);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .tab.active .tab-count {
+            background: rgba(125, 211, 252, 0.2);
+            color: var(--accent);
+        }
+
+        /* Editor Container */
+        .editor-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 32px 24px;
+        }
+
+        /* Document View */
+        .document-view {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 32px 40px;
+            min-height: 500px;
+            border: 1px solid var(--border);
+        }
+
+        .document-editor {
+            outline: none;
+            line-height: 1.8;
+            font-size: 16px;
+            white-space: pre-wrap;
+        }
+
+        .document-editor:empty:before {
+            content: 'Start writing or paste your chapter text here...';
+            color: var(--text-muted);
+        }
+
+        /* Sections/Paragraphs View */
+        .segments-view {
+            display: none;
+        }
+
+        .segments-view.active {
+            display: block;
+        }
+
+        .segment {
+            background: var(--bg-card);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+
+        .segment:hover {
+            border-color: var(--accent);
+        }
+
+        .segment.overlength {
+            border-color: var(--accent-red);
+        }
+
+        .segment-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .segment-marker {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .segment-bar {
+            width: 4px;
+            height: 20px;
+            background: var(--accent-green);
+            border-radius: 2px;
+        }
+
+        .segment.overlength .segment-bar {
+            background: var(--accent-red);
+        }
+
+        .segment-index {
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .segment-chars {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .segment-chars.ok {
+            color: var(--accent-green);
+        }
+
+        .segment-chars.warn {
+            color: var(--accent-yellow);
+        }
+
+        .segment-chars.over {
+            color: var(--accent-red);
+        }
+
+        .segment-content {
+            padding: 16px;
+        }
+
+        .segment-text {
+            outline: none;
+            line-height: 1.7;
+            font-size: 15px;
+            white-space: pre-wrap;
+        }
+
+        .segment-actions {
+            display: flex;
+            gap: 8px;
+            padding: 0 16px 12px;
+        }
+
+        .segment-btn {
+            padding: 6px 12px;
+            background: var(--bg-hover);
+            border: none;
+            color: var(--text-muted);
+            font-size: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .segment-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        /* Status Bar */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 24px;
+            background: var(--bg-card);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .status-stats {
+            display: flex;
+            gap: 24px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+        }
+
+        .status-indicator.warning {
+            background: var(--accent-yellow);
+        }
+
+        .status-indicator.error {
+            background: var(--accent-red);
+        }
+
+        /* Hidden views */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <button class="back-btn" onclick="goBack()">←</button>
+            <div>
+                <div class="chapter-title" id="chapter-title">Chapter 1: The Hermetic Philosophy</div>
+                <div class="chapter-meta" id="chapter-meta">The Kybalion - Three Initiates</div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="optimize()">✨ Optimize</button>
+            <button class="btn btn-primary" onclick="save()">💾 Save</button>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" data-view="document" onclick="switchTab('document')">
+            📄 Document
+        </button>
+        <button class="tab" data-view="sections" onclick="switchTab('sections')">
+            🔖 Sections
+            <span class="tab-count" id="section-count">0</span>
+        </button>
+        <button class="tab" data-view="paragraphs" onclick="switchTab('paragraphs')">
+            📝 Paragraphs
+            <span class="tab-count" id="paragraph-count">0</span>
+        </button>
+    </div>
+
+    <!-- Editor Container -->
+    <div class="editor-container">
+        <!-- Document View (Primary) -->
+        <div id="document-view" class="document-view">
+            <div class="document-editor" id="document-editor" contenteditable="true" spellcheck="true"></div>
+        </div>
+
+        <!-- Sections View (Derived) -->
+        <div id="sections-view" class="segments-view">
+            <div id="sections-list"></div>
+        </div>
+
+        <!-- Paragraphs View (Derived) -->
+        <div id="paragraphs-view" class="segments-view">
+            <div id="paragraphs-list"></div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <div class="status-stats">
+            <div class="status-item">
+                <span class="status-indicator" id="save-indicator"></span>
+                <span id="save-status">Saved</span>
+            </div>
+            <div class="status-item">
+                Total: <span id="total-chars">0</span> chars
+            </div>
+            <div class="status-item">
+                Sections: <span id="total-sections">0</span>
+            </div>
+            <div class="status-item">
+                Overlength: <span id="overlength-count">0</span>
+            </div>
+        </div>
+        <div class="status-item">
+            <span id="cursor-position">Line 1, Col 1</span>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // STATE
+        // ============================================
+        const state = {
+            jobId: null,
+            chapterIndex: null,
+            text: '',
+            sections: [],
+            paragraphs: [],
+            dirty: false,
+            currentView: 'document',
+            maxSectionChars: 250
+        };
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get job_id and chapter_index from URL params
+            const params = new URLSearchParams(window.location.search);
+            state.jobId = params.get('job_id');
+            state.chapterIndex = parseInt(params.get('chapter')) || 0;
+
+            // Load chapter
+            loadChapter();
+
+            // Setup document editor events
+            const editor = document.getElementById('document-editor');
+            editor.addEventListener('input', onTextChange);
+            editor.addEventListener('keyup', updateCursorPosition);
+            editor.addEventListener('mouseup', updateCursorPosition);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', handleKeyboard);
+        });
+
+        // ============================================
+        // KEYBOARD SHORTCUTS
+        // ============================================
+        function handleKeyboard(e) {
+            // Ctrl/Cmd + S = Save
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                save();
+            }
+            // Ctrl/Cmd + O = Optimize
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                optimize();
+            }
+            // Tab/Shift+Tab to navigate sections
+            if (e.key === 'Tab' && state.currentView === 'sections') {
+                e.preventDefault();
+                const segments = document.querySelectorAll('.segment');
+                const focused = document.activeElement.closest('.segment');
+                if (focused) {
+                    const idx = Array.from(segments).indexOf(focused);
+                    const next = e.shiftKey ? idx - 1 : idx + 1;
+                    if (next >= 0 && next < segments.length) {
+                        segments[next].querySelector('.segment-text')?.focus();
+                    }
+                }
+            }
+            // 1, 2, 3 keys to switch tabs quickly
+            if (e.key === '1' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
+                switchTab('document');
+            }
+            if (e.key === '2' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
+                switchTab('sections');
+            }
+            if (e.key === '3' && !e.ctrlKey && !e.metaKey && document.activeElement === document.body) {
+                switchTab('paragraphs');
+            }
+        }
+
+        // ============================================
+        // API CALLS
+        // ============================================
+        async function loadChapter() {
+            if (!state.jobId) {
+                // Demo mode - load sample text
+                const sampleText = `We take great pleasure in presenting to the attention of students and investigators of the Secret Doctrines this little work based upon the world-old Hermetic Teachings.
+
+There has been so little written upon this subject, notwithstanding the countless references to the teachings in the many works upon occultism, that the many earnest searchers after the Arcane Truths will doubtless welcome the appearance of this present volume.
+
+The purpose of this work is not the enunciation of any special philosophy or doctrine, but rather is to give to the students a statement of the Truth that will serve to reconcile the many bits of occult knowledge that they may have acquired.`;
+
+                document.getElementById('document-editor').innerText = sampleText;
+                state.text = sampleText;
+                onTextChange();
+                return;
+            }
+
+            try {
+                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/text`);
+                const data = await res.json();
+
+                document.getElementById('document-editor').innerText = data.text;
+                state.text = data.text;
+
+                document.getElementById('chapter-title').textContent = data.title || `Chapter ${state.chapterIndex}`;
+                document.getElementById('chapter-meta').textContent = data.book_title || '';
+
+                onTextChange();
+            } catch (e) {
+                console.error('Failed to load chapter:', e);
+            }
+        }
+
+        async function save() {
+            if (!state.jobId) {
+                alert('Demo mode - save disabled');
+                return;
+            }
+
+            document.getElementById('save-status').textContent = 'Saving...';
+            document.getElementById('save-indicator').classList.add('warning');
+
+            try {
+                await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/text`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: state.text, sections: state.sections, paragraphs: state.paragraphs })
+                });
+
+                document.getElementById('save-status').textContent = 'Saved';
+                document.getElementById('save-indicator').classList.remove('warning');
+                state.dirty = false;
+            } catch (e) {
+                document.getElementById('save-status').textContent = 'Save failed';
+                document.getElementById('save-indicator').classList.add('error');
+            }
+        }
+
+        async function optimize() {
+            if (!state.jobId) {
+                alert('Demo mode - optimize disabled');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.chapterIndex}/optimize`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                document.getElementById('document-editor').innerText = data.text;
+                state.text = data.text;
+                onTextChange();
+            } catch (e) {
+                console.error('Optimize failed:', e);
+            }
+        }
+
+        // ============================================
+        // TEXT PROCESSING
+        // ============================================
+        function onTextChange() {
+            const editor = document.getElementById('document-editor');
+            state.text = editor.innerText;
+            state.dirty = true;
+
+            document.getElementById('save-status').textContent = 'Unsaved changes';
+            document.getElementById('save-indicator').classList.add('warning');
+
+            // Update stats
+            document.getElementById('total-chars').textContent = state.text.length.toLocaleString();
+
+            // Auto-segment
+            segmentText();
+
+            // Update UI
+            renderSections();
+            renderParagraphs();
+        }
+
+        function segmentText() {
+            // Simple sentence-based segmentation for sections (max 250 chars)
+            const sentences = state.text.split(/(?<=[.!?])\s+/);
+            state.sections = [];
+
+            let currentSection = '';
+            for (const sentence of sentences) {
+                if ((currentSection + ' ' + sentence).trim().length <= state.maxSectionChars) {
+                    currentSection = (currentSection + ' ' + sentence).trim();
+                } else {
+                    if (currentSection) {
+                        state.sections.push(currentSection);
+                    }
+                    currentSection = sentence;
+                }
+            }
+            if (currentSection) {
+                state.sections.push(currentSection);
+            }
+
+            // Paragraphs: split by double newline
+            state.paragraphs = state.text.split(/\n\n+/).filter(p => p.trim());
+
+            // Update counts
+            document.getElementById('section-count').textContent = state.sections.length;
+            document.getElementById('paragraph-count').textContent = state.paragraphs.length;
+            document.getElementById('total-sections').textContent = state.sections.length;
+
+            // Count overlength
+            const overlength = state.sections.filter(s => s.length > state.maxSectionChars).length;
+            document.getElementById('overlength-count').textContent = overlength;
+        }
+
+        // ============================================
+        // RENDERING
+        // ============================================
+        function renderSections() {
+            const container = document.getElementById('sections-list');
+            container.innerHTML = state.sections.map((text, i) => {
+                const chars = text.length;
+                const isOver = chars > state.maxSectionChars;
+                const charClass = isOver ? 'over' : (chars > 200 ? 'warn' : 'ok');
+
+                return `
+                    <div class="segment ${isOver ? 'overlength' : ''}" data-index="${i}">
+                        <div class="segment-header">
+                            <div class="segment-marker">
+                                <div class="segment-bar"></div>
+                                <span class="segment-index">§${i + 1}</span>
+                            </div>
+                            <span class="segment-chars ${charClass}">${chars}/${state.maxSectionChars} ${isOver ? '⚠️' : '✓'}</span>
+                        </div>
+                        <div class="segment-content">
+                            <div class="segment-text" contenteditable="true" 
+                                 oninput="onSectionEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
+                        </div>
+                        <div class="segment-actions">
+                            <button class="segment-btn" onclick="splitSection(${i})">✂️ Split</button>
+                            ${i > 0 ? `<button class="segment-btn" onclick="mergeWithPrevious(${i})">🔗 Merge ↑</button>` : ''}
+                            <button class="segment-btn" onclick="optimizeSection(${i})">✨ Optimize</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderParagraphs() {
+            const container = document.getElementById('paragraphs-list');
+            container.innerHTML = state.paragraphs.map((text, i) => {
+                const chars = text.length;
+
+                return `
+                    <div class="segment" data-index="${i}">
+                        <div class="segment-header">
+                            <div class="segment-marker">
+                                <div class="segment-bar" style="background: var(--accent)"></div>
+                                <span class="segment-index">¶${i + 1}</span>
+                            </div>
+                            <span class="segment-chars">${chars} chars</span>
+                        </div>
+                        <div class="segment-content">
+                            <div class="segment-text" contenteditable="true"
+                                 oninput="onParagraphEdit(${i}, this.innerText)">${escapeHtml(text)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ============================================
+        // ACTIONS
+        // ============================================
+        function switchTab(view) {
+            state.currentView = view;
+
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.view === view);
+            });
+
+            // Show/hide views
+            document.getElementById('document-view').classList.toggle('hidden', view !== 'document');
+            document.getElementById('sections-view').classList.toggle('hidden', view !== 'sections');
+            document.getElementById('sections-view').classList.toggle('active', view === 'sections');
+            document.getElementById('paragraphs-view').classList.toggle('hidden', view !== 'paragraphs');
+            document.getElementById('paragraphs-view').classList.toggle('active', view === 'paragraphs');
+        }
+
+        function onSectionEdit(index, newText) {
+            state.sections[index] = newText;
+            state.dirty = true;
+
+            // Rebuild full text from sections
+            state.text = state.sections.join(' ');
+            document.getElementById('document-editor').innerText = state.text;
+
+            // Re-render to update char counts
+            renderSections();
+        }
+
+        function onParagraphEdit(index, newText) {
+            state.paragraphs[index] = newText;
+            state.dirty = true;
+
+            // Rebuild full text from paragraphs
+            state.text = state.paragraphs.join('\n\n');
+            document.getElementById('document-editor').innerText = state.text;
+        }
+
+        function splitSection(index) {
+            const text = state.sections[index];
+            const midpoint = Math.floor(text.length / 2);
+
+            // Find nearest sentence boundary
+            let splitPoint = midpoint;
+            const nearestPeriod = text.lastIndexOf('.', midpoint);
+            if (nearestPeriod > midpoint / 2) {
+                splitPoint = nearestPeriod + 1;
+            }
+
+            const part1 = text.substring(0, splitPoint).trim();
+            const part2 = text.substring(splitPoint).trim();
+
+            state.sections.splice(index, 1, part1, part2);
+            renderSections();
+
+            document.getElementById('section-count').textContent = state.sections.length;
+            state.dirty = true;
+        }
+
+        function mergeWithPrevious(index) {
+            if (index < 1) return;
+
+            const merged = state.sections[index - 1] + ' ' + state.sections[index];
+            state.sections.splice(index - 1, 2, merged);
+            renderSections();
+
+            document.getElementById('section-count').textContent = state.sections.length;
+            state.dirty = true;
+        }
+
+        function optimizeSection(index) {
+            // TODO: Call Gemini API
+            alert('Gemini optimization coming soon!');
+        }
+
+        function goBack() {
+            if (state.dirty && !confirm('You have unsaved changes. Leave anyway?')) {
+                return;
+            }
+            window.history.back();
+        }
+
+        function updateCursorPosition() {
+            const editor = document.getElementById('document-editor');
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            const range = selection.getRangeAt(0);
+            const text = editor.innerText.substring(0, range.startOffset);
+            const lines = text.split('\n');
+            const line = lines.length;
+            const col = lines[lines.length - 1].length + 1;
+
+            document.getElementById('cursor-position').textContent = `Line ${line}, Col ${col}`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>

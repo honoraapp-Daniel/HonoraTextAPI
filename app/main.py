@@ -56,6 +56,7 @@ if static_path.exists():
 
 dashboard_path = static_path / "dashboard.html"
 dashboard_v2_path = static_path / "dashboard_v2.html"
+chapter_editor_path = Path(__file__).parent.parent / "templates" / "chapter_editor.html"
 
 
 # Minimal dashboard UI for running the full pipeline
@@ -74,6 +75,14 @@ async def dashboard_v2():
     if dashboard_v2_path.exists():
         return FileResponse(dashboard_v2_path)
     return HTMLResponse("<h1>V2 Dashboard not found</h1>", status_code=404)
+
+
+# Chapter Editor - Document-first editing
+@app.get("/v2/editor", include_in_schema=False)
+async def chapter_editor():
+    if chapter_editor_path.exists():
+        return FileResponse(chapter_editor_path)
+    return HTMLResponse("<h1>Chapter Editor not found</h1>", status_code=404)
 
 
 # Custom Swagger UI - Clean dark theme
@@ -1536,3 +1545,140 @@ async def v2_full_pipeline(job_id: str):
             "traceback": traceback.format_exc()
         }, status_code=500)
 
+
+# ============================================
+# Chapter Editor API - Document-first approach
+# ============================================
+
+@app.get("/v2/job/{job_id}/chapter/{chapter_index}/text", tags=["Chapter Editor"])
+async def get_chapter_text(job_id: str, chapter_index: int):
+    """
+    Get chapter as raw text (source of truth for editor).
+    Returns the full chapter text along with metadata.
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": "Chapter not found"}, status_code=404)
+    
+    metadata = state.get("metadata", {})
+    
+    return {
+        "text": chapter.get("content", ""),
+        "title": chapter.get("title", f"Chapter {chapter_index}"),
+        "book_title": metadata.get("title", ""),
+        "sections": chapter.get("sections", []),
+        "paragraphs": chapter.get("paragraphs", []),
+        "chapter_index": chapter_index
+    }
+
+
+@app.put("/v2/job/{job_id}/chapter/{chapter_index}/text", tags=["Chapter Editor"])
+async def update_chapter_text(job_id: str, chapter_index: int, request: Request):
+    """
+    Save edited chapter text and optionally sections/paragraphs.
+    Text is source of truth - segments can be regenerated.
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    body = await request.json()
+    new_text = body.get("text")
+    new_sections = body.get("sections")
+    new_paragraphs = body.get("paragraphs")
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": "Chapter not found"}, status_code=404)
+    
+    # Update chapter content
+    if new_text is not None:
+        chapter["content"] = new_text
+        chapter["char_count"] = len(new_text)
+        chapter["preview"] = new_text[:200] + "..." if len(new_text) > 200 else new_text
+    
+    if new_sections is not None:
+        chapter["sections"] = new_sections
+        chapter["section_count"] = len(new_sections)
+    
+    if new_paragraphs is not None:
+        chapter["paragraphs"] = new_paragraphs
+        chapter["paragraph_count"] = len(new_paragraphs)
+    
+    chapter["status"] = "ready"
+    save_job_state(job_id, state)
+    
+    return {
+        "status": "saved",
+        "chapter_index": chapter_index,
+        "char_count": chapter.get("char_count", 0),
+        "section_count": chapter.get("section_count", 0),
+        "paragraph_count": chapter.get("paragraph_count", 0)
+    }
+
+
+@app.post("/v2/job/{job_id}/chapter/{chapter_index}/resegment", tags=["Chapter Editor"])
+async def resegment_chapter(job_id: str, chapter_index: int):
+    """
+    Regenerate sections and paragraphs from chapter text.
+    Useful after editing the document view.
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    # Re-run chapter processing
+    try:
+        result = await phase_process_chapter(job_id, chapter_index)
+        return {
+            "status": "resegmented",
+            **result
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/chapter/{chapter_index}/optimize", tags=["Chapter Editor"])
+async def optimize_chapter_text(job_id: str, chapter_index: int):
+    """
+    Optimize chapter text for TTS using Gemini.
+    Converts numbers to words, expands abbreviations, etc.
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": "Chapter not found"}, status_code=404)
+    
+    text = chapter.get("content", "")
+    
+    try:
+        # Use existing cleaner for TTS optimization
+        from app.cleaner import clean_page_text
+        optimized = clean_page_text(text)
+        
+        # Update chapter
+        chapter["content"] = optimized
+        chapter["char_count"] = len(optimized)
+        save_job_state(job_id, state)
+        
+        return {
+            "status": "optimized",
+            "text": optimized,
+            "original_length": len(text),
+            "optimized_length": len(optimized)
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
