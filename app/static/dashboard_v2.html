@@ -723,6 +723,10 @@
         <div class="editor-column">
           <h3>📢 Sections (TTS)</h3>
           <div class="muted">Max 250 chars per section. Index 0 = chapter title.</div>
+          <div style="margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="secondary small" id="rewrite-all-sections-btn">✨ Rewrite All (Remove Symbols)</button>
+            <button class="secondary small" id="add-section-btn">+ Add Section</button>
+          </div>
           <div class="section-list" id="editor-sections"></div>
         </div>
 
@@ -730,8 +734,12 @@
         <div class="editor-column">
           <h3>📖 Paragraphs (Display)</h3>
           <div class="muted">Natural sentences only. Index 0 = chapter title.</div>
+          <div style="margin: 12px 0; display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="secondary small" id="rewrite-all-paragraphs-btn">✨ Rewrite All (Remove Symbols)</button>
+            <button class="secondary small" id="optimize-paragraphs-btn">🎯 Optimize (Merge/Split)</button>
+            <button class="add-paragraph-btn" id="add-paragraph-btn">+ Add Paragraph</button>
+          </div>
           <div class="section-list" id="editor-paragraphs"></div>
-          <button class="add-paragraph-btn" id="add-paragraph-btn">+ Add Paragraph</button>
         </div>
       </div>
 
@@ -1004,10 +1012,14 @@
         const charClass = sec.length > 250 ? 'char-warning' : 'char-ok';
         const isTitle = i === 0;
         return `
-        <div class="section-item ${isTitle ? 'title-section' : ''}">
+        <div class="section-item ${isTitle ? 'title-section' : ''}" data-section-index="${i}">
           <div class="section-header">
             <span class="section-index">${isTitle ? '📌 Section 0 (Title)' : `Section ${i}`}</span>
-            <span class="section-chars ${charClass}">${sec.length} chars ${sec.length > 250 ? '⚠️' : '✓'}</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <span class="section-chars ${charClass}">${sec.length} chars ${sec.length > 250 ? '⚠️' : '✓'}</span>
+              ${!isTitle ? `<button class="secondary small" onclick="rewriteSection(${i})" style="padding: 4px 8px; font-size: 11px;">✨ Rewrite</button>` : ''}
+              ${!isTitle ? `<button class="secondary small" onclick="deleteSection(${i})" style="padding: 4px 8px; font-size: 11px;">🗑</button>` : ''}
+            </div>
           </div>
           <textarea class="section-text" data-section="${i}" ${isTitle ? 'placeholder="Chapter title"' : ''}>${escapeHtml(sec)}</textarea>
         </div>
@@ -1028,6 +1040,7 @@
           <div class="paragraph-header">
             <span class="paragraph-index">${isTitle ? '📌 Paragraph 0 (Title)' : `Paragraph ${i}`}</span>
             <div class="paragraph-actions">
+              ${!isTitle ? `<button class="secondary small" onclick="rewriteParagraph(${i})" style="padding: 4px 8px; font-size: 11px;">✨ Rewrite</button>` : ''}
               ${!isTitle ? `<button class="secondary small" onclick="insertParagraphAfter(${i - 1})">+ Insert Before</button>` : ''}
               ${!isTitle ? `<button class="secondary small" onclick="deleteParagraph(${i})">🗑</button>` : ''}
             </div>
@@ -1057,6 +1070,278 @@
       paragraphs.splice(index, 1);
       renderParagraphs(paragraphs);
     }
+
+    // Add paragraph at end
+    document.getElementById('add-paragraph-btn').addEventListener('click', () => {
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+      paragraphs.push('New paragraph...');
+      renderParagraphs(paragraphs);
+    });
+
+    // Rewrite single paragraph
+    async function rewriteParagraph(index) {
+      const textarea = document.querySelector(`#editor-paragraphs .paragraph-text[data-paragraph="${index}"]`);
+      if (!textarea) return;
+
+      const originalText = textarea.value;
+      if (!originalText.trim()) return;
+
+      const btn = document.querySelector(`[data-para-index="${index}"] .paragraph-actions button`);
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/rewrite-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: originalText, type: 'paragraph' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Rewrite failed');
+
+        if (data.changes_detected) {
+          textarea.value = data.rewritten;
+          alert(`✨ Paragraph ${index} rewritten!
+
+Original: ${originalText.substring(0, 100)}...
+
+Rewritten: ${data.rewritten.substring(0, 100)}...`);
+        } else {
+          alert('✓ No special characters found in this paragraph.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Rewrite failed: ' + err.message);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+    window.rewriteParagraph = rewriteParagraph;
+
+    // Rewrite single section
+    async function rewriteSection(index) {
+      const textarea = document.querySelector(`#editor-sections .section-text[data-section="${index}"]`);
+      if (!textarea) return;
+
+      const originalText = textarea.value;
+      if (!originalText.trim()) return;
+
+      const btn = document.querySelector(`[data-section-index="${index}"] button`);
+      if (btn) btn.disabled = true;
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/rewrite-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: originalText, type: 'section' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Rewrite failed');
+
+        if (data.changes_detected) {
+          textarea.value = data.rewritten;
+          alert(`✨ Section ${index} rewritten!
+
+Original: ${originalText.substring(0, 100)}...
+
+Rewritten: ${data.rewritten.substring(0, 100)}...`);
+          // Update character count
+          const charSpan = document.querySelector(`[data-section-index="${index}"] .section-chars`);
+          if (charSpan) {
+            const len = data.rewritten.length;
+            charSpan.className = len > 250 ? 'section-chars char-warning' : 'section-chars char-ok';
+            charSpan.textContent = `${len} chars ${len > 250 ? '⚠️' : '✓'}`;
+          }
+        } else {
+          alert('✓ No special characters found in this section.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Rewrite failed: ' + err.message);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+    window.rewriteSection = rewriteSection;
+
+    // Delete section
+    async function deleteSection(index) {
+      if (index === 0) {
+        alert('Cannot delete section 0 (chapter title)');
+        return;
+      }
+
+      if (!confirm(`Delete Section ${index}?`)) return;
+
+      try {
+        const res = await fetch(`/v2/job/${jobId}/chapter/${editingChapterIndex}/section/${index}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Delete failed');
+
+        // Refresh chapter data and re-render
+        await refreshJobState();
+        const chapter = jobState.chapters.find(c => c.index === editingChapterIndex);
+        if (chapter) {
+          const sections = chapter.sections || [];
+          document.getElementById('editor-sections').innerHTML = '';
+          await editChapter(editingChapterIndex); // Re-render
+          alert(`✓ Section ${index} deleted. ${data.remaining_sections} sections remaining.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Delete failed: ' + err.message);
+      }
+    }
+    window.deleteSection = deleteSection;
+
+    // Rewrite all paragraphs
+    document.getElementById('rewrite-all-paragraphs-btn').addEventListener('click', async () => {
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+
+      if (paragraphs.length === 0) {
+        alert('No paragraphs to rewrite.');
+        return;
+      }
+
+      const btn = document.getElementById('rewrite-all-paragraphs-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Rewriting...';
+
+      let rewrittenCount = 0;
+      for (let i = 0; i < paragraphs.length; i++) {
+        try {
+          const res = await fetch(`/v2/job/${jobId}/rewrite-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: paragraphs[i], type: 'paragraph' })
+          });
+          const data = await res.json();
+          if (res.ok && data.changes_detected) {
+            paragraphs[i] = data.rewritten;
+            rewrittenCount++;
+          }
+        } catch (err) {
+          console.error(`Error rewriting paragraph ${i}:`, err);
+        }
+      }
+
+      renderParagraphs(paragraphs);
+      btn.disabled = false;
+      btn.textContent = '✨ Rewrite All (Remove Symbols)';
+      alert(`✨ Rewrite complete! ${rewrittenCount}/${paragraphs.length} paragraphs had changes.`);
+    });
+
+    // Rewrite all sections
+    document.getElementById('rewrite-all-sections-btn').addEventListener('click', async () => {
+      const sectionTextareas = document.querySelectorAll('#editor-sections .section-text');
+      const sections = Array.from(sectionTextareas).map(t => t.value);
+
+      if (sections.length === 0) {
+        alert('No sections to rewrite.');
+        return;
+      }
+
+      const btn = document.getElementById('rewrite-all-sections-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Rewriting...';
+
+      let rewrittenCount = 0;
+      for (let i = 0; i < sections.length; i++) {
+        try {
+          const res = await fetch(`/v2/job/${jobId}/rewrite-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: sections[i], type: 'section' })
+          });
+          const data = await res.json();
+          if (res.ok && data.changes_detected) {
+            sections[i] = data.rewritten;
+            rewrittenCount++;
+          }
+        } catch (err) {
+          console.error(`Error rewriting section ${i}:`, err);
+        }
+      }
+
+      // Re-render sections with updated content
+      await refreshJobState();
+      const chapter = jobState.chapters.find(c => c.index === editingChapterIndex);
+      if (chapter) {
+        chapter.sections = sections;
+        await editChapter(editingChapterIndex);
+      }
+
+      btn.disabled = false;
+      btn.textContent = '✨ Rewrite All (Remove Symbols)';
+      alert(`✨ Rewrite complete! ${rewrittenCount}/${sections.length} sections had changes.`);
+    });
+
+    // Optimize paragraphs (merge/split)
+    document.getElementById('optimize-paragraphs-btn').addEventListener('click', async () => {
+      const paragraphTextareas = document.querySelectorAll('#editor-paragraphs .paragraph-text');
+      const paragraphs = Array.from(paragraphTextareas).map(t => t.value);
+
+      if (paragraphs.length <= 1) {
+        alert('Need at least 2 paragraphs to optimize.');
+        return;
+      }
+
+      const btn = document.getElementById('optimize-paragraphs-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Optimizing...';
+
+      try {
+        const chapter = jobState.chapters.find(c => c.index === editingChapterIndex);
+        const chapterTitle = chapter ? chapter.title : '';
+
+        const res = await fetch(`/v2/job/${jobId}/optimize-paragraphs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paragraphs: paragraphs.slice(1), // Exclude title (index 0)
+            chapter_title: chapterTitle
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Optimization failed');
+
+        const optimizedParagraphs = [paragraphs[0], ...data.optimized_paragraphs]; // Re-add title
+        renderParagraphs(optimizedParagraphs);
+
+        let message = '🎯 Optimization complete!\n\n';
+        message += paragraphs.length + ' → ' + optimizedParagraphs.length + ' paragraphs\n\n';
+        if (data.changes && data.changes.length > 0) {
+          message += 'Changes:\n' + data.changes.join('\n') + '\n\n';
+        }
+        if (data.suggestions && data.suggestions.length > 0) {
+          message += 'Suggestions:\n' + data.suggestions.join('\n');
+        }
+        alert(message);
+      } catch (err) {
+        console.error(err);
+        alert('Optimization failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🎯 Optimize (Merge/Split)';
+      }
+    });
+
+    // Add section
+    document.getElementById('add-section-btn').addEventListener('click', () => {
+      const sectionTextareas = document.querySelectorAll('#editor-sections .section-text');
+      const sections = Array.from(sectionTextareas).map(t => t.value);
+      sections.push('New section...');
+
+      // Re-render sections
+      const chapter = jobState.chapters.find(c => c.index === editingChapterIndex);
+      if (chapter) {
+        chapter.sections = sections;
+        editChapter(editingChapterIndex);
+      }
+    });
 
     // Add paragraph at end
     document.getElementById('add-paragraph-btn').addEventListener('click', () => {

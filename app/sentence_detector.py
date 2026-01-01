@@ -11,24 +11,56 @@ This ensures we NEVER split text mid-sentence, handling:
 """
 import os
 import re
+import subprocess
 from typing import List, Tuple
+
+from app.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Lazy initialization of spaCy
 _nlp = None
 
 def get_spacy():
-    """Get or initialize spaCy model."""
+    """
+    Get or initialize spaCy model with proper error handling.
+    
+    Returns:
+        spaCy Language model
+        
+    Raises:
+        RuntimeError: If spaCy model cannot be loaded
+    """
     global _nlp
     if _nlp is None:
-        import spacy
         try:
+            import spacy
+            logger.info("Loading spaCy English model...")
             _nlp = spacy.load("en_core_web_sm")
+            logger.info("spaCy model loaded successfully")
         except OSError:
-            # Model not downloaded, download it
-            print("[SENTENCE_DETECTOR] Downloading spaCy English model...")
-            os.system("python -m spacy download en_core_web_sm")
-            _nlp = spacy.load("en_core_web_sm")
-        print("[SENTENCE_DETECTOR] spaCy model loaded successfully")
+            # Model not downloaded, attempt to download it
+            logger.warning("spaCy model not found. Attempting to download...")
+            try:
+                subprocess.run(
+                    ["python", "-m", "spacy", "download", "en_core_web_sm"],
+                    check=True,
+                    capture_output=True,
+                    text=True
+                )
+                import spacy
+                _nlp = spacy.load("en_core_web_sm")
+                logger.info("spaCy model downloaded and loaded successfully")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to download spaCy model: {e.stderr}")
+                raise RuntimeError(
+                    "spaCy model 'en_core_web_sm' is not installed and automatic "
+                    "download failed. Please install manually: "
+                    "python -m spacy download en_core_web_sm"
+                )
+            except Exception as e:
+                logger.error(f"Unexpected error loading spaCy model: {e}")
+                raise RuntimeError(f"Failed to load spaCy model: {e}")
     return _nlp
 
 

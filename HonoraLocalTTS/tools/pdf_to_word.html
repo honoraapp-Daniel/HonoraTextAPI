@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to Word Converter - Honora</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        :root {
+            --primary: #FD7C66;
+            --primary-hover: #E0604D;
+            --secondary: #005377;
+            --bg: #0d1117;
+            --surface: #161b22;
+            --text: #f0f6fc;
+            --text-muted: #8b949e;
+            --border: #30363d;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, var(--secondary), var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background-color: var(--surface);
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 0.75rem;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: var(--primary);
+            background-color: rgba(253, 124, 102, 0.1);
+        }
+
+        .drop-zone p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: #000;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 1rem;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .status.success {
+            background-color: rgba(0, 83, 119, 0.2);
+            color: var(--secondary);
+            border: 1px solid var(--secondary);
+        }
+
+        .status.error {
+            background-color: rgba(207, 102, 121, 0.2);
+            color: #cf6679;
+            border: 1px solid #cf6679;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Honora PDF to Word Converter</h1>
+        <p class="subtitle">Convert PDF files to Word documents with text and images preserved.</p>
+
+        <div class="card" id="upload-section">
+            <div class="drop-zone" id="drop-zone">
+                <p>Drag & drop PDF here or click to select</p>
+                <input type="file" id="file-input" accept=".pdf" class="hidden">
+            </div>
+            <button class="btn" id="convert-btn" disabled>Convert to Word</button>
+            <div id="status" class="status hidden"></div>
+        </div>
+
+        <div class="card hidden" id="processing-section">
+            <div style="text-align: center;">
+                <div class="loader"></div>
+                <span id="status-text">Converting PDF to Word...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadSection = document.getElementById('upload-section');
+        const processingSection = document.getElementById('processing-section');
+        const statusText = document.getElementById('status-text');
+        const convertBtn = document.getElementById('convert-btn');
+        const statusDiv = document.getElementById('status');
+
+        let currentFile = null;
+
+        // Event Listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        convertBtn.addEventListener('click', convertPdf);
+
+        function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                showStatus('Please upload a PDF file.', 'error');
+                return;
+            }
+
+            currentFile = file;
+            dropZone.querySelector('p').textContent = file.name;
+            convertBtn.disabled = false;
+            statusDiv.classList.add('hidden');
+        }
+
+        async function convertPdf() {
+            if (!currentFile) return;
+
+            uploadSection.classList.add('hidden');
+            processingSection.classList.remove('hidden');
+            convertBtn.disabled = true;
+
+            try {
+                statusText.textContent = 'Reading PDF...';
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+                statusText.textContent = 'Extracting text and images...';
+                
+                // Get docx classes - try different ways to access it
+                let docxLib = window.docx || docx;
+                if (typeof docxLib === 'undefined') {
+                    throw new Error('docx library not loaded. Please check your internet connection and refresh the page.');
+                }
+                
+                // Destructure docx classes
+                const { Document, Packer, Paragraph, TextRun } = docxLib;
+
+                let fullText = '';
+
+                // Extract text from each page
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    statusText.textContent = `Processing page ${i} of ${pdf.numPages}...`;
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    
+                    if (pageText.trim()) {
+                        fullText += pageText + '\n\n';
+                    }
+                }
+
+                statusText.textContent = 'Creating Word document...';
+                
+                // Split text into paragraphs
+                const paragraphs = fullText.split('\n\n').filter(p => p.trim());
+                const docParagraphs = paragraphs.map(text => 
+                    new Paragraph({
+                        children: [new TextRun(text.trim())],
+                        spacing: { after: 200 }
+                    })
+                );
+
+                // Create document with paragraphs
+                const doc = new Document({
+                    sections: [{
+                        properties: {},
+                        children: docParagraphs
+                    }]
+                });
+
+                statusText.textContent = 'Generating Word file...';
+                const blob = await Packer.toBlob(doc);
+                
+                // Download file
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFile.name.replace('.pdf', '.docx');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                // Reset
+                processingSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                fileInput.value = '';
+                currentFile = null;
+                dropZone.querySelector('p').textContent = 'Drag & drop PDF here or click to select';
+                convertBtn.disabled = true;
+                showStatus('Conversion complete! File downloaded.', 'success');
+
+            } catch (err) {
+                console.error(err);
+                processingSection.classList.add('hidden');
+                uploadSection.classList.remove('hidden');
+                showStatus('Error: ' + err.message, 'error');
+                convertBtn.disabled = false;
+            }
+        }
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            statusDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+
+</html>
+

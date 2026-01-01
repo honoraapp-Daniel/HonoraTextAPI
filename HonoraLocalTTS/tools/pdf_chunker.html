@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honora PDF to TTS Chunker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        :root {
+            --primary: #FD7C66;
+            --primary-hover: #E0604D;
+            --secondary: #005377;
+            --bg: #0d1117;
+            --surface: #161b22;
+            --text: #f0f6fc;
+            --text-muted: #8b949e;
+            --border: #30363d;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, var(--secondary), var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background-color: var(--surface);
+            border-radius: 1rem;
+            border: 1px solid var(--border);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: 0.75rem;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.dragover {
+            border-color: var(--primary);
+            background-color: rgba(253, 124, 102, 0.1);
+        }
+
+        .drop-zone p {
+            margin: 0;
+            color: var(--text-muted);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .chunk-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .chunk-item {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .chunk-number {
+            font-family: monospace;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            min-width: 3rem;
+        }
+
+        .chunk-content {
+            flex: 1;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 1rem;
+            width: 100%;
+            min-height: 3rem;
+            white-space: pre-wrap;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            outline: none;
+        }
+
+        .chunk-content:focus {
+            background-color: rgba(0, 0, 0, 0.2);
+            border-color: var(--border);
+        }
+
+        .highlight-issue {
+            background-color: rgba(239, 68, 68, 0.3);
+            border-bottom: 2px solid #ef4444;
+            border-radius: 2px;
+        }
+
+        .chunk-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            text-align: right;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid var(--primary);
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .chunk-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            margin-left: 0.5rem;
+        }
+
+        .icon-btn {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            width: 28px;
+            height: 28px;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            padding: 0;
+        }
+
+        .icon-btn:hover {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .icon-btn.delete:hover {
+            background-color: #ef4444;
+            border-color: #ef4444;
+        }
+
+        .chunk-item.has-issues {
+            border-color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.05);
+        }
+
+        .chunk-validation {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            align-items: center;
+        }
+
+        .issue-badge {
+            background-color: #ef4444;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .fix-btn {
+            background-color: var(--secondary);
+            color: white;
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .fix-btn:hover {
+            background-color: #006b94;
+        }
+
+        .validate-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .validate-btn:hover {
+            background-color: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Honora PDF to TTS Chunker</h1>
+        <p class="subtitle">Convert books to 250-character chunks for TTS processing.</p>
+
+        <div class="card" id="upload-section">
+            <div class="drop-zone" id="drop-zone">
+                <p>Drag & drop PDF here or click to select</p>
+                <input type="file" id="file-input" accept=".pdf" class="hidden">
+            </div>
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <p style="color: var(--text-muted); margin-bottom: 1rem;">- OR -</p>
+                <button class="btn" id="manual-entry-btn">Start with Empty Chunk</button>
+            </div>
+        </div>
+
+        <div class="card hidden" id="processing-section">
+            <div style="text-align: center;">
+                <div class="loader"></div>
+                <span id="status-text">Processing PDF...</span>
+            </div>
+        </div>
+
+        <div class="hidden" id="results-section">
+            <div class="actions">
+                <h2 style="margin: 0; font-size: 1.25rem;">Generated Chunks (<span id="chunk-count">0</span>)</h2>
+                <button class="btn" id="download-btn">Download All as ZIP</button>
+            </div>
+            <ul class="chunk-list" id="chunk-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const uploadSection = document.getElementById('upload-section');
+        const processingSection = document.getElementById('processing-section');
+        const resultsSection = document.getElementById('results-section');
+        const statusText = document.getElementById('status-text');
+        const chunkList = document.getElementById('chunk-list');
+        const chunkCount = document.getElementById('chunk-count');
+        const downloadBtn = document.getElementById('download-btn');
+
+        let currentChunks = [];
+        let originalFileName = 'book';
+
+        // Event Listeners
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+        downloadBtn.addEventListener('click', downloadZip);
+
+        const manualEntryBtn = document.getElementById('manual-entry-btn');
+        manualEntryBtn.addEventListener('click', startManualEntry);
+
+        async function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Please upload a PDF file.');
+                return;
+            }
+
+            originalFileName = file.name.replace('.pdf', '');
+            uploadSection.classList.add('hidden');
+            processingSection.classList.remove('hidden');
+
+            try {
+                const text = await extractText(file);
+                const chunks = chunkText(text);
+                renderChunks(chunks);
+
+                processingSection.classList.add('hidden');
+                resultsSection.classList.remove('hidden');
+            } catch (err) {
+                console.error(err);
+                alert('Error processing PDF: ' + err.message);
+                uploadSection.classList.remove('hidden');
+                processingSection.classList.add('hidden');
+            }
+        }
+
+        async function extractText(file) {
+            statusText.textContent = 'Reading PDF...';
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                statusText.textContent = `Reading page ${i} of ${pdf.numPages}...`;
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+
+                // Simple heuristic: join items with space, but try to detect paragraphs
+                const pageText = textContent.items.map(item => item.str).join(' ');
+
+                // Basic cleaning: remove likely page numbers (digits alone on a line/chunk)
+                // This is a rough heuristic since pdf.js returns a stream of strings
+                const cleanedPageText = pageText.replace(/^\s*\d+\s*$/gm, '');
+
+                fullText += cleanedPageText + ' ';
+            }
+
+            return fullText;
+        }
+
+        function chunkText(text) {
+            statusText.textContent = 'Chunking text...';
+
+            // Normalize whitespace
+            text = text.replace(/\s+/g, ' ').trim();
+
+            const MAX_CHARS = 250;
+            const chunks = [];
+
+            // Split by sentence endings roughly
+            // Look for . ! ? followed by space or end of string
+            // We use a regex with capturing group to keep the delimiter
+            const sentences = text.split(/([.!?]+(?:\s+|$))/g);
+
+            let currentChunk = '';
+
+            for (let i = 0; i < sentences.length; i += 2) {
+                const sentence = sentences[i];
+                const delimiter = sentences[i + 1] || '';
+                const fullSentence = sentence + delimiter;
+
+                if (!fullSentence.trim()) continue;
+
+                // If a single sentence is too long, we must force split it
+                if (fullSentence.length > MAX_CHARS) {
+                    // Push current chunk if it exists
+                    if (currentChunk) {
+                        chunks.push(currentChunk.trim());
+                        currentChunk = '';
+                    }
+
+                    // Split long sentence by comma or just hard limit
+                    let remaining = fullSentence;
+                    while (remaining.length > 0) {
+                        let splitIndex = MAX_CHARS;
+                        // Try to split at last space before MAX_CHARS
+                        if (remaining.length > MAX_CHARS) {
+                            const lastSpace = remaining.lastIndexOf(' ', MAX_CHARS);
+                            if (lastSpace > 0) splitIndex = lastSpace;
+                        }
+
+                        chunks.push(remaining.substring(0, splitIndex).trim());
+                        remaining = remaining.substring(splitIndex).trim();
+                    }
+                } else {
+                    // Check if adding this sentence exceeds limit
+                    if ((currentChunk + fullSentence).length <= MAX_CHARS) {
+                        currentChunk += fullSentence;
+                    } else {
+                        chunks.push(currentChunk.trim());
+                        currentChunk = fullSentence;
+                    }
+                }
+            }
+
+            if (currentChunk) {
+                chunks.push(currentChunk.trim());
+            }
+
+            currentChunks = chunks;
+            return chunks;
+        }
+
+        function renderChunks(chunks) {
+            chunkList.innerHTML = '';
+            chunkCount.textContent = chunks.length;
+
+            chunks.forEach((chunk, index) => {
+                const li = document.createElement('li');
+                li.className = 'chunk-item';
+
+                const number = String(index + 1).padStart(3, '0');
+
+                li.innerHTML = `
+                    <div class="chunk-number">#${number}</div>
+                    <div style="width: 100%">
+                        <div class="chunk-content" id="chunk-${index}" contenteditable="true" oninput="updateChunk(${index}, this.innerText)">${chunk}</div>
+                        <div class="chunk-meta">${chunk.length} / 250 chars</div>
+                        <div class="chunk-validation" id="validation-${index}">
+                            <button class="validate-btn" onclick="validateSingleChunk(${index})">Validate</button>
+                        </div>
+                    </div>
+                    <div class="chunk-actions">
+                        <button class="icon-btn" onclick="addChunkAfter(${index})" title="Add chunk after this one">+</button>
+                        <button class="icon-btn delete" onclick="deleteChunk(${index})" title="Delete this chunk">×</button>
+                    </div>
+                `;
+                chunkList.appendChild(li);
+            });
+        }
+
+        window.updateChunk = function (index, value) {
+            currentChunks[index] = value;
+            // Update char count display
+            const metaDiv = chunkList.children[index].querySelector('.chunk-meta');
+            metaDiv.textContent = `${value.length} / 250 chars`;
+            if (value.length > 250) {
+                metaDiv.style.color = '#ef4444';
+            } else {
+                metaDiv.style.color = 'var(--text-muted)';
+            }
+        };
+
+        // ====== VALIDATION RULES ENGINE ======
+        const ValidationRules = {
+            // Convert years to words (1980 → "nineteen eighty")
+            convertYears: {
+                check: (text) => {
+                    const pattern = /\b(1[0-9]{3}|2[0-9]{3})\b/g;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    return text.replace(/\b(1[0-9]{3}|2[0-9]{3})\b/g, (match) => {
+                        const year = parseInt(match);
+                        const first = Math.floor(year / 100);
+                        const second = year % 100;
+                        const firstWord = numberToWords(first);
+                        const secondWord = numberToWords(second);
+                        return `${firstWord} ${secondWord}`;
+                    });
+                }
+            },
+
+            // Convert ordinals (3rd → "third")
+            convertOrdinals: {
+                check: (text) => {
+                    const pattern = /\b(\d+)(st|nd|rd|th)\b/g;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    return text.replace(/\b(\d+)(st|nd|rd|th)\b/g, (match, num) => {
+                        return numberToOrdinal(parseInt(num));
+                    });
+                }
+            },
+
+            // Remove parenthetical references: (1), [2], etc.
+            removeReferences: {
+                check: (text) => {
+                    const patterns = [/\(\d+\)/g, /\[\d+\]/g, /[↑↵]\d+/g];
+                    let matches = [];
+                    patterns.forEach(p => {
+                        const m = text.match(p);
+                        if (m) matches.push(...m);
+                    });
+                    return matches;
+                },
+                fix: (text) => {
+                    let fixed = text;
+                    // Remove (1), [2], etc.
+                    fixed = fixed.replace(/\s*\(\d+\)/g, '');
+                    fixed = fixed.replace(/\s*\[\d+\]/g, '');
+                    // Remove footnote arrows
+                    fixed = fixed.replace(/[↑↵]\d+/g, '');
+                    // Remove copyright and special symbols
+                    fixed = fixed.replace(/[©†‡]/g, '');
+                    return fixed;
+                }
+            },
+
+            // Remove brackets but keep text: [text] → text
+            removeBrackets: {
+                check: (text) => {
+                    // Match [text] where text is NOT just a number (handled by removeReferences)
+                    const pattern = /\[(?!\d+\])[^\]]+\]/g;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    // Replace [text] with text
+                    return text.replace(/\[((?!\d+\])[^\]]+)\]/g, '$1');
+                }
+            },
+
+            // Fix soft hyphens (philoso- phy → philosophy)
+            fixSoftHyphens: {
+                check: (text) => {
+                    const pattern = /(\w+)-\s+(\w+)/g;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    // Remove hyphen + whitespace between word parts
+                    return text.replace(/(\w+)-\s+(\w+)/g, '$1$2');
+                }
+            },
+
+            // Convert "Chapter 7" to "Chapter seven"
+            convertChapterNumbers: {
+                check: (text) => {
+                    const pattern = /\b(Chapter|Book|Vol\.?)\s+(\d+)/gi;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    return text.replace(/\b(Chapter|Book|Vol\.?)\s+(\d+)/gi, (match, prefix, num) => {
+                        return `${prefix} ${numberToWords(parseInt(num))}`;
+                    });
+                }
+            },
+
+            // Remove standalone page numbers and junk lines
+            removeJunkLines: {
+                check: (text) => {
+                    const pattern = /^\s*(VOL\.|CHAPTER|Page|\d+|©)\s*$/gim;
+                    return text.match(pattern) || [];
+                },
+                fix: (text) => {
+                    return text.replace(/^\s*(VOL\.|CHAPTER|Page|\d+|©)\s*$/gim, '').trim();
+                }
+            },
+
+            // Fix smart quotes and multiple spaces
+            cleanCharacters: {
+                check: (text) => {
+                    const issues = [];
+                    if (/[""]/.test(text)) issues.push('smart quotes');
+                    if (/['']/.test(text)) issues.push('smart apostrophes');
+                    if (/\s{2,}/.test(text)) issues.push('multiple spaces');
+                    return issues;
+                },
+                fix: (text) => {
+                    let fixed = text;
+                    // Fix smart quotes
+                    fixed = fixed.replace(/[""]/g, '"');
+                    fixed = fixed.replace(/['']/g, "'");
+                    // Remove accent marks
+                    fixed = fixed.replace(/[ˈˌ͵´ˆ]/g, '');
+                    // Collapse multiple spaces
+                    fixed = fixed.replace(/\s+/g, ' ');
+                    return fixed.trim();
+                }
+            }
+        };
+
+        // Helper: Convert number to words
+        function numberToWords(num) {
+            const ones = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+            const teens = ['ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+            const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+
+            if (num < 10) return ones[num];
+            if (num < 20) return teens[num - 10];
+            if (num < 100) {
+                const ten = Math.floor(num / 10);
+                const one = num % 10;
+                return one === 0 ? tens[ten] : `${tens[ten]}-${ones[one]}`;
+            }
+            // For hundreds
+            const hundred = Math.floor(num / 100);
+            const remainder = num % 100;
+            if (remainder === 0) return `${ones[hundred]} hundred`;
+            return `${ones[hundred]} hundred ${numberToWords(remainder)}`;
+        }
+
+        // Helper: Convert number to ordinal word
+        function numberToOrdinal(num) {
+            const ordinals = ['zeroth', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+                'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth'];
+            const tens = ['', '', 'twentieth', 'thirtieth', 'fortieth', 'fiftieth', 'sixtieth', 'seventieth', 'eightieth', 'ninetieth'];
+
+            if (num < 20) return ordinals[num];
+            if (num < 100) {
+                const ten = Math.floor(num / 10);
+                const one = num % 10;
+                if (one === 0) return tens[ten];
+                return `${numberToWords(ten * 10)}-${ordinals[one]}`;
+            }
+            return numberToWords(num) + 'th';
+        }
+
+        // Validate a single chunk
+        function validateSingleChunk(index) {
+            const div = document.getElementById(`chunk-${index}`);
+            // Use innerText to get clean text without HTML tags
+            const text = div.innerText;
+            const issues = [];
+            let highlightedHtml = text;
+
+            // Run all validation rules
+            for (const [ruleName, rule] of Object.entries(ValidationRules)) {
+                const ruleIssues = rule.check(text);
+                if (ruleIssues.length > 0) {
+                    issues.push({ rule: ruleName, matches: ruleIssues });
+
+                    // Apply highlighting to matches
+                    // We need to be careful not to double-highlight or break HTML
+                    // Simple approach: replace matches with span
+                    ruleIssues.forEach(match => {
+                        // Escape special regex chars in match
+                        const escapedMatch = match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escapedMatch, 'g');
+                        highlightedHtml = highlightedHtml.replace(regex, `<span class="highlight-issue" title="${ruleName}">${match}</span>`);
+                    });
+                }
+            }
+
+            // Update UI
+            const li = chunkList.children[index];
+            const validationDiv = document.getElementById(`validation-${index}`);
+
+            if (issues.length > 0) {
+                li.classList.add('has-issues');
+                // Update content with highlights
+                div.innerHTML = highlightedHtml;
+
+                const issueCount = issues.reduce((acc, i) => acc + i.matches.length, 0);
+                validationDiv.innerHTML = `
+                    <span class="issue-badge">${issueCount} issue${issueCount > 1 ? 's' : ''}</span>
+                    <button class="fix-btn" onclick="fixSingleChunk(${index})">Fix Issues</button>
+                    <button class="validate-btn" onclick="validateSingleChunk(${index})">Re-validate</button>
+                `;
+            } else {
+                li.classList.remove('has-issues');
+                // Remove highlights if any remain (clean text)
+                div.innerText = text;
+
+                validationDiv.innerHTML = `
+                    <span style="color: #10b981; font-size: 0.75rem;">✓ No issues</span>
+                    <button class="validate-btn" onclick="validateSingleChunk(${index})">Re-validate</button>
+                `;
+            }
+        }
+
+        // Auto-fix a single chunk
+        function fixSingleChunk(index) {
+            const div = document.getElementById(`chunk-${index}`);
+            let text = div.innerText;
+
+            // Apply all fix rules
+            for (const rule of Object.values(ValidationRules)) {
+                text = rule.fix(text);
+            }
+
+            // Update chunk
+            currentChunks[index] = text;
+            div.innerText = text; // This removes HTML highlights automatically
+            updateChunk(index, text);
+
+            // Re-validate
+            validateSingleChunk(index);
+        }
+
+        function startManualEntry() {
+            // Start with one empty chunk
+            originalFileName = 'manual_entry';
+            currentChunks = [''];
+            renderChunks(currentChunks);
+
+            uploadSection.classList.add('hidden');
+            resultsSection.classList.remove('hidden');
+        }
+
+        function addChunkAfter(index) {
+            // Insert a new empty chunk after the specified index
+            currentChunks.splice(index + 1, 0, '');
+            renderChunks(currentChunks);
+        }
+
+        function deleteChunk(index) {
+            if (currentChunks.length <= 1) {
+                alert('Cannot delete the last chunk!');
+                return;
+            }
+
+            if (confirm(`Delete chunk #${String(index + 1).padStart(3, '0')}?`)) {
+                currentChunks.splice(index, 1);
+                renderChunks(currentChunks);
+            }
+        }
+
+        function downloadZip() {
+            const zip = new JSZip();
+
+            currentChunks.forEach((chunk, index) => {
+                const number = String(index + 1).padStart(3, '0');
+                const filename = `${originalFileName}_part_${number}.txt`;
+                zip.file(filename, chunk);
+            });
+
+            zip.generateAsync({ type: "blob" })
+                .then(function (content) {
+                    // Use native anchor tag for download to ensure filename is respected
+                    const url = window.URL.createObjectURL(content);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    // Ensure we have a valid filename
+                    const safeName = (originalFileName || 'book').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    a.download = `${safeName}_chunks.zip`;
+
+                    document.body.appendChild(a);
+                    a.click();
+
+                    // Cleanup
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    }, 100);
+                });
+        }
+    </script>
+</body>
+
+</html>

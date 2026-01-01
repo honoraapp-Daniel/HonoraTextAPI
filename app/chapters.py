@@ -3,8 +3,11 @@ import json
 import re
 from supabase import create_client
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+from app.config import Config
+from app.logger import get_logger
+from app.utils import retry_on_failure
+
+logger = get_logger(__name__)
 
 # Lazy initialization - only create client when needed
 _supabase_client = None
@@ -12,10 +15,11 @@ _supabase_client = None
 def get_supabase():
     global _supabase_client
     if _supabase_client is None:
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-        url = SUPABASE_URL if SUPABASE_URL.endswith("/") else f"{SUPABASE_URL}/"
-        _supabase_client = create_client(url, SUPABASE_KEY)
+        Config.validate_required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+        url = Config.SUPABASE_URL
+        if not url.endswith("/"):
+            url = f"{url}/"
+        _supabase_client = create_client(url, Config.SUPABASE_SERVICE_ROLE_KEY)
     return _supabase_client
 
 
@@ -188,7 +192,7 @@ def create_book_in_supabase(metadata: dict) -> str:
 
 
 # ============================================
-# GPT-POWERED BOOK STRUCTURE DETECTION
+# GPT-POWERED BOOK STRUCTURE DETECTION  
 # ============================================
 
 from openai import OpenAI
@@ -198,10 +202,11 @@ _openai_client = None
 def get_openai():
     global _openai_client
     if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY must be set")
-        _openai_client = OpenAI(api_key=api_key)
+        Config.validate_required("OPENAI_API_KEY")
+        _openai_client = OpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            timeout=Config.OPENAI_TIMEOUT
+        )
     return _openai_client
 
 
@@ -243,6 +248,7 @@ For a regular novel, use:
 """
 
 
+@retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
 def detect_book_structure(full_text: str) -> dict:
     """
     Use GPT to analyze book structure from first pages.
@@ -253,36 +259,39 @@ def detect_book_structure(full_text: str) -> dict:
     
     client = get_openai()
     
-    print("[CHAPTERS] Detecting book structure with GPT...")
-    
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": STRUCTURE_DETECTION_PROMPT},
-            {"role": "user", "content": f"Analyze this book's structure:\n\n{sample_text}"}
-        ],
-        response_format={"type": "json_object"}
-    )
-    
-    content = response.choices[0].message.content
+    logger.info("Detecting book structure with GPT...")
     
     try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": STRUCTURE_DETECTION_PROMPT},
+                {"role": "user", "content": f"Analyze this book's structure:\n\n{sample_text}"}
+            ],
+            response_format={"type": "json_object"}
+        )
+        
+        content = response.choices[0].message.content
+        
         structure = json.loads(content)
         book_type = structure.get('book_type', 'unknown')
         items = structure.get('structure', [])
         
         # Detailed logging for debugging
-        print(f"[CHAPTERS] ✅ Detected: {book_type} with {len(items)} items")
+        logger.info(f"Detected: {book_type} with {len(items)} items")
         
         # Log detected chapter titles for debugging
         chapter_titles = [item.get('title', 'Untitled') for item in items if item.get('type') == 'chapter']
         if chapter_titles:
-            print(f"[CHAPTERS] Chapter titles detected: {chapter_titles[:5]}{'...' if len(chapter_titles) > 5 else ''}")
+            logger.debug(f"Chapter titles detected: {chapter_titles[:5]}{'...' if len(chapter_titles) > 5 else ''}")
         
         return structure
-    except json.JSONDecodeError:
-        print("[CHAPTERS] ⚠️ Failed to parse structure, using fallback")
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse structure JSON: {e}")
         return {"book_type": "novel", "structure": []}
+    except Exception as e:
+        logger.error(f"Error detecting book structure: {e}")
+        raise
 
 
 def extract_chapters_smart(full_text: str) -> tuple:
@@ -935,6 +944,7 @@ def extract_chapter_header(text: str) -> tuple:
     return None, text
 
 
+@retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
 def split_into_paragraphs_gpt(text: str) -> list:
     """
     Uses GPT to split text into natural paragraphs for app display.
@@ -966,16 +976,10 @@ def split_into_paragraphs_gpt(text: str) -> list:
     chunk_size = 10000
     chunks = [remaining_text[i:i + chunk_size] for i in range(0, len(remaining_text), chunk_size)]
     
-    print(f"[CHAPTERS] Splitting text into paragraphs using Gemini 2.0 Flash ({len(chunks)} chunks)...")
+    logger.info(f"Splitting text into paragraphs using GPT ({len(chunks)} chunks)...")
     
-    # Import Gemini client
-    from google import genai
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        print("[CHAPTERS] ⚠️ GEMINI_API_KEY not set, using fallback splitting")
-        return all_paragraphs + fallback_paragraph_split(remaining_text)
-    
-    client = genai.Client(api_key=gemini_api_key)
+    # Use OpenAI for paragraph splitting
+    client = get_openai()
     
     for i, chunk in enumerate(chunks):
         try:
@@ -985,16 +989,16 @@ Split this text into natural paragraphs:
 
 {chunk}"""
             
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[prompt]
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{chunk}"}
+                ],
+                response_format={"type": "json_object"}
             )
             
-            # Extract text from response
-            content = ""
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'text') and part.text:
-                    content += part.text
+            content = response.choices[0].message.content
             
             # Parse JSON from response
             result = None
@@ -1002,7 +1006,6 @@ Split this text into natural paragraphs:
                 result = json.loads(content)
             except json.JSONDecodeError:
                 # Try to extract JSON from markdown code block
-                import re
                 json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
                 if json_match:
                     result = json.loads(json_match.group(1))
@@ -1027,11 +1030,12 @@ Split this text into natural paragraphs:
                 all_paragraphs.append(chunk)
                 
         except Exception as e:
-            print(f"[CHAPTERS] ⚠️ Error splitting chunk {i+1}: {str(e)}")
+            logger.warning(f"Error splitting chunk {i+1}: {e}")
             # Fallback for this specific chunk
             all_paragraphs.extend(fallback_paragraph_split(chunk))
             
     return all_paragraphs
+
 
 
 def fallback_paragraph_split(text: str, max_chars: int = 350) -> list:
@@ -1159,12 +1163,12 @@ Return ONLY the JSON object, no markdown, no explanations."""
 
 def split_into_paragraphs_perfect(text: str, chapter_title: str = None) -> list:
     """
-    Perfect paragraph splitting using spaCy + Gemini + validation.
+    Perfect paragraph splitting using spaCy + GPT + validation.
     
     This is the new approach that GUARANTEES:
     1. No mid-sentence splits (spaCy handles sentence detection)
     2. No single-character paragraphs (validation layer)
-    3. Natural paragraph boundaries (Gemini semantic grouping)
+    3. Natural paragraph boundaries (GPT semantic grouping)
     
     Args:
         text: Raw chapter text
@@ -1200,7 +1204,7 @@ def split_into_paragraphs_perfect(text: str, chapter_title: str = None) -> list:
     clean_text = clean_text_for_sentences(remaining_text)
     
     # Step 1: Use spaCy to get guaranteed complete sentences
-    print("[CHAPTERS] Step 1: Detecting sentences with spaCy...")
+    logger.info("Step 1: Detecting sentences with spaCy...")
     sentences = detect_sentences(clean_text)
     
     if not sentences:
@@ -1212,19 +1216,19 @@ def split_into_paragraphs_perfect(text: str, chapter_title: str = None) -> list:
     # Merge very short sentences (handles edge cases)
     sentences = merge_short_sentences(sentences, min_chars=15)
     
-    print(f"[CHAPTERS] Found {len(sentences)} sentences")
+    logger.info(f"Found {len(sentences)} sentences")
     
-    # Step 2: Use Gemini to group sentences into paragraphs
-    print("[CHAPTERS] Step 2: Grouping sentences with Gemini...")
+    # Step 2: Use GPT to group sentences into paragraphs
+    logger.info("Step 2: Grouping sentences with GPT...")
     paragraph_groups = group_sentences_with_gemini(sentences)
     
     if not paragraph_groups:
         # Fallback: group every 3-5 sentences
-        print("[CHAPTERS] ⚠️ Gemini grouping failed, using fallback")
+        logger.warning("GPT grouping failed, using fallback")
         paragraph_groups = fallback_sentence_grouping(sentences)
     
     # Step 3: Build paragraphs from sentence groups
-    print("[CHAPTERS] Step 3: Building paragraphs from groups...")
+    logger.info("Step 3: Building paragraphs from groups...")
     for group in paragraph_groups:
         para_sentences = [sentences[i - 1] for i in group if 0 < i <= len(sentences)]
         if para_sentences:
@@ -1232,18 +1236,18 @@ def split_into_paragraphs_perfect(text: str, chapter_title: str = None) -> list:
             all_paragraphs.append(paragraph_text)
     
     # Step 4: Validate and fix any issues
-    print("[CHAPTERS] Step 4: Validating paragraphs...")
+    logger.info("Step 4: Validating paragraphs...")
     all_paragraphs = validate_and_fix_paragraphs(all_paragraphs, title_to_use)
     
-    print(f"[CHAPTERS] ✅ Created {len(all_paragraphs)} paragraphs")
+    logger.info(f"Created {len(all_paragraphs)} paragraphs")
     return all_paragraphs
 
 
 def group_sentences_with_gemini(sentences: list) -> list:
     """
-    Use Gemini to group sentence indices into paragraph groups.
+    Use GPT to group sentence indices into paragraph groups.
     
-    This approach is more reliable than asking Gemini to split raw text
+    This approach is more reliable than asking GPT to split raw text
     because we're just asking for groupings of pre-split sentences.
     
     Args:
@@ -1261,7 +1265,7 @@ def group_sentences_with_gemini(sentences: list) -> list:
     if len(sentences) <= 3:
         return [list(range(1, len(sentences) + 1))]
     
-    # Generate numbered text for Gemini
+    # Generate numbered text for GPT
     numbered_text = sentences_to_numbered_text(sentences)
     
     # Chunking: Process up to 100 sentences at a time
@@ -1279,9 +1283,10 @@ def group_sentences_with_gemini(sentences: list) -> list:
     return _gemini_group_chunk(sentences, 0)
 
 
+@retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
 def _gemini_group_chunk(sentences: list, offset: int = 0) -> list:
     """
-    Internal function to group a chunk of sentences with Gemini.
+    Internal function to group a chunk of sentences with GPT.
     
     Args:
         sentences: Chunk of sentences to group
@@ -1291,17 +1296,11 @@ def _gemini_group_chunk(sentences: list, offset: int = 0) -> list:
         List of paragraph groups (adjusted for offset)
     """
     from app.sentence_detector import sentences_to_numbered_text
-    from google import genai
-    
-    gemini_api_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_api_key:
-        print("[CHAPTERS] ⚠️ GEMINI_API_KEY not set")
-        return fallback_sentence_grouping(sentences)
     
     numbered_text = sentences_to_numbered_text(sentences)
     
     try:
-        client = genai.Client(api_key=gemini_api_key)
+        client = get_openai()
         
         prompt = f"""{PARAGRAPH_GROUPING_PROMPT}
 
@@ -1309,16 +1308,16 @@ Here are the sentences to group:
 
 {numbered_text}"""
         
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[prompt]
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": PARAGRAPH_GROUPING_PROMPT},
+                {"role": "user", "content": f"Here are the sentences to group:\n\n{numbered_text}"}
+            ],
+            response_format={"type": "json_object"}
         )
         
-        # Extract text from response
-        content = ""
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'text') and part.text:
-                content += part.text
+        content = response.choices[0].message.content
         
         # Parse JSON from response
         result = None
@@ -1342,7 +1341,7 @@ Here are the sentences to group:
             return groups
         
     except Exception as e:
-        print(f"[CHAPTERS] ⚠️ Gemini grouping error: {e}")
+        logger.warning(f"GPT grouping error: {e}")
     
     # Fallback
     return fallback_sentence_grouping(sentences, offset)

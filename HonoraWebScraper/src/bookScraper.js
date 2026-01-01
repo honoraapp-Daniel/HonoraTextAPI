@@ -36,19 +36,66 @@ function romanToNumber(roman) {
   return result;
 }
 
+// List of introduction-like chapter titles that should be labeled as "Chapter 0"
+// These are prefatory material, not the actual first chapter of content
+const INTRODUCTION_TITLES = [
+  'introduction',
+  'preface',
+  'foreword',
+  'prologue',
+  'preliminary remarks',
+  "editor's preface",
+  "editor's introduction",
+  'introductory note',
+  'introductory notes',
+  'background',
+  'context',
+  'scope and purpose',
+  'preliminary analysis',
+  'opening',
+  'setting the stage',
+  'why this book',
+  'before you begin',
+  'a note to the reader',
+  'invocation',
+  'opening discourse',
+  'on the nature of this work',
+  'introduction to the mysteries',
+  'preliminary discourse',
+  'author\'s note',
+  'translator\'s note',
+  'dedication',
+  'acknowledgements',
+  'acknowledgments'
+];
+
+/**
+ * Checks if a title is an introduction-like chapter
+ * @param {string} title - The chapter title to check
+ * @returns {boolean}
+ */
+function isIntroductionChapter(title) {
+  if (!title) return false;
+  const normalizedTitle = title.toLowerCase().trim();
+  return INTRODUCTION_TITLES.some(intro => normalizedTitle === intro || normalizedTitle.includes(intro));
+}
+
 /**
  * Renser og formaterer kapitel-titel
  * Input: "Chapter I. Salaam" eller "Chapter 1: The Beginning"
  * Output: "Chapter One - Salaam" eller "Chapter One - The Beginning"
+ * 
+ * Special case: If this is the FIRST chapter (index=1) and title matches
+ * an introduction-like pattern, label it as "Chapter 0 - X"
  */
-function cleanChapterTitle(rawTitle, index) {
+function cleanChapterTitle(rawTitle, index, isFirstChapter = false) {
   let title = rawTitle.trim();
 
   // Fjern "page X" referencer
   title = title.replace(/page\s+\d+/gi, '').trim();
 
   // Fjern "Chapter X:" eller "Chapter X." prefix (vi tilføjer vores egen)
-  title = title.replace(/^Chapter\s+(\d+|[IVXLCDM]+)[:\.\s-]*/i, '').trim();
+  title = title.replace(/^Chapter\s+(\d+|[IVXLCDM]+)[:.\s-]*/i, '').trim();
 
   // Hvis titlen nu er tom eller bare et romertal/tal, brug index
   if (!title || title.match(/^[IVXLCDM]+$/i) || title.match(/^\d+$/)) {
@@ -65,7 +112,7 @@ function cleanChapterTitle(rawTitle, index) {
   };
 
   let chapterNumber = index;
-  const prefixMatch = rawTitle.match(/^Chapter\s+([IVXLCDM]+|\d+|[A-Za-z]+)[\s:\.\-–]*(.*)$/i);
+  const prefixMatch = rawTitle.match(/^Chapter\s+([IVXLCDM]+|\d+|[A-Za-z]+)[\s:.\-–]*(.*)$/i);
   if (prefixMatch) {
     const token = prefixMatch[1].trim();
     const remainder = prefixMatch[2].trim();
@@ -80,6 +127,12 @@ function cleanChapterTitle(rawTitle, index) {
     if (remainder) {
       title = remainder;
     }
+  }
+
+  // SPECIAL: If this is the first chapter and title is introduction-like, use Chapter 0
+  if (isFirstChapter && title && isIntroductionChapter(title)) {
+    console.log(`  📌 Detected introduction chapter: "${title}" → Chapter 0`);
+    return `Chapter 0 - ${title}`;
   }
 
   // Byg den rene titel: "Chapter <tal> - Title" eller bare "Chapter <tal>"
@@ -583,7 +636,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   // Build Table of Contents
   let tocHtml = '<div class="table-of-contents"><h2>Table of Contents</h2><ul>';
   for (let i = 0; i < chapters.length; i++) {
-    const formattedTitle = cleanChapterTitle(chapters[i].title, i + 1);
+    const isFirstChapter = (i === 0);
+    const formattedTitle = cleanChapterTitle(chapters[i].title, i + 1, isFirstChapter);
     tocHtml += `<li>${escapeHtml(formattedTitle)}</li>`;
   }
   tocHtml += '</ul></div>';
@@ -602,7 +656,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     }
 
     // Opret ren kapitel-titel: "Chapter One - Salaam"
-    const formattedTitle = cleanChapterTitle(chapter.title, chapterIndex);
+    const isFirstChapter = (chapterIndex === 1);
+    const formattedTitle = cleanChapterTitle(chapter.title, chapterIndex, isFirstChapter);
     console.log(`  📖 Henter kapitel ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
 
     try {
@@ -611,11 +666,28 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
       // Fjern duplikerede kapitel-headers fra indholdet
       content = cleanChapterContent(content, formattedTitle);
 
-      // Clean plainText too (remove chapter headers)
+      // Clean plainText - remove chapter headers and duplicate titles
       plainText = plainText
-        .replace(/^Chapter\s+[IVXLCDM\d]+[:\.\s\-–]*/im, '')
+        // Remove "Chapter X" patterns at the start
+        .replace(/^Chapter\s+[\dIVXLCDM]+[:\.\s\-–]*/im, '')
+        // Remove formatted title if it appears at the start
         .replace(new RegExp('^' + formattedTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*', 'im'), '')
         .trim();
+
+      // Also detect and remove content-start headers that match the chapter title
+      // Extract just the title part (e.g., "Introduction" from "Chapter 1 - Introduction")
+      const titleMatch = formattedTitle.match(/(?:Chapter\s+\w+\s*[-–]\s*)(.+)/i);
+      if (titleMatch) {
+        const titlePart = titleMatch[1].trim();
+        // Remove the title part if it appears at the start of content (case insensitive)
+        // Handle variations: "INTRODUCTION", "Introduction", "The Introduction", etc.
+        const titlePattern = new RegExp('^\\s*(?:THE\\s+)?' + titlePart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\n', 'im');
+        plainText = plainText.replace(titlePattern, '').trim();
+      }
+
+      // Also remove any all-caps header at the very start that's a single word or short phrase
+      // This catches things like "INTRODUCTION", "SALAAM", "THE ALL", etc.
+      plainText = plainText.replace(/^[A-Z][A-Z\s'']+\s*\n/, '').trim();
 
       fullHtml += `
   <div class="chapter" data-chapter-index="${chapterIndex}">

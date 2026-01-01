@@ -1270,6 +1270,163 @@ async def v2_edit_chapter(job_id: str, chapter_index: int, payload: dict):
     }
 
 
+@app.post("/v2/job/{job_id}/rewrite-text", tags=["Pipeline V2"])
+async def v2_rewrite_text(job_id: str, payload: dict):
+    """
+    Rewrite text using Gemini to remove special characters (TTS-friendly).
+    
+    payload: {
+        "text": "Text with special characters ♄ ✶ △",
+        "type": "paragraph" or "section" (optional)
+    }
+    
+    Returns: {
+        "original": "...",
+        "rewritten": "...",
+        "changes_detected": true/false
+    }
+    """
+    try:
+        from app.text_rewriter import rewrite_text_gemini
+        
+        text = payload.get("text")
+        if not text:
+            return JSONResponse({"error": "'text' is required"}, status_code=400)
+        
+        rewritten = rewrite_text_gemini(text)
+        
+        return {
+            "original": text,
+            "rewritten": rewritten,
+            "changes_detected": text != rewritten
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/optimize-paragraphs", tags=["Pipeline V2"])
+async def v2_optimize_paragraphs(job_id: str, payload: dict):
+    """
+    Optimize paragraphs using Gemini: merge short, split long, improve TTS quality.
+    
+    payload: {
+        "paragraphs": ["paragraph 1", "paragraph 2", ...],
+        "chapter_title": "Chapter name" (optional)
+    }
+    
+    Returns: {
+        "optimized_paragraphs": [...],
+        "changes": [...],
+        "suggestions": [...]
+    }
+    """
+    try:
+        from app.text_rewriter import optimize_paragraphs_gemini
+        
+        paragraphs = payload.get("paragraphs")
+        if not paragraphs or not isinstance(paragraphs, list):
+            return JSONResponse({"error": "'paragraphs' must be a list"}, status_code=400)
+        
+        chapter_title = payload.get("chapter_title", "")
+        
+        result = optimize_paragraphs_gemini(paragraphs, chapter_title)
+        
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.put("/v2/job/{job_id}/chapter/{chapter_index}/sections", tags=["Pipeline V2"])
+async def v2_update_sections(job_id: str, chapter_index: int, payload: dict):
+    """
+    Add, update, or delete sections for a chapter.
+    
+    payload: {
+        "sections": ["Section 0 (title)", "Section 1", ...],
+        "operation": "replace" (default), "append", or "insert",
+        "insert_at": 2 (if operation=insert)
+    }
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": f"Chapter {chapter_index} not found"}, status_code=404)
+    
+    sections = payload.get("sections")
+    if not sections or not isinstance(sections, list):
+        return JSONResponse({"error": "'sections' must be a list"}, status_code=400)
+    
+    operation = payload.get("operation", "replace")
+    
+    if operation == "replace":
+        chapter["sections"] = sections
+    elif operation == "append":
+        current_sections = chapter.get("sections", [])
+        chapter["sections"] = current_sections + sections
+    elif operation == "insert":
+        insert_at = payload.get("insert_at", 0)
+        current_sections = chapter.get("sections", [])
+        chapter["sections"] = current_sections[:insert_at] + sections + current_sections[insert_at:]
+    else:
+        return JSONResponse({"error": f"Unknown operation: {operation}"}, status_code=400)
+    
+    chapter["section_count"] = len(chapter["sections"])
+    
+    from app.pipeline_v2 import save_job_state
+    save_job_state(job_id, state)
+    
+    return {
+        "status": "updated",
+        "chapter_index": chapter_index,
+        "sections": len(chapter.get("sections", [])),
+        "operation": operation
+    }
+
+
+@app.delete("/v2/job/{job_id}/chapter/{chapter_index}/section/{section_index}", tags=["Pipeline V2"])
+async def v2_delete_section(job_id: str, chapter_index: int, section_index: int):
+    """
+    Delete a specific section from a chapter.
+    Section 0 (title) cannot be deleted.
+    """
+    state = get_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    chapters = state.get("chapters", [])
+    chapter = next((c for c in chapters if c["index"] == chapter_index), None)
+    
+    if not chapter:
+        return JSONResponse({"error": f"Chapter {chapter_index} not found"}, status_code=404)
+    
+    sections = chapter.get("sections", [])
+    
+    if section_index == 0:
+        return JSONResponse({"error": "Cannot delete section 0 (chapter title)"}, status_code=400)
+    
+    if section_index < 0 or section_index >= len(sections):
+        return JSONResponse({"error": f"Section {section_index} not found"}, status_code=404)
+    
+    sections.pop(section_index)
+    chapter["sections"] = sections
+    chapter["section_count"] = len(sections)
+    
+    from app.pipeline_v2 import save_job_state
+    save_job_state(job_id, state)
+    
+    return {
+        "status": "deleted",
+        "chapter_index": chapter_index,
+        "section_index": section_index,
+        "remaining_sections": len(sections)
+    }
+
+
 @app.post("/v2/job/{job_id}/commit", tags=["Pipeline V2"])
 async def v2_commit_to_supabase(job_id: str):
     """
