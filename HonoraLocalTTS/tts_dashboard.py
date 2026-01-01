@@ -42,7 +42,16 @@ def get_supabase():
 @app.route("/")
 def dashboard():
     """TTS Dashboard home"""
-    return render_template("tts_dashboard.html")
+    try:
+        return render_template("tts_dashboard.html")
+    except Exception as e:
+        return f"Template error: {str(e)}", 500
+
+
+@app.route("/test")
+def test():
+    """Simple test route"""
+    return "TTS Dashboard is running! Visit / for the full dashboard."
 
 
 @app.route("/health")
