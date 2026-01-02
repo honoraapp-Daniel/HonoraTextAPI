@@ -775,8 +775,12 @@
         // ============================================
         // CHAPTER SELECTION
         // ============================================
-        function selectChapter(index) {
-            if (state.dirty && !confirm('Unsaved changes. Switch anyway?')) return;
+        async function selectChapter(index) {
+            // Auto-save current chapter if dirty before switching
+            if (state.dirty && state.jobId) {
+                updateStatus('Auto-saving...', true);
+                await saveChapter();
+            }
 
             state.currentChapterIndex = index;
             state.currentChapter = state.chapters[index];
