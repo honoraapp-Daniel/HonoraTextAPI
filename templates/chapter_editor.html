@@ -1418,21 +1418,32 @@
             try {
                 updateStatus('Uploading to Supabase...', true);
                 const res = await fetch(`/v2/job/${state.jobId}/commit`, { method: 'POST' });
+
+                if (!res.ok) {
+                    // Try to get error message from JSON, fallback to status text
+                    try {
+                        const errData = await res.json();
+                        throw new Error(errData.error || `Server Error ${res.status}`);
+                    } catch (jsonErr) {
+                        throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                    }
+                }
+
                 const data = await res.json();
 
-                hideUploadingModal();
-
                 if (data.error) {
-                    updateStatus('Upload failed: ' + data.error, true);
-                    alert('Upload failed: ' + data.error);
+                    throw new Error(data.error);
                 } else {
                     updateStatus('Upload complete!', false);
                     showSuccessModal(data.book_id);
                 }
             } catch (e) {
-                hideUploadingModal();
+                console.error('Upload error:', e);
                 updateStatus('Upload failed', true);
                 alert('Commit failed: ' + e.message);
+            } finally {
+                // EXTREMELY IMPORTANT: Always hide the modal
+                hideUploadingModal();
             }
         }
 
