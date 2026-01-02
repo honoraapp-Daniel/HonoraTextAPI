@@ -7,13 +7,19 @@ import os
 import re
 import google.generativeai as genai
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Lazy initialization - don't configure at import time!
 _gemini_model = None
+_configured = False
 
 def get_gemini():
     """Get Gemini model with lazy initialization."""
-    global _gemini_model
+    global _gemini_model, _configured
+    if not _configured:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY not set")
+        genai.configure(api_key=api_key)
+        _configured = True
     if _gemini_model is None:
         _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
     return _gemini_model
