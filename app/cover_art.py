@@ -26,13 +26,11 @@ def get_nano_banana_client():
     """Get Nano Banana client with proper configuration."""
     global _nano_banana_client
     if _nano_banana_client is None:
-        # Try specific key first, then Gemini (shared), then Kie (legacy), then fallback
-        api_key = Config.NANO_BANANA_API_KEY or Config.GEMINI_API_KEY or os.getenv("KIE_API_KEY")
+        # Use Gemini API key from environment - NEVER hardcode!
+        api_key = Config.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
         
         if not api_key:
-            # Fallback for now to ensure it works until env var is set
-            api_key = "AIzaSyAytfAtpVeIW__NUUAgosEfoDtroVE6LsU"
-            logger.warning("Using hardcoded Nano Banana API key. Please set NANO_BANANA_API_KEY environment variable.")
+            raise ValueError("GEMINI_API_KEY environment variable is not set. Cannot generate cover art.")
             
         _nano_banana_client = genai.Client(api_key=api_key)
     return _nano_banana_client

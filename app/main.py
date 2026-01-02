@@ -1675,8 +1675,11 @@ async def optimize_chapter_text(job_id: str, chapter_index: int):
     
     try:
         # Use existing cleaner for TTS optimization
+        # clean_page_text expects a list of dicts with "text" key
         from app.cleaner import clean_page_text
-        optimized = clean_page_text(text)
+        page_items = [{"text": text}]
+        result = clean_page_text(page_items)
+        optimized = result.get("cleaned_text", text)
         
         # Update chapter
         chapter["content"] = optimized

@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { getAllCategories, getBooksInCategory } from './categoryCrawler.js';
+import { getAllCategories, getBooksInCategory, getChapterCount } from './categoryCrawler.js';
 import { scrapeFullBook, sanitizeFilename } from './bookScraper.js';
 import { bookToPdf } from './pdfGenerator.js';
 import { config } from '../config.js';
@@ -75,8 +75,8 @@ function sendLog(message, type = 'info') {
     broadcast('log', logEntry);
 }
 
-function sendProgress(current, total, title) {
-    broadcast('progress', { current, total, title, percent: Math.round((current / total) * 100) });
+function sendProgress(current, total, title, bookTitle = '') {
+    broadcast('progress', { current, total, title, bookTitle, percent: Math.round((current / total) * 100) });
 }
 
 // Check if a book PDF already exists
@@ -129,6 +129,31 @@ app.get('/api/books', async (req, res) => {
     }
 });
 
+// SSE endpoint for lazy loading chapter counts
+app.get('/api/books/counts', async (req, res) => {
+    const { urls } = req.query; // Comma-separated list of book URLs
+    if (!urls) return res.status(400).json({ error: 'URLs required' });
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const urlList = urls.split(',').map(u => decodeURIComponent(u));
+
+    for (const bookUrl of urlList) {
+        try {
+            const count = await getChapterCount(bookUrl);
+            res.write(`data: ${JSON.stringify({ url: bookUrl, chapters: count })}\n\n`);
+        } catch (e) {
+            res.write(`data: ${JSON.stringify({ url: bookUrl, chapters: 0 })}\n\n`);
+        }
+    }
+
+    res.write('event: done\ndata: {}\n\n');
+    res.end();
+});
+
 app.get('/api/history', (req, res) => {
     res.json(loadPersistentLogs());
 });
@@ -140,9 +165,10 @@ app.post('/api/download/book', async (req, res) => {
     res.json({ message: 'Download startet' });
 
     try {
-        sendLog(`Starter download af bog: ${requestedTitle || url}`);
+        const bookTitle = requestedTitle || 'Ukendt bog';
+        sendLog(`Starter download af bog: ${bookTitle}`);
         const { title: scrapedTitle, html, jsonData } = await scrapeFullBook(url, (current, total, chapterTitle) => {
-            sendProgress(current, total, chapterTitle);
+            sendProgress(current, total, chapterTitle, bookTitle);
         });
 
         const finalTitle = requestedTitle || scrapedTitle;
@@ -193,11 +219,12 @@ app.post('/api/download/category', async (req, res) => {
 
             try {
                 const { html } = await scrapeFullBook(book.url, (current, total, chapterTitle) => {
-                    sendProgress(current, total, `[${i + 1}/${books.length}] ${chapterTitle}`);
+                    sendProgress(current, total, `[${i + 1}/${books.length}] ${chapterTitle}`, book.title);
                 });
 
                 const pdfPath = await bookToPdf(html, book.title, name);
                 sendLog(`Gemt: ${book.title}`, 'success');
+                broadcast('complete', { title: book.title });
             } catch (error) {
                 sendLog(`Fejl ved "${book.title}": ${error.message}`, 'error');
             }

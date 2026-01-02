@@ -4,12 +4,55 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { config } from '../config.js';
 
-/**
- * Venter et antal millisekunder (rate limiting)
- */
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE = 2000;
+const REQUEST_DELAY = 1000;
+
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+/**
+ * Henter en URL med robust retry-logik for 429 errors
+ */
+async function fetchUrl(url) {
+  let lastError;
+  // Brug config.maxRetries hvis tilgængelig, ellers default
+  const retries = config.maxRetries || MAX_RETRIES;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // Kun vent ved retries, ikke første forsøg
+      if (attempt > 0) {
+        const backoff = (config.retryDelay || RETRY_DELAY_BASE) * Math.pow(2, attempt - 1);
+        console.log(`    ⏳ Venter ${backoff}ms før retry ${attempt}/${retries} for ${url}...`);
+        await delay(backoff);
+      }
+
+      return await axios.get(url, {
+        headers: { 'User-Agent': config.userAgent },
+        timeout: 30000
+      });
+    } catch (error) {
+      lastError = error;
+      // Hvis 429 (Too Many Requests) -> vent længere
+      if (error.response && error.response.status === 429) {
+        console.warn(`    ⚠️ Rate limit (429) på ${url}. Venter 10 sekunder...`);
+        await delay(10000 + (attempt * 2000));
+        continue;
+      }
+      // Netværksfejl -> prøv igen
+      if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || !error.response) {
+        console.warn(`    ⚠️ Netværksfejl (${error.code}) på ${url}. Prøver igen...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+
 
 /**
  * Konverterer romertal til arabiske tal
@@ -180,9 +223,7 @@ function cleanChapterContent(content, chapterTitle) {
  * @returns {Promise<Array<{title: string, url: string}>>}
  */
 export async function getBookChapters(bookIndexUrl) {
-  const response = await axios.get(bookIndexUrl, {
-    headers: { 'User-Agent': config.userAgent }
-  });
+  const response = await fetchUrl(bookIndexUrl);
 
   const $ = cheerio.load(response.data);
   const chapters = [];
@@ -267,9 +308,7 @@ export async function getBookChapters(bookIndexUrl) {
  * @returns {Promise<{title: string, content: string}>}
  */
 export async function fetchChapterContent(chapterUrl) {
-  const response = await axios.get(chapterUrl, {
-    headers: { 'User-Agent': config.userAgent }
-  });
+  const response = await fetchUrl(chapterUrl);
 
   const $ = cheerio.load(response.data);
 
@@ -407,9 +446,7 @@ export async function fetchChapterContent(chapterUrl) {
  */
 export async function scrapeFullBook(bookUrl, progressCallback = null) {
   // Hent bog-titel fra index-siden
-  const indexResponse = await axios.get(bookUrl, {
-    headers: { 'User-Agent': config.userAgent }
-  });
+  const indexResponse = await fetchUrl(bookUrl);
   const $index = cheerio.load(indexResponse.data);
   let bookTitle = $index('title').text().trim() ||
     $index('h1').first().text().trim() ||
@@ -425,10 +462,66 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     .trim();
 
   // Hent kapitler først så vi kan hente attribution fra første kapitel
-  const chapters = await getBookChapters(bookUrl);
+  let chapters = [];
+  try {
+    chapters = await getBookChapters(bookUrl);
+  } catch (e) {
+    console.log(`  ℹ️ Kunne ikke hente chapters: ${e.message}`);
+  }
 
   if (chapters.length === 0) {
-    throw new Error(`Ingen kapitler fundet for: ${bookUrl}`);
+    console.log(`  ℹ️ Ingen 'links' til kapitler fundet. Forsøger at læse siden som single-page bog: ${bookUrl}`);
+    try {
+      const singlePageRes = await fetchUrl(bookUrl);
+      if (singlePageRes.status === 200) {
+        const $sp = cheerio.load(singlePageRes.data);
+        const bodyHtml = $sp('body').html() || '';
+
+        // Try to split by CHAPTER headers
+        const chapterPattern = /(<(?:h[1-6]|b|strong|center)[^>]*>.*?CHAPTER\s+[IVXLCDM\d]+[^<]*<\/(?:h[1-6]|b|strong|center)>)/gi;
+        const parts = bodyHtml.split(chapterPattern);
+
+        if (parts.length > 1) {
+          // Found chapter headers - create virtual chapters
+          console.log(`  📖 Fundet ${Math.floor(parts.length / 2)} kapitler i single-page format`);
+
+          let chapterNum = 0;
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (part.match(/CHAPTER\s+[IVXLCDM\d]+/i)) {
+              // This is a chapter header
+              const titleMatch = part.match(/CHAPTER\s+([IVXLCDM\d]+)\.?\s*(.*?)(?:<|$)/i);
+              const chapterTitle = titleMatch
+                ? `Chapter ${titleMatch[1]}${titleMatch[2] ? ' - ' + titleMatch[2].trim() : ''}`
+                : `Chapter ${++chapterNum}`;
+
+              // Next part is the content (if exists)
+              const content = parts[i + 1] || '';
+              chapters.push({
+                title: chapterTitle,
+                url: bookUrl,
+                content: part + content,
+                isSinglePage: true
+              });
+              i++; // Skip content part, already processed
+            }
+          }
+        }
+
+        // If still no chapters, treat as single chapter
+        if (chapters.length === 0) {
+          chapters.push({
+            title: bookTitle || 'Full Text',
+            url: bookUrl,
+            isSinglePage: true
+          });
+        }
+      } else {
+        throw new Error(`Ingen kapitler fundet for: ${bookUrl}`);
+      }
+    } catch (err) {
+      throw new Error(`Ingen kapitler fundet og kunne ikke læse siden: ${err.message}`);
+    }
   }
 
   console.log(`📚 Fandt ${chapters.length} kapitler i "${bookTitle}"`);
@@ -443,9 +536,7 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     const firstChapterUrl = chapters[0].url;
     console.log(`  📋 Henter metadata fra: ${firstChapterUrl}`);
 
-    const firstChapterResponse = await axios.get(firstChapterUrl, {
-      headers: { 'User-Agent': config.userAgent }
-    });
+    const firstChapterResponse = await fetchUrl(firstChapterUrl);
     const $first = cheerio.load(firstChapterResponse.data);
 
     // Find grøn font med attribution (mest pålidelig)

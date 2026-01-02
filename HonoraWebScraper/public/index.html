@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="da">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,8 +8,10 @@
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
     <header>
         <h1>Honora Web Scraper</h1>
@@ -19,7 +22,8 @@
         <div class="content-area">
             <!-- Categories -->
             <section class="card">
-                <h2>📚 Kategorier <div id="cat-loader" class="loader" style="display:none"></div></h2>
+                <h2>📚 Kategorier <div id="cat-loader" class="loader" style="display:none"></div>
+                </h2>
                 <div id="category-grid" class="grid">
                     <!-- Categories will be loaded here -->
                 </div>
@@ -27,11 +31,21 @@
 
             <!-- Books (Visible after selecting category) -->
             <section id="books-section" class="card" style="display:none">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-                    <h2 id="category-title">Bøger</h2>
-                    <button id="download-all-btn" class="btn btn-primary">
-                        Download hele kategorien
-                    </button>
+                <div
+                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px; flex:1;">
+                        <h2 id="category-title" style="margin:0;">Bøger</h2>
+                        <input type="text" id="search-input" placeholder="Søg i bøger..."
+                            style="background:rgba(255,255,255,0.1); border:1px solid var(--border); border-radius:4px; padding:0.5rem; color:white; min-width:200px;">
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button id="download-new-btn" class="btn btn-primary" style="background:#8b5cf6;">
+                            ♻️ Hent nye
+                        </button>
+                        <button id="download-all-btn" class="btn btn-primary">
+                            Download hele kategorien
+                        </button>
+                    </div>
                 </div>
                 <div id="books-grid" class="grid">
                     <!-- Books will be loaded here -->
@@ -74,4 +88,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>
