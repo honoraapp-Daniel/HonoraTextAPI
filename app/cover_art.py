@@ -184,9 +184,9 @@ def generate_with_nano_banana(metadata: dict, upload: bool = True) -> dict:
         # Build detailed prompt
         prompt = generate_cover_art_prompt(metadata)
         
-        # Generate image with Nano Banana (Imagen 3)
+        # Generate image with Nano Banana (Imagen 4)
         response = client.models.generate_images(
-            model="imagen-3.0-generate-002",
+            model="imagen-4.0-fast-generate-001",
             prompt=prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
