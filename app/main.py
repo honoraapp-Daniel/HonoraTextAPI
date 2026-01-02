@@ -1112,6 +1112,7 @@ async def process_book(file: UploadFile = File(...)):
 from app.pipeline_v2 import (
     create_job,
     get_job_state,
+    save_job_state,
     phase_extract_pdf,
     phase_metadata,
     phase_detect_chapters,
