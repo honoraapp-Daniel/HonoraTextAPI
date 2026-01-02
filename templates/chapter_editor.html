@@ -1410,14 +1410,87 @@
         async function commitToSupabase() {
             if (!state.jobId) { alert('Demo mode - commit disabled'); return; }
             if (state.dirty) { alert('Please save your changes first!'); return; }
-            if (!confirm('Upload all chapters and metadata to Supabase?')) return;
+            if (!confirm('Upload all chapters and metadata to Supabase?\n\nThis will publish the book.')) return;
+
+            // Show loading overlay
+            showUploadingModal();
+
             try {
+                updateStatus('Uploading to Supabase...', true);
                 const res = await fetch(`/v2/job/${state.jobId}/commit`, { method: 'POST' });
                 const data = await res.json();
-                alert(`Success! Book ID: ${data.book_id}`);
+
+                hideUploadingModal();
+
+                if (data.error) {
+                    updateStatus('Upload failed: ' + data.error, true);
+                    alert('Upload failed: ' + data.error);
+                } else {
+                    updateStatus('Upload complete!', false);
+                    showSuccessModal(data.book_id);
+                }
             } catch (e) {
+                hideUploadingModal();
+                updateStatus('Upload failed', true);
                 alert('Commit failed: ' + e.message);
             }
+        }
+
+        function showUploadingModal() {
+            const modal = document.createElement('div');
+            modal.id = 'upload-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="text-align: center; max-width: 400px;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">📤</div>
+                    <h3 style="margin-bottom: 8px;">Uploading to Supabase...</h3>
+                    <p style="color: var(--text-muted);">Please wait while your book is being published.</p>
+                    <div style="margin-top: 20px;">
+                        <div style="width: 100%; height: 4px; background: var(--bg-hover); border-radius: 2px; overflow: hidden;">
+                            <div style="width: 30%; height: 100%; background: var(--accent); animation: loading 1.5s ease-in-out infinite;"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            // Add loading animation
+            if (!document.getElementById('loading-animation-style')) {
+                const style = document.createElement('style');
+                style.id = 'loading-animation-style';
+                style.textContent = `
+                    @keyframes loading {
+                        0% { margin-left: 0%; width: 30%; }
+                        50% { margin-left: 35%; width: 30%; }
+                        100% { margin-left: 70%; width: 30%; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function hideUploadingModal() {
+            const modal = document.getElementById('upload-modal');
+            if (modal) modal.remove();
+        }
+
+        function showSuccessModal(bookId) {
+            const modal = document.createElement('div');
+            modal.id = 'success-modal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+                <div class="modal-content" style="text-align: center; max-width: 450px;">
+                    <div style="font-size: 64px; margin-bottom: 16px;">✅</div>
+                    <h3 style="margin-bottom: 8px; color: var(--accent-green);">Upload Complete!</h3>
+                    <p style="color: var(--text-muted); margin-bottom: 16px;">Your book has been published to Supabase.</p>
+                    <div style="background: var(--bg-hover); padding: 12px; border-radius: 8px; margin-bottom: 20px;">
+                        <span style="color: var(--text-muted); font-size: 12px;">Book ID:</span><br>
+                        <code style="color: var(--accent); font-family: monospace;">${bookId}</code>
+                    </div>
+                    <button class="btn btn-primary" onclick="document.getElementById('success-modal').remove()">Done</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
         }
 
         function updateStatus(text, isWarning) {

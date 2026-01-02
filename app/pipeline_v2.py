@@ -635,7 +635,9 @@ async def phase_commit_to_supabase(job_id: str) -> dict:
             cover_urls = generate_cover_image(metadata_with_id, upload=True)
             update_book_cover_url(book_id, cover_urls)
         except Exception as cover_error:
+            import traceback
             print(f"[PIPELINE_V2] ⚠️ Cover art upload failed: {cover_error}")
+            traceback.print_exc()
             cover_urls = cover_urls_preview
         
         # Step 3: Create chapters with sections and paragraphs

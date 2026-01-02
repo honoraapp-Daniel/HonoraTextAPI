@@ -46,6 +46,12 @@ Transform PDFs into structured audiobook content.
     redoc_url=None,  # Disable redoc
 )
 
+from app.config import Config
+
+@app.on_event("startup")
+async def startup_event():
+    Config.load()
+
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 

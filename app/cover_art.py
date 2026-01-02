@@ -21,15 +21,18 @@ logger = get_logger(__name__)
 _supabase_client = None
 _nano_banana_client = None
 
-# Nano Banana API key (via Google AI Studio)
-NANO_BANANA_API_KEY = "AIzaSyAytfAtpVeIW__NUUAgosEfoDtroVE6LsU"
-
 
 def get_nano_banana_client():
     """Get Nano Banana client with proper configuration."""
     global _nano_banana_client
     if _nano_banana_client is None:
-        _nano_banana_client = genai.Client(api_key=NANO_BANANA_API_KEY)
+        api_key = Config.NANO_BANANA_API_KEY
+        if not api_key:
+            # Fallback for now to ensure it works until env var is set
+            api_key = "AIzaSyAytfAtpVeIW__NUUAgosEfoDtroVE6LsU"
+            logger.warning("Using hardcoded Nano Banana API key. Please set NANO_BANANA_API_KEY environment variable.")
+            
+        _nano_banana_client = genai.Client(api_key=api_key)
     return _nano_banana_client
 
 

@@ -17,8 +17,8 @@ class Config:
     """Centralized configuration management."""
     
     # API Keys
-    OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    NANO_BANANA_API_KEY: Optional[str] = None
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     MARKER_API_KEY: Optional[str] = None
@@ -37,14 +37,11 @@ class Config:
     MAX_PAGES_PER_REQUEST: int = 1000
     
     # API Rate Limits
-    OPENAI_MAX_RETRIES: int = 3
-    OPENAI_RETRY_DELAY: int = 5
     GEMINI_MAX_RETRIES: int = 3
     GEMINI_RETRY_DELAY: int = 5
     
     # Timeouts (in seconds)
     API_TIMEOUT: int = 300
-    OPENAI_TIMEOUT: int = 120
     GEMINI_TIMEOUT: int = 120
     
     # Logging
@@ -55,8 +52,8 @@ class Config:
     def load(cls) -> None:
         """Load configuration from environment variables."""
         # API Keys - Required
-        cls.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         cls.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        cls.NANO_BANANA_API_KEY = os.getenv("NANO_BANANA_API_KEY")
         cls.SUPABASE_URL = os.getenv("SUPABASE_URL")
         cls.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         cls.MARKER_API_KEY = os.getenv("MARKER_API_KEY")
