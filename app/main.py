@@ -1823,3 +1823,40 @@ Do not include the title or author in your response, just the description."""
     except Exception as e:
         logging.error(f"AI synopsis error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/regenerate-cover", tags=["Chapter Editor"])
+async def regenerate_cover(job_id: str, request: Request):
+    """
+    Regenerate cover art for a book using Imagen 4.
+    """
+    from app.cover_art import generate_cover_image
+    
+    body = await request.json()
+    metadata = body if body else {}
+    
+    # Get existing metadata from job state if not provided
+    state = get_job_state(job_id)
+    if state and not metadata:
+        metadata = state.get("metadata", {})
+    
+    if not metadata.get("title"):
+        return JSONResponse({"error": "Title required in metadata"}, status_code=400)
+    
+    try:
+        # Generate and upload cover art
+        cover_urls = generate_cover_image(metadata, upload=True)
+        
+        # Update job state with new cover URL
+        if state and cover_urls.get("cover_art_url"):
+            metadata["cover_art_url"] = cover_urls.get("cover_art_url")
+            metadata["cover_art_url_16x9"] = cover_urls.get("cover_art_url_16x9")
+            state["metadata"] = metadata
+            save_job_state(job_id, state)
+        
+        return cover_urls
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Cover regeneration error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

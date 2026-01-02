@@ -549,6 +549,10 @@
             <div class="book-title" id="book-title">Loading...</div>
             <div class="book-author" id="book-author"></div>
             <div class="cover-preview" id="cover-preview">No cover</div>
+            <button class="btn btn-secondary btn-small" onclick="regenerateCoverArt()"
+                style="width: 100%; margin-top: 8px;" id="regenerate-cover-btn">
+                🎨 Regenerate Cover
+            </button>
         </div>
 
         <div class="sidebar-section">
@@ -1359,6 +1363,48 @@
                 console.error('AI lookup failed:', e);
                 updateStatus('AI lookup failed', true);
             }
+        }
+
+        // Regenerate Cover Art
+        async function regenerateCoverArt() {
+            if (!state.jobId) { alert('Demo mode - regenerate disabled'); return; }
+
+            const btn = document.getElementById('regenerate-cover-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Generating...';
+
+            try {
+                updateStatus('Generating cover art...', true);
+                const res = await fetch(`/v2/job/${state.jobId}/regenerate-cover`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(state.metadata)
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    updateStatus('Cover generation failed: ' + data.error, true);
+                    btn.textContent = '🎨 Regenerate Cover';
+                    btn.disabled = false;
+                    return;
+                }
+
+                // Update cover preview
+                if (data.cover_art_url) {
+                    state.metadata.cover_art_url = data.cover_art_url;
+                    const coverEl = document.getElementById('cover-preview');
+                    coverEl.innerHTML = `<img src="${data.cover_art_url}" alt="Cover">`;
+                    updateStatus('Cover art generated!', false);
+                } else {
+                    updateStatus('Cover generated but no URL returned', true);
+                }
+            } catch (e) {
+                console.error('Cover regeneration failed:', e);
+                updateStatus('Cover regeneration failed', true);
+            }
+
+            btn.textContent = '🎨 Regenerate Cover';
+            btn.disabled = false;
         }
 
         // AI Generate Synopsis
