@@ -1709,7 +1709,7 @@ async def ai_metadata_lookup(job_id: str, request: Request):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
         prompt = f"""Look up information about this book: "{title}"
         
@@ -1785,7 +1785,7 @@ async def ai_synopsis(job_id: str, request: Request):
     
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         
         prompt = f"""Write a brief synopsis for the book "{title}" by {author or "unknown author"}.
 
