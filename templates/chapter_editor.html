@@ -787,7 +787,7 @@
         // ============================================
         // CHAPTER SELECTION
         // ============================================
-        async function selectChapter(index) {
+        async function selectChapter(arrayIndex) {
             // Cancel any pending auto-save
             if (state.autoSaveTimeout) {
                 clearTimeout(state.autoSaveTimeout);
@@ -805,49 +805,60 @@
                 await new Promise(r => setTimeout(r, 100));
             }
 
-            state.currentChapterIndex = index;
+            state.currentChapterIndex = arrayIndex;
+
+            // Get the actual chapter from the array
+            const chapter = state.chapters[arrayIndex];
+            if (!chapter) {
+                console.error('Chapter not found at index:', arrayIndex);
+                return;
+            }
+
+            // Use the chapter's actual index for API calls (not the array position!)
+            const chapterIndex = chapter.index;
 
             // CRITICAL: Load fresh data from server, not from potentially stale client state
             if (state.jobId) {
                 try {
-                    const res = await fetch(`/v2/job/${state.jobId}/chapter/${index}/text`);
+                    const res = await fetch(`/v2/job/${state.jobId}/chapter/${chapterIndex}/text`);
                     const chapterData = await res.json();
 
-                    // Update both the local chapter in list AND current state
-                    const chapterInList = state.chapters.find(c => c.index === index);
-                    if (chapterInList) {
-                        chapterInList.content = chapterData.text;
-                        chapterInList.sections = chapterData.sections;
-                        chapterInList.paragraphs = chapterData.paragraphs;
+                    if (chapterData.error) {
+                        console.error('Server error loading chapter:', chapterData.error);
+                    } else {
+                        // Update the chapter in our list
+                        chapter.content = chapterData.text;
+                        chapter.sections = chapterData.sections;
+                        chapter.paragraphs = chapterData.paragraphs;
                     }
 
-                    state.currentChapter = chapterInList || { index, title: chapterData.title };
-                    state.text = chapterData.text || '';
-                    state.sections = chapterData.sections || [];
-                    state.paragraphs = chapterData.paragraphs || [];
+                    state.currentChapter = chapter;
+                    state.text = chapterData.text || chapter.content || '';
+                    state.sections = chapterData.sections || chapter.sections || [];
+                    state.paragraphs = chapterData.paragraphs || chapter.paragraphs || [];
                 } catch (e) {
                     console.error('Failed to load chapter from server:', e);
                     // Fallback to client state
-                    state.currentChapter = state.chapters[index];
-                    state.text = state.currentChapter?.content || '';
-                    state.sections = state.currentChapter?.sections || [];
-                    state.paragraphs = state.currentChapter?.paragraphs || [];
+                    state.currentChapter = chapter;
+                    state.text = chapter.content || '';
+                    state.sections = chapter.sections || [];
+                    state.paragraphs = chapter.paragraphs || [];
                 }
             } else {
-                state.currentChapter = state.chapters[index];
-                state.text = state.currentChapter?.content || '';
+                state.currentChapter = chapter;
+                state.text = chapter.content || '';
             }
 
             state.dirty = false;
 
-            // Update UI
-            document.getElementById('current-chapter-num').textContent = `Ch. ${state.currentChapter?.index || 0}`;
+            // Update UI - use the chapter's actual index for display
+            document.getElementById('current-chapter-num').textContent = `Ch. ${chapterIndex}`;
             document.getElementById('chapter-title').textContent = state.currentChapter?.title || 'Untitled';
             document.getElementById('document-editor').innerText = state.text;
 
             // Update sidebar active state
             document.querySelectorAll('.chapter-item').forEach((el, i) => {
-                el.classList.toggle('active', i === index);
+                el.classList.toggle('active', i === arrayIndex);
             });
 
             renderSections();
@@ -1199,12 +1210,16 @@
         async function saveChapter() {
             if (!state.jobId) { alert('Demo mode - save disabled'); return; }
             if (state.isSaving) return; // Prevent duplicate saves
+            if (!state.currentChapter) { console.error('No current chapter'); return; }
 
             state.isSaving = true;
             updateStatus('Saving...', true);
 
+            // Use the chapter's actual index, not the array position
+            const chapterIndex = state.currentChapter.index;
+
             try {
-                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/text`, {
+                const res = await fetch(`/v2/job/${state.jobId}/chapter/${chapterIndex}/text`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1219,13 +1234,11 @@
                 // CRITICAL: Sync client state with server response
                 if (data.chapter) {
                     // Update the chapter in the chapters list
-                    const idx = state.chapters.findIndex(c => c.index === state.currentChapterIndex);
+                    const idx = state.chapters.findIndex(c => c.index === chapterIndex);
                     if (idx >= 0) {
                         state.chapters[idx] = { ...state.chapters[idx], ...data.chapter };
+                        state.currentChapter = state.chapters[idx];
                     }
-
-                    // Update current chapter reference
-                    state.currentChapter = state.chapters[idx];
 
                     // Sync all state fields
                     state.text = data.chapter.content || state.text;
