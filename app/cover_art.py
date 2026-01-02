@@ -6,7 +6,7 @@ import os
 import requests
 import uuid
 from io import BytesIO
-from PIL import Image
+from PIL import Image, ImageFilter
 from supabase import create_client
 from google import genai
 from google.genai import types
@@ -26,7 +26,9 @@ def get_nano_banana_client():
     """Get Nano Banana client with proper configuration."""
     global _nano_banana_client
     if _nano_banana_client is None:
-        api_key = Config.NANO_BANANA_API_KEY
+        # Try specific key first, then Gemini (shared), then Kie (legacy), then fallback
+        api_key = Config.NANO_BANANA_API_KEY or Config.GEMINI_API_KEY or os.getenv("KIE_API_KEY")
+        
         if not api_key:
             # Fallback for now to ensure it works until env var is set
             api_key = "AIzaSyAytfAtpVeIW__NUUAgosEfoDtroVE6LsU"
@@ -50,10 +52,8 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a Nano Banana prompt for vintage-style book covers.
-    
-    Style: Classic vintage book cover with ornate borders, 
-    blurred background extension for flexible aspect ratios.
+    Generates a creative Nano Banana prompt for book covers.
+    Gives the AI more freedom while maintaining premium aesthetic.
     """
     metadata = metadata or {}
     title = metadata.get("title", "Untitled")
@@ -62,37 +62,18 @@ def generate_cover_art_prompt(metadata: dict) -> str:
     category = metadata.get("category", "")
     synopsis = metadata.get("synopsis", "")
     
-    # Build context for artwork inspiration
-    thematic_hints = ""
-    if category:
-        thematic_hints += f"Genre: {category}. "
-    if synopsis:
-        thematic_hints += f"Themes: {synopsis[:300]}"
-    
-    # Format year if available
-    year_text = f"\n{year}" if year else ""
-    
-    prompt = f"""Create a beautiful vintage-style book cover artwork:
+    prompt = f"""Design a stunning, premium book cover for "{title}" by {author}.
 
-BOOK DETAILS:
-- Title: "{title}"
-- Author: {author}{year_text}
-{thematic_hints}
+GENRE/THEME: {category}. {synopsis[:200]}
 
-REQUIRED DESIGN ELEMENTS:
-1. VINTAGE BOOK FORMAT: Design the cover in a classic, ornate vintage book style with decorative borders and frames (like antique 1900s-1920s book covers)
+ARTISTIC DIRECTION:
+Create a masterpiece of cover art. You have full creative freedom with the composition.
+The style should be rich, evocative, and high-quality.
+Use lighting and texture to create depth and atmosphere.
+Avoid generic layouts. Make it look like a bestseller or a classic edition.
 
-2. TEXT PLACEMENT:
-   - Title "{title}" at the TOP in elegant vintage typography
-   - Author "{author}" at the BOTTOM with the year if known
-   - Text must be clearly readable and beautifully styled
-
-3. CENTRAL ARTWORK: Create rich, detailed illustration in the center that captures the book's themes and essence. Use artistic elements that reflect the genre and content.
-
-4. COLOR PALETTE: Rich, warm vintage tones - golds, deep reds, aged paper colors, ornate metallic accents. NO plain white backgrounds.
-
-This is for a premium audiobook app. Make it look like a treasured antique book cover."""
-
+The cover MUST include the title "{title}" and author "{author}" integrated naturally into the design, using typography that matches the mood of the artwork.
+"""
     return prompt
 
 
@@ -115,6 +96,58 @@ def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = 
         else:
             top = (height - new_height) // 2
             return image.crop((0, top, width, top + new_height))
+
+
+def create_blurred_background_16_9(original: Image.Image) -> Image.Image:
+    """
+    Creates a 16:9 image with the original in center and blurred background.
+    """
+    # Target dimensions (HD)
+    target_width = 1920
+    target_height = 1080
+    
+    # Create canvas
+    canvas = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+    
+    # 1. Create Background (Zoomed + Blurred)
+    # Scale original so it fills the width
+    bg_scale = target_width / original.width
+    bg_width = target_width
+    bg_height = int(original.height * bg_scale)
+    
+    # If height is still too small to fill (very wide image), scale by height instead
+    if bg_height < target_height:
+        bg_scale = target_height / original.height
+        bg_height = target_height
+        bg_width = int(original.width * bg_scale)
+        
+    background = original.resize((bg_width, bg_height), Image.Resampling.LANCZOS)
+    
+    # Crop center to fit 16:9
+    left = (bg_width - target_width) // 2
+    top = (bg_height - target_height) // 2
+    background = background.crop((left, top, left + target_width, top + target_height))
+    
+    # Apply heavy blur and darken
+    background = background.filter(ImageFilter.GaussianBlur(radius=50))
+    
+    # 2. Place Foreground (Original)
+    # Scale to fit INSIDE height (with padding)
+    fg_height = int(target_height * 0.9) # 90% of height
+    fg_scale = fg_height / original.height
+    fg_width = int(original.width * fg_scale)
+    
+    foreground = original.resize((fg_width, fg_height), Image.Resampling.LANCZOS)
+    
+    # Paste in center
+    paste_x = (target_width - fg_width) // 2
+    paste_y = (target_height - fg_height) // 2
+    
+    canvas.paste(background, (0, 0))
+    # Add shadow/dimming to background maybe? skipping for simplicity
+    canvas.paste(foreground, (paste_x, paste_y))
+    
+    return canvas
 
 
 @retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
@@ -213,10 +246,8 @@ def process_and_upload_image_bytes(image_bytes: bytes, metadata: dict, urls: dic
             img_1x1 = crop_to_aspect_ratio(original, 1.0)
         else:
             img_1x1 = original
-            target_ratio_16_9 = 16/9
-            new_height = int(width / target_ratio_16_9)
-            top = (height - new_height) // 2
-            img_16x9 = original.crop((0, top, width, top + new_height))
+            # Create 16:9 with blurred background
+            img_16x9 = create_blurred_background_16_9(original)
 
         supabase = get_supabase()
         book_id = metadata.get("book_id", str(uuid.uuid4()))
