@@ -502,8 +502,11 @@ async def phase_process_chapter(job_id: str, chapter_index: int) -> dict:
 
 def clean_markdown_text(text: str) -> str:
     """
-    Clean markdown artifacts from text.
-    Removes headers like # and ##, preserves content.
+    Clean markdown artifacts and sacred-texts.com formatting from text.
+    - Removes headers like # and ##
+    - Removes page markers like "p. 6", "p. 7" from sacred-texts.com
+    - Joins sentences that were broken by page markers
+    - Normalizes paragraph breaks
     """
     import re
     
@@ -519,8 +522,68 @@ def clean_markdown_text(text: str) -> str:
     # Remove markdown links, keep text
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
     
-    # Normalize whitespace
+    # ===========================================
+    # SACRED-TEXTS.COM SPECIFIC CLEANING
+    # ===========================================
+    
+    # Remove page markers like "p. 6", "p. 123", etc.
+    # These appear on their own lines from sacred-texts.com
+    text = re.sub(r'^\s*p\.\s*\d+\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    
+    # Also remove inline page markers (sometimes they appear inline)
+    text = re.sub(r'\s*p\.\s*\d+\s*', ' ', text)
+    
+    # ===========================================
+    # JOIN BROKEN SENTENCES
+    # ===========================================
+    
+    # Pattern: line ends without sentence-ending punctuation, followed by newline(s),
+    # then next line starts with lowercase letter or continues the sentence
+    # This joins sentences that were broken by page markers
+    
+    # First, normalize to single newlines temporarily
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            # Keep empty lines as paragraph separators
+            if cleaned_lines and cleaned_lines[-1] != '':
+                cleaned_lines.append('')
+            continue
+        
+        # Check if we should join with previous line
+        if cleaned_lines and cleaned_lines[-1]:
+            prev_line = cleaned_lines[-1]
+            # Join if:
+            # 1. Previous line doesn't end with sentence-ending punctuation
+            # 2. Current line starts with lowercase OR continues a quote/sentence
+            ends_sentence = prev_line.rstrip()[-1:] in '.!?:;"'
+            starts_new = line[0:1].isupper() and not prev_line.rstrip().endswith(',')
+            starts_lowercase = line[0:1].islower()
+            
+            # If previous line doesn't end a sentence and current starts lowercase, join
+            if not ends_sentence or starts_lowercase:
+                # Join with previous line
+                cleaned_lines[-1] = prev_line.rstrip() + ' ' + line.lstrip()
+                continue
+        
+        cleaned_lines.append(line)
+    
+    # Rebuild text
+    text = '\n'.join(cleaned_lines)
+    
+    # ===========================================
+    # NORMALIZE WHITESPACE
+    # ===========================================
+    
+    # Collapse multiple blank lines to just one (paragraph break)
     text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Collapse multiple spaces to single space
+    text = re.sub(r' {2,}', ' ', text)
+    
     text = text.strip()
     
     return text
