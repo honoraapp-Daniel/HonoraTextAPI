@@ -1,35 +1,22 @@
 """
 Metadata extraction module for Honora.
-Uses Gemini for synopsis/category, OpenAI GPT for PDF metadata extraction.
+Uses Google Gemini API for all metadata extraction.
 """
 import json
 import os
 import re
-from openai import OpenAI
+import google.generativeai as genai
 
-# Lazy initialization - only create clients when needed
-_openai_client = None
-_gemini_client = None
-
-def get_openai():
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY must be set")
-        _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+_gemini_model = None
 
 def get_gemini():
-    """Get Google Gemini client for synopsis/category generation."""
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY must be set")
-        _gemini_client = genai.Client(api_key=api_key)
-    return _gemini_client
+    """Get Gemini model with lazy initialization."""
+    global _gemini_model
+    if _gemini_model is None:
+        _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    return _gemini_model
 
 METADATA_SYSTEM_PROMPT = """
 You are a book metadata extractor for Honora audiobook platform. Given text from the first pages of a book, extract comprehensive metadata.
@@ -92,8 +79,7 @@ def extract_json_from_text(text: str) -> dict:
 
 def extract_book_metadata(first_pages_text: str) -> dict:
     """
-    Uses GPT to extract comprehensive metadata from the first pages of a book.
-    Falls back to Gemini for any fields that return as "Unknown".
+    Uses Gemini to extract comprehensive metadata from the first pages of a book.
     
     Args:
         first_pages_text: Combined text from the first few pages of the PDF
@@ -102,6 +88,8 @@ def extract_book_metadata(first_pages_text: str) -> dict:
         dict with all metadata fields
     """
     prompt = f"""
+{METADATA_SYSTEM_PROMPT}
+
 Extract comprehensive book metadata from this text:
 
 {first_pages_text[:8000]}  # Limit to avoid token limits
@@ -109,16 +97,16 @@ Extract comprehensive book metadata from this text:
 Return JSON with all metadata fields.
 """
 
-    response = get_openai().chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": METADATA_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        response_format={"type": "json_object"}
+    model = get_gemini()
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=4096
+        )
     )
 
-    content = response.choices[0].message.content
+    content = response.text
     result = extract_json_from_text(content)
     
     if result:
@@ -135,35 +123,7 @@ Return JSON with all metadata fields.
             "translated": False,
             "explicit": False
         }
-        
-        # Use Gemini fallback for any "Unknown" fields
-        if metadata["title"] == "Unknown" or metadata["author"] == "Unknown":
-            print("[METADATA] GPT returned 'Unknown' for title/author - trying Gemini fallback...")
-            gemini_metadata = extract_metadata_with_gemini(first_pages_text)
-            
-            if gemini_metadata:
-                if metadata["title"] == "Unknown" and gemini_metadata.get("title"):
-                    metadata["title"] = gemini_metadata["title"]
-                    print(f"[METADATA] ✅ Gemini found title: {metadata['title']}")
-                
-                if metadata["author"] == "Unknown" and gemini_metadata.get("author"):
-                    metadata["author"] = gemini_metadata["author"]
-                    print(f"[METADATA] ✅ Gemini found author: {metadata['author']}")
-                
-                # Fill in other missing fields
-                if not metadata.get("publisher") and gemini_metadata.get("publisher"):
-                    metadata["publisher"] = gemini_metadata["publisher"]
-                
-                if not metadata.get("publishing_year") and gemini_metadata.get("publishing_year"):
-                    metadata["publishing_year"] = gemini_metadata["publishing_year"]
-        
         return metadata
-    
-    # If GPT fails completely, try Gemini
-    print("[METADATA] GPT failed to extract - using Gemini fallback...")
-    gemini_metadata = extract_metadata_with_gemini(first_pages_text)
-    if gemini_metadata:
-        return gemini_metadata
     
     return {
         "title": "Unknown", 
@@ -176,58 +136,9 @@ Return JSON with all metadata fields.
 
 def extract_metadata_with_gemini(first_pages_text: str) -> dict:
     """
-    Fallback metadata extraction using Gemini when GPT returns "Unknown".
-    
-    Args:
-        first_pages_text: Text from first pages of the book
-        
-    Returns:
-        dict with metadata fields
+    Extract metadata using Gemini (backwards compatible function name).
     """
-    try:
-        client = get_gemini()
-        
-        prompt = f"""
-{METADATA_SYSTEM_PROMPT}
-
-Extract metadata from this book text:
-
-{first_pages_text[:8000]}
-
-Return ONLY valid JSON with all metadata fields.
-"""
-        
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[prompt]
-        )
-        
-        # Extract text from response
-        content = ""
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'text') and part.text:
-                content += part.text
-        
-        result = extract_json_from_text(content)
-        
-        if result:
-            return {
-                "title": result.get("title") or "Unknown",
-                "author": result.get("author") or "Unknown",
-                "language": result.get("language") or "English",
-                "original_language": result.get("original_language"),
-                "publisher": result.get("publisher"),
-                "publishing_year": result.get("publishing_year"),
-                "synopsis": result.get("synopsis"),
-                "book_of_the_day_quote": result.get("book_of_the_day_quote"),
-                "category": result.get("category"),
-                "translated": False,
-                "explicit": False
-            }
-    except Exception as e:
-        print(f"[METADATA] Gemini fallback failed: {e}")
-    
-    return None
+    return extract_book_metadata(first_pages_text)
 
 
 # URL path to category mapping for sacred-texts.com
@@ -410,22 +321,18 @@ Return ONLY valid JSON with synopsis, category, subcategory, and a real quote fr
 """
 
     try:
-        print(f"[METADATA] Calling Gemini 2.0 Flash for synopsis generation...")
-        print(f"[METADATA] Chapter content length: {len(chapter_content)} chars")
-        print(f"[METADATA] URL hint: {url_hint[:100] if url_hint else 'None'}")
+        print(f"[METADATA] Calling Gemini for synopsis generation...")
         
-        # Use Gemini 2.0 Flash for text generation
-        client = get_gemini()
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[prompt]
+        model = get_gemini()
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                max_output_tokens=4096
+            )
         )
         
-        # Extract text from response
-        content = ""
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'text') and part.text:
-                content += part.text
+        content = response.text
         
         print(f"[METADATA] Gemini response received: {len(content)} chars")
         

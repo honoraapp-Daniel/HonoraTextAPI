@@ -1,16 +1,15 @@
 """
 Cover art generation module for Honora.
-Generates artistic book cover images using DALL-E 3.
-Generates 1:1 base image then creates 16:9 variant.
+Generates artistic book cover images using Nano Banana (Google AI Studio).
 """
 import os
 import requests
 import uuid
-import base64
 from io import BytesIO
 from PIL import Image
-from openai import OpenAI
 from supabase import create_client
+from google import genai
+from google.genai import types
 
 from app.config import Config
 from app.logger import get_logger
@@ -20,19 +19,18 @@ logger = get_logger(__name__)
 
 # Lazy initialization
 _supabase_client = None
-_openai_client = None
+_nano_banana_client = None
+
+# Nano Banana API key (via Google AI Studio)
+NANO_BANANA_API_KEY = "AIzaSyAytfAtpVeIW__NUUAgosEfoDtroVE6LsU"
 
 
-def get_openai_client():
-    """Get OpenAI client with proper configuration."""
-    global _openai_client
-    if _openai_client is None:
-        Config.validate_required("OPENAI_API_KEY")
-        _openai_client = OpenAI(
-            api_key=Config.OPENAI_API_KEY,
-            timeout=Config.OPENAI_TIMEOUT
-        )
-    return _openai_client
+def get_nano_banana_client():
+    """Get Nano Banana client with proper configuration."""
+    global _nano_banana_client
+    if _nano_banana_client is None:
+        _nano_banana_client = genai.Client(api_key=NANO_BANANA_API_KEY)
+    return _nano_banana_client
 
 
 def get_supabase():
@@ -49,7 +47,7 @@ def get_supabase():
 
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
-    Generates a Gemini/Nano Banana prompt for vintage-style book covers.
+    Generates a Nano Banana prompt for vintage-style book covers.
     
     Style: Classic vintage book cover with ornate borders, 
     blurred background extension for flexible aspect ratios.
@@ -88,9 +86,7 @@ REQUIRED DESIGN ELEMENTS:
 
 3. CENTRAL ARTWORK: Create rich, detailed illustration in the center that captures the book's themes and essence. Use artistic elements that reflect the genre and content.
 
-4. BLURRED BACKGROUND EXTENSION: The main cover design should be centered, with the background extending beyond the cover edges as a soft, blurred version of the artwork colors. This creates a seamless look when cropped to different aspect ratios (16:9 or 1:1).
-
-5. COLOR PALETTE: Rich, warm vintage tones - golds, deep reds, aged paper colors, ornate metallic accents. NO plain white backgrounds.
+4. COLOR PALETTE: Rich, warm vintage tones - golds, deep reds, aged paper colors, ornate metallic accents. NO plain white backgrounds.
 
 This is for a premium audiobook app. Make it look like a treasured antique book cover."""
 
@@ -121,7 +117,7 @@ def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = 
 @retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
 def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     """
-    Generates book cover artwork using DALL-E 3.
+    Generates book cover artwork using Nano Banana via Google AI Studio.
     
     Args:
         metadata: Book metadata dictionary
@@ -130,15 +126,12 @@ def generate_cover_image(metadata: dict, upload: bool = True) -> dict:
     Returns:
         dict with cover_art_url and cover_art_url_16x9
     """
-    return generate_with_dalle(metadata, upload)
+    return generate_with_nano_banana(metadata, upload)
 
 
-
-
-
-def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
+def generate_with_nano_banana(metadata: dict, upload: bool = True) -> dict:
     """
-    Generate cover art using DALL-E 3.
+    Generate cover art using Nano Banana (Imagen 3) via Google AI Studio.
     
     Args:
         metadata: Book metadata dictionary
@@ -148,41 +141,46 @@ def generate_with_dalle(metadata: dict, upload: bool = True) -> dict:
         dict with cover art URLs
     """
     try:
-        client = get_openai_client()
+        client = get_nano_banana_client()
         metadata = metadata or {}
         title = metadata.get("title", "Untitled")
-        synopsis = metadata.get("synopsis") or ""
-        category = metadata.get("category") or "General"
         
-        logger.info(f"Generating DALL-E 3 cover art for: {title}")
+        logger.info(f"Generating Nano Banana cover art for: {title}")
 
-        # Build detailed prompt using existing function
+        # Build detailed prompt
         prompt = generate_cover_art_prompt(metadata)
         
-        # Generate image with DALL-E 3
-        response = client.images.generate(
-            model="dall-e-3",
+        # Generate image with Nano Banana (Imagen 3)
+        response = client.models.generate_images(
+            model="imagen-3.0-generate-002",
             prompt=prompt,
-            size="1024x1024",
-            quality="standard",
-            n=1,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="1:1",  # Square for cover art
+                output_mime_type="image/png"
+            )
         )
         
-        image_url = response.data[0].url
-        logger.info(f"DALL-E 3 cover art generated successfully for: {title}")
+        if not response.generated_images:
+            raise Exception("No images generated by Nano Banana")
+        
+        # Get image bytes
+        image_bytes = response.generated_images[0].image.image_bytes
+        
+        logger.info(f"Nano Banana cover art generated successfully for: {title}")
         
         urls = {}
         if not upload:
-            # Return URL directly for preview
-            urls["cover_art_url"] = image_url
-            urls["cover_art_url_16x9"] = image_url
-            logger.info("Preview mode: returning image URL")
+            # For preview, we can't return raw bytes so return a placeholder
+            urls["cover_art_url"] = None
+            urls["cover_art_url_16x9"] = None
+            logger.info("Preview mode: skipping upload")
             return urls
             
-        return process_and_upload_image(image_url, metadata, urls)
+        return process_and_upload_image_bytes(image_bytes, metadata, urls)
         
     except Exception as e:
-        logger.error(f"Failed to generate cover art: {e}")
+        logger.error(f"Failed to generate cover art with Nano Banana: {e}")
         raise
 
 
@@ -251,32 +249,6 @@ def process_and_upload_image_bytes(image_bytes: bytes, metadata: dict, urls: dic
         
     except Exception as e:
         logger.error(f"Failed to process and upload cover art: {e}")
-        raise
-
-
-def process_and_upload_image(image_url: str, metadata: dict, urls: dict) -> dict:
-    """
-    Download image from URL and upload to Supabase.
-    
-    Args:
-        image_url: URL to download image from
-        metadata: Book metadata
-        urls: Dictionary to store URLs
-        
-    Returns:
-        Updated urls dictionary
-    """
-    try:
-        logger.info(f"Downloading cover art from URL...")
-        image_response = requests.get(image_url, timeout=Config.API_TIMEOUT)
-        
-        if image_response.status_code != 200:
-            raise Exception(f"Failed to download image: HTTP {image_response.status_code}")
-        
-        return process_and_upload_image_bytes(image_response.content, metadata, urls)
-        
-    except requests.RequestException as e:
-        logger.error(f"Failed to download cover art: {e}")
         raise
 
 

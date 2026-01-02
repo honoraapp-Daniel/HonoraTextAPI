@@ -192,22 +192,21 @@ def create_book_in_supabase(metadata: dict) -> str:
 
 
 # ============================================
-# GPT-POWERED BOOK STRUCTURE DETECTION  
+# GEMINI-POWERED BOOK STRUCTURE DETECTION  
 # ============================================
 
-from openai import OpenAI
+import google.generativeai as genai
 
-_openai_client = None
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+_gemini_model = None
 
-def get_openai():
-    global _openai_client
-    if _openai_client is None:
-        Config.validate_required("OPENAI_API_KEY")
-        _openai_client = OpenAI(
-            api_key=Config.OPENAI_API_KEY,
-            timeout=Config.OPENAI_TIMEOUT
-        )
-    return _openai_client
+def get_gemini():
+    """Get Gemini model with lazy initialization."""
+    global _gemini_model
+    if _gemini_model is None:
+        _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    return _gemini_model
 
 
 STRUCTURE_DETECTION_PROMPT = """
@@ -251,27 +250,28 @@ For a regular novel, use:
 @retry_on_failure(max_retries=2, delay=3, exceptions=(Exception,))
 def detect_book_structure(full_text: str) -> dict:
     """
-    Use GPT to analyze book structure from first pages.
+    Use Gemini to analyze book structure from first pages.
     Returns detected structure including book type, stories, and chapters.
     """
     # Use first ~15000 chars (roughly first 10-15 pages)
     sample_text = full_text[:15000]
     
-    client = get_openai()
+    model = get_gemini()
     
-    logger.info("Detecting book structure with GPT...")
+    logger.info("Detecting book structure with Gemini...")
+    
+    prompt = f"{STRUCTURE_DETECTION_PROMPT}\n\nAnalyze this book's structure:\n\n{sample_text}"
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": STRUCTURE_DETECTION_PROMPT},
-                {"role": "user", "content": f"Analyze this book's structure:\n\n{sample_text}"}
-            ],
-            response_format={"type": "json_object"}
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                max_output_tokens=4096
+            )
         )
         
-        content = response.choices[0].message.content
+        content = response.text
         
         structure = json.loads(content)
         book_type = structure.get('book_type', 'unknown')
@@ -876,19 +876,7 @@ def get_chapters_for_book(book_id: str) -> list:
 # PARAGRAPH FUNCTIONS (for app display)
 # ============================================
 
-from openai import OpenAI
-
-# Lazy OpenAI client initialization
-_openai_client = None
-
-def get_openai():
-    global _openai_client
-    if _openai_client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY must be set")
-        _openai_client = OpenAI(api_key=api_key)
-    return _openai_client
+# Gemini model already configured above
 
 
 PARAGRAPH_SYSTEM_PROMPT = """You are a text segmentation engine for Honora audiobook app.
@@ -978,10 +966,10 @@ def split_into_paragraphs_gpt(text: str) -> list:
     chunk_size = 10000
     chunks = [remaining_text[i:i + chunk_size] for i in range(0, len(remaining_text), chunk_size)]
     
-    logger.info(f"Splitting text into paragraphs using GPT ({len(chunks)} chunks)...")
+    logger.info(f"Splitting text into paragraphs using Gemini ({len(chunks)} chunks)...")
     
-    # Use OpenAI for paragraph splitting
-    client = get_openai()
+    # Use Gemini for paragraph splitting
+    model = get_gemini()
     
     for i, chunk in enumerate(chunks):
         try:
@@ -991,16 +979,15 @@ Split this text into natural paragraphs:
 
 {chunk}"""
             
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": PARAGRAPH_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Split this text into natural paragraphs:\n\n{chunk}"}
-                ],
-                response_format={"type": "json_object"}
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    response_mime_type="application/json",
+                    max_output_tokens=8192
+                )
             )
             
-            content = response.choices[0].message.content
+            content = response.text
             
             # Parse JSON from response
             result = None
@@ -1302,7 +1289,7 @@ def _gemini_group_chunk(sentences: list, offset: int = 0) -> list:
     numbered_text = sentences_to_numbered_text(sentences)
     
     try:
-        client = get_openai()
+        model = get_gemini()
         
         prompt = f"""{PARAGRAPH_GROUPING_PROMPT}
 
@@ -1310,16 +1297,15 @@ Here are the sentences to group:
 
 {numbered_text}"""
         
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": PARAGRAPH_GROUPING_PROMPT},
-                {"role": "user", "content": f"Here are the sentences to group:\n\n{numbered_text}"}
-            ],
-            response_format={"type": "json_object"}
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                max_output_tokens=4096
+            )
         )
         
-        content = response.choices[0].message.content
+        content = response.text
         
         # Parse JSON from response
         result = None
@@ -1343,7 +1329,7 @@ Here are the sentences to group:
             return groups
         
     except Exception as e:
-        logger.warning(f"GPT grouping error: {e}")
+        logger.warning(f"Gemini grouping error: {e}")
     
     # Fallback
     return fallback_sentence_grouping(sentences, offset)

@@ -678,7 +678,10 @@
             dirty: false,
             metadataDirty: false,
             currentView: 'document',
-            maxSectionChars: 250
+            maxSectionChars: 250,
+            autoSaveTimeout: null,
+            isSaving: false,
+            lastSaved: null
         };
 
         // ============================================
@@ -700,6 +703,15 @@
             editor.addEventListener('keyup', updateCursorPosition);
             editor.addEventListener('mouseup', updateCursorPosition);
             document.addEventListener('keydown', handleKeyboard);
+
+            // Warn before leaving with unsaved changes
+            window.addEventListener('beforeunload', (e) => {
+                if (state.dirty) {
+                    e.preventDefault();
+                    e.returnValue = 'You have unsaved changes!';
+                    return e.returnValue;
+                }
+            });
         });
 
         // ============================================
@@ -776,15 +788,56 @@
         // CHAPTER SELECTION
         // ============================================
         async function selectChapter(index) {
-            // Auto-save current chapter if dirty before switching
-            if (state.dirty && state.jobId) {
-                updateStatus('Auto-saving...', true);
+            // Cancel any pending auto-save
+            if (state.autoSaveTimeout) {
+                clearTimeout(state.autoSaveTimeout);
+                state.autoSaveTimeout = null;
+            }
+
+            // Save current chapter if dirty before switching
+            if (state.dirty && state.jobId && !state.isSaving) {
+                updateStatus('Saving before switch...', true);
                 await saveChapter();
             }
 
+            // Wait for any in-progress save to complete
+            while (state.isSaving) {
+                await new Promise(r => setTimeout(r, 100));
+            }
+
             state.currentChapterIndex = index;
-            state.currentChapter = state.chapters[index];
-            state.text = state.currentChapter?.content || '';
+
+            // CRITICAL: Load fresh data from server, not from potentially stale client state
+            if (state.jobId) {
+                try {
+                    const res = await fetch(`/v2/job/${state.jobId}/chapter/${index}/text`);
+                    const chapterData = await res.json();
+
+                    // Update both the local chapter in list AND current state
+                    const chapterInList = state.chapters.find(c => c.index === index);
+                    if (chapterInList) {
+                        chapterInList.content = chapterData.text;
+                        chapterInList.sections = chapterData.sections;
+                        chapterInList.paragraphs = chapterData.paragraphs;
+                    }
+
+                    state.currentChapter = chapterInList || { index, title: chapterData.title };
+                    state.text = chapterData.text || '';
+                    state.sections = chapterData.sections || [];
+                    state.paragraphs = chapterData.paragraphs || [];
+                } catch (e) {
+                    console.error('Failed to load chapter from server:', e);
+                    // Fallback to client state
+                    state.currentChapter = state.chapters[index];
+                    state.text = state.currentChapter?.content || '';
+                    state.sections = state.currentChapter?.sections || [];
+                    state.paragraphs = state.currentChapter?.paragraphs || [];
+                }
+            } else {
+                state.currentChapter = state.chapters[index];
+                state.text = state.currentChapter?.content || '';
+            }
+
             state.dirty = false;
 
             // Update UI
@@ -797,7 +850,6 @@
                 el.classList.toggle('active', i === index);
             });
 
-            segmentText();
             renderSections();
             renderParagraphs();
             updateStatus('Ready', false);
@@ -872,11 +924,23 @@
                 .trim();
 
             state.dirty = true;
-            updateStatus('Unsaved changes', true);
+            updateStatus('Unsaved changes...', true);
             document.getElementById('total-chars').textContent = state.text.length.toLocaleString();
+
+            // Re-segment text for sections/paragraphs display
             segmentText();
             renderSections();
             renderParagraphs();
+
+            // DEBOUNCED AUTO-SAVE: Save 2 seconds after user stops typing
+            if (state.autoSaveTimeout) {
+                clearTimeout(state.autoSaveTimeout);
+            }
+            if (state.jobId) {
+                state.autoSaveTimeout = setTimeout(() => {
+                    saveChapter();
+                }, 2000);
+            }
         }
 
         function segmentText() {
@@ -1134,22 +1198,51 @@
 
         async function saveChapter() {
             if (!state.jobId) { alert('Demo mode - save disabled'); return; }
+            if (state.isSaving) return; // Prevent duplicate saves
+
+            state.isSaving = true;
             updateStatus('Saving...', true);
+
             try {
-                await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/text`, {
+                const res = await fetch(`/v2/job/${state.jobId}/chapter/${state.currentChapterIndex}/text`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: state.text, sections: state.sections, paragraphs: state.paragraphs })
+                    body: JSON.stringify({
+                        text: state.text,
+                        sections: state.sections,
+                        paragraphs: state.paragraphs
+                    })
                 });
-                state.dirty = false;
-                if (state.currentChapter) {
-                    state.currentChapter.content = state.text;
-                    state.currentChapter.section_count = state.sections.length;
+
+                const data = await res.json();
+
+                // CRITICAL: Sync client state with server response
+                if (data.chapter) {
+                    // Update the chapter in the chapters list
+                    const idx = state.chapters.findIndex(c => c.index === state.currentChapterIndex);
+                    if (idx >= 0) {
+                        state.chapters[idx] = { ...state.chapters[idx], ...data.chapter };
+                    }
+
+                    // Update current chapter reference
+                    state.currentChapter = state.chapters[idx];
+
+                    // Sync all state fields
+                    state.text = data.chapter.content || state.text;
+                    state.sections = data.chapter.sections || state.sections;
+                    state.paragraphs = data.chapter.paragraphs || state.paragraphs;
                 }
+
+                state.dirty = false;
+                state.lastSaved = new Date();
                 updateSidebar();
-                updateStatus('Saved', false);
+                updateStatus(`Saved at ${state.lastSaved.toLocaleTimeString()}`, false);
+
             } catch (e) {
-                updateStatus('Save failed', false);
+                console.error('Save failed:', e);
+                updateStatus('Save failed!', true);
+            } finally {
+                state.isSaving = false;
             }
         }
 

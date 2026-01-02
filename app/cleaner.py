@@ -1,10 +1,23 @@
+"""
+Text cleaning module using Google Gemini API.
+Cleans text by removing page numbers, headers, footers and formatting for TTS.
+"""
 import json
 import os
 import re
 from fastapi import HTTPException
-from openai import OpenAI
+import google.generativeai as genai
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+_gemini_model = None
+
+def get_gemini():
+    """Get Gemini model with lazy initialization."""
+    global _gemini_model
+    if _gemini_model is None:
+        _gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    return _gemini_model
 
 CLEANER_SYSTEM_PROMPT = """
 You are a strict text-cleaning engine for Honora, an audiobook restoration system.
@@ -104,27 +117,29 @@ def extract_json_from_response(text: str) -> dict:
 
 
 def clean_page_text(page_items):
+    """Clean page text using Gemini API."""
     text = " ".join([item["text"] for item in page_items])
     text = sanitize_input_text(text)
 
     prompt = f"""
-    CLEAN THIS PAGE TEXT:
-    {text}
+{CLEANER_SYSTEM_PROMPT}
 
-    RETURN CLEAN JSON WITH key "cleaned_text".
-    """
+CLEAN THIS PAGE TEXT:
+{text}
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": CLEANER_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        response_format={"type": "json_object"},
-        max_tokens=16384
+RETURN CLEAN JSON WITH key "cleaned_text".
+"""
+
+    model = get_gemini()
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=16384
+        )
     )
 
-    content = response.choices[0].message.content
+    content = response.text
     result = extract_json_from_response(content)
     
     if result is None:

@@ -1616,8 +1616,10 @@ async def update_chapter_text(job_id: str, chapter_index: int, request: Request)
     chapter["status"] = "ready"
     save_job_state(job_id, state)
     
+    # Return full chapter data for client state sync
     return {
         "status": "saved",
+        "chapter": chapter,  # Full chapter data for client sync
         "chapter_index": chapter_index,
         "char_count": chapter.get("char_count", 0),
         "section_count": chapter.get("section_count", 0),
