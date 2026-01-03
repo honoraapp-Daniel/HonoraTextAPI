@@ -259,8 +259,12 @@ async def v3_generate_metadata_and_cover(job_id: str) -> Dict:
             ai_metadata = extract_metadata_with_gemini(metadata.get("title"))
             
             if ai_metadata:
-                # Only fill in missing fields
-                for key in ["author", "year", "publisher", "category"]:
+                # Copy all AI-extracted fields (only fill in missing ones)
+                ai_fields = [
+                    "author", "publisher", "category", "language",
+                    "original_language", "publishing_year"
+                ]
+                for key in ai_fields:
                     if not metadata.get(key) and ai_metadata.get(key):
                         metadata[key] = ai_metadata[key]
                 results["metadata_lookup"] = True
@@ -283,7 +287,8 @@ async def v3_generate_metadata_and_cover(job_id: str) -> Dict:
             
             if synopsis_data:
                 metadata["synopsis"] = synopsis_data.get("synopsis", "")
-                metadata["quote_of_the_day"] = synopsis_data.get("book_of_the_day_quote", "")
+                # Use correct field name for Supabase
+                metadata["book_of_the_day_quote"] = synopsis_data.get("book_of_the_day_quote", "")
                 if not metadata.get("category") and synopsis_data.get("category"):
                     metadata["category"] = synopsis_data.get("category")
                 results["synopsis"] = True

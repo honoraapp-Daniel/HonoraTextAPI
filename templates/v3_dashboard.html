@@ -387,6 +387,18 @@
                             <span class="status-value" id="meta-year">—</span>
                         </div>
                         <div class="status-item">
+                            <span class="status-label">Publisher</span>
+                            <span class="status-value" id="meta-publisher">—</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Language</span>
+                            <span class="status-value" id="meta-language">—</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Original Language</span>
+                            <span class="status-value" id="meta-original-language">—</span>
+                        </div>
+                        <div class="status-item">
                             <span class="status-label">Category</span>
                             <span class="status-value" id="meta-category">—</span>
                         </div>
@@ -607,7 +619,10 @@
                     document.getElementById('metadata-details').style.display = 'block';
                     document.getElementById('meta-title').textContent = data.metadata.title || '—';
                     document.getElementById('meta-author').textContent = data.metadata.author || '—';
-                    document.getElementById('meta-year').textContent = data.metadata.year || '—';
+                    document.getElementById('meta-year').textContent = data.metadata.publishing_year || data.metadata.year || '—';
+                    document.getElementById('meta-publisher').textContent = data.metadata.publisher || '—';
+                    document.getElementById('meta-language').textContent = data.metadata.language || '—';
+                    document.getElementById('meta-original-language').textContent = data.metadata.original_language || '—';
                     document.getElementById('meta-category').textContent = data.metadata.category || '—';
 
                     // Show synopsis if available
@@ -617,9 +632,9 @@
                     }
 
                     // Show quote if available
-                    if (data.metadata.quote_of_the_day) {
+                    if (data.metadata.book_of_the_day_quote) {
                         document.getElementById('meta-quote-container').style.display = 'block';
-                        document.getElementById('meta-quote').textContent = '"' + data.metadata.quote_of_the_day + '"';
+                        document.getElementById('meta-quote').textContent = '"' + data.metadata.book_of_the_day_quote + '"';
                     }
                 }
 
