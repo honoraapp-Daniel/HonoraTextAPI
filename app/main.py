@@ -1909,3 +1909,89 @@ SPLIT TEXT:"""
     except Exception as e:
         logging.error(f"AI paragraph split error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================
+# V3 PIPELINE ENDPOINTS (GLM 4.7 + Gemini)
+# ============================================
+
+@app.post("/v3/upload", tags=["V3 Pipeline"])
+async def v3_upload(file: UploadFile = File(...)):
+    """
+    Upload a file and create a V3 pipeline job.
+    Supports: PDF, JSON (from scraper)
+    """
+    from app.pipeline_v3 import create_v3_job
+    
+    # Save uploaded file
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in ["pdf", "json"]:
+        return JSONResponse({"error": "Only PDF and JSON files supported"}, status_code=400)
+    
+    file_id = str(uuid.uuid4())
+    upload_dir = "data/v3_uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, f"{file_id}.{ext}")
+    
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    # Create job
+    job_id = create_v3_job(file_path, ext)
+    
+    return {
+        "job_id": job_id,
+        "file_type": ext,
+        "message": "Job created. Call /v3/run/{job_id} to start processing."
+    }
+
+
+@app.post("/v3/run/{job_id}", tags=["V3 Pipeline"])
+async def v3_run_pipeline(job_id: str):
+    """
+    Run the complete V3 pipeline:
+    1. Extract chapters from file
+    2. Process each chapter with GLM 4.7 (paragraphs, sections)
+    3. Generate cover art and metadata with Gemini (parallel)
+    """
+    from app.pipeline_v3 import run_v3_pipeline
+    
+    try:
+        result = await run_v3_pipeline(job_id)
+        return result
+    except Exception as e:
+        import logging
+        logging.error(f"V3 pipeline error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/v3/status/{job_id}", tags=["V3 Pipeline"])
+async def v3_get_status(job_id: str):
+    """Get the current status of a V3 pipeline job."""
+    from app.pipeline_v3 import get_v3_job_state
+    
+    state = get_v3_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    return {
+        "job_id": job_id,
+        "phase": state.get("phase"),
+        "progress": state.get("progress"),
+        "metadata": state.get("metadata"),
+        "chapters_count": len(state.get("chapters", [])),
+        "cover_urls": state.get("cover_urls", {})
+    }
+
+
+@app.get("/v3/job/{job_id}", tags=["V3 Pipeline"])
+async def v3_get_full_job(job_id: str):
+    """Get the complete job data including all processed chapters."""
+    from app.pipeline_v3 import get_v3_job_state
+    
+    state = get_v3_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    return state
