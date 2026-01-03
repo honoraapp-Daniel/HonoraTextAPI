@@ -60,9 +60,16 @@ def generate_cover_art_prompt(metadata: dict) -> str:
     category = metadata.get("category", "")
     synopsis = metadata.get("synopsis", "")
     
+    # Build context about the book
+    book_context = ""
+    if category:
+        book_context += f"This is a {category} book. "
+    if synopsis:
+        book_context += synopsis[:200]
+    
     prompt = f"""Design a stunning, premium book cover for "{title}" by {author}.
 
-GENRE/THEME: {category}. {synopsis[:200]}
+{book_context}
 
 ARTISTIC DIRECTION:
 Create a masterpiece of cover art. You have full creative freedom with the composition.
@@ -70,7 +77,12 @@ The style should be rich, evocative, and high-quality.
 Use lighting and texture to create depth and atmosphere.
 Avoid generic layouts. Make it look like a bestseller or a classic edition.
 
-The cover MUST include the title "{title}" and author "{author}" integrated naturally into the design, using typography that matches the mood of the artwork.
+COMPOSITION:
+Show the book cover as a 3D book standing at a slight angle, with the cover art filling the book.
+The background should be a blurred, zoomed-in version of the cover art itself, creating a cohesive and premium look.
+Do NOT use a plain white or solid color background.
+
+The cover MUST include the title "{title}" and author "{author}" integrated naturally into the design, using elegant typography that matches the mood of the artwork.
 """
     return prompt
 
