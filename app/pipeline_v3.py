@@ -113,8 +113,24 @@ async def v3_extract_chapters(job_id: str) -> Dict:
         
         elif file_type == "pdf":
             # Use Marker API for PDF extraction
-            from app.pipeline_v2 import extract_pdf_content
-            markdown, pages = await extract_pdf_content(file_path)
+            import httpx
+            
+            with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+            
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    "https://www.datalab.to/api/v1/marker",
+                    headers={"X-Api-Key": os.getenv("MARKER_API_KEY", "")},
+                    files={"file": ("book.pdf", pdf_bytes, "application/pdf")},
+                    data={"output_format": "markdown"}
+                )
+                
+                if response.status_code != 200:
+                    raise ValueError(f"Marker API error: {response.status_code}")
+                
+                result = response.json()
+                markdown = result.get("markdown", "")
             
             # Extract chapters from markdown
             from app.chapters import smart_extract_chapters

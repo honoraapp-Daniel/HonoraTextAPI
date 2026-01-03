@@ -1,0 +1,16 @@
+{
+  "job_id": "c97db1c5-83ad-4ea4-a9b8-be4202f9336e",
+  "file_path": "data/v3_uploads/09edd4a1-e1d7-416f-9c1c-6ae34d2f7feb.pdf",
+  "file_type": "pdf",
+  "phase": "error",
+  "created_at": "2026-01-03T17:58:54.213798",
+  "chapters": [],
+  "metadata": {},
+  "cover_urls": {},
+  "progress": {
+    "total_chapters": 0,
+    "processed_chapters": 0,
+    "current_chapter": null
+  },
+  "error": "cannot import name 'extract_pdf_content' from 'app.pipeline_v2' (/Users/cuwatyarecords/Desktop/HonoraTextAPI/app/pipeline_v2.py)"
+}
