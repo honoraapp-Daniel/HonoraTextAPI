@@ -1445,13 +1445,14 @@
                 }
 
                 if (data.text) {
-                    // Update chapter content
+                    // Update chapter content with proper newlines
                     chapter.content = data.text;
 
-                    // Update document editor
+                    // Update document editor - each paragraph gets proper spacing
                     const editor = document.getElementById('document-editor');
-                    editor.innerHTML = data.text.split('\n\n').map(p =>
-                        `<p>${p.replace(/\n/g, '<br>')}</p>`
+                    const paragraphs = data.text.split('\n\n').filter(p => p.trim());
+                    editor.innerHTML = paragraphs.map(p =>
+                        `<p style="margin-bottom: 1em;">${p.replace(/\n/g, '<br>')}</p>`
                     ).join('');
 
                     state.dirty = true;
