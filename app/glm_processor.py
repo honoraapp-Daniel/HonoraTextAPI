@@ -1,6 +1,6 @@
 """
-GLM 4.7 Processor for V3 Pipeline
-Uses ZhipuAI's GLM-4 model for text processing:
+Text Processor for V3 Pipeline
+Uses Google Gemini for text processing:
 - Clean OCR errors
 - Convert numbers/symbols to words
 - Create natural paragraphs
@@ -11,23 +11,24 @@ import os
 import re
 import logging
 from typing import List, Dict, Optional
-from zhipuai import ZhipuAI
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
 # Lazy client initialization
-_client: Optional[ZhipuAI] = None
+_gemini_configured = False
 
 
-def get_glm_client() -> ZhipuAI:
-    """Get or create GLM client."""
-    global _client
-    if _client is None:
-        api_key = os.getenv("ZHIPUAI_API_KEY")
+def get_gemini_model():
+    """Get configured Gemini model."""
+    global _gemini_configured
+    if not _gemini_configured:
+        api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("ZHIPUAI_API_KEY environment variable not set")
-        _client = ZhipuAI(api_key=api_key)
-    return _client
+            raise ValueError("GEMINI_API_KEY environment variable not set")
+        genai.configure(api_key=api_key)
+        _gemini_configured = True
+    return genai.GenerativeModel("gemini-2.0-flash")
 
 
 # ============================================
@@ -83,24 +84,16 @@ Her er teksten der skal forarbejdes:
 # PROCESSING FUNCTIONS
 # ============================================
 
-def call_glm(prompt: str, max_tokens: int = 8000) -> str:
-    """Call GLM-4 API with given prompt."""
-    client = get_glm_client()
+def call_gemini(prompt: str) -> str:
+    """Call Gemini API with given prompt."""
+    model = get_gemini_model()
     
     try:
-        response = client.chat.completions.create(
-            model="glm-4",  # Standard GLM-4 model
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=max_tokens,
-            temperature=0.3  # Low temperature for consistent output
-        )
-        
-        return response.choices[0].message.content.strip()
+        response = model.generate_content(prompt)
+        return response.text.strip()
         
     except Exception as e:
-        logger.error(f"GLM API error: {e}")
+        logger.error(f"Gemini API error: {e}")
         raise
 
 
@@ -115,7 +108,7 @@ def process_chapter_paragraphs(text: str) -> List[Dict]:
         return []
     
     prompt = PARAGRAPH_PROMPT.format(text=text)
-    result = call_glm(prompt)
+    result = call_gemini(prompt)
     
     # Parse [PARAGRAPH] markers
     paragraphs = []
@@ -156,7 +149,7 @@ def process_chapter_sections(text: str) -> List[Dict]:
         return []
     
     prompt = SECTION_PROMPT.format(text=text)
-    result = call_glm(prompt, max_tokens=16000)  # More tokens for sections
+    result = call_gemini(prompt)
     
     # Parse [SECTION] markers
     sections = []
