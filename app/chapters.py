@@ -711,12 +711,16 @@ def split_into_sections_tts(text: str, chapter_title: str, max_chars: int = 250)
         List of sections where index 0 is the title
     """
     if not text or not text.strip():
-        return [chapter_title] if chapter_title else []
+        # Use just the name portion for Section 0, not "Chapter X: Name"
+        name_only = extract_chapter_name(chapter_title) if chapter_title else None
+        return [name_only or chapter_title] if chapter_title else []
     
     sections = []
     
-    # Section 0 is always the chapter title
-    sections.append(chapter_title.strip())
+    # Section 0 is the chapter name (without "Chapter X:" prefix for cleaner display)
+    # The app already shows chapter number separately, so we just want the actual title
+    name_only = extract_chapter_name(chapter_title) if chapter_title else chapter_title
+    sections.append((name_only or chapter_title).strip())
     
     # Remove chapter title from beginning of text if present
     content = text.strip()
@@ -1511,12 +1515,15 @@ def split_into_sections_perfect(text: str, chapter_title: str, max_chars: int = 
     )
     
     if not text or not text.strip():
-        return [chapter_title] if chapter_title else []
+        # Use just the name portion for Section 0, not "Chapter X: Name"
+        name_only = extract_chapter_name(chapter_title) if chapter_title else None
+        return [name_only or chapter_title] if chapter_title else []
     
     sections = []
     
-    # Section 0 is always the chapter title
-    sections.append(chapter_title.strip() if chapter_title else "Chapter")
+    # Section 0 is the chapter name (without "Chapter X:" prefix for cleaner display)
+    name_only = extract_chapter_name(chapter_title) if chapter_title else chapter_title
+    sections.append((name_only or chapter_title or "Chapter").strip())
     
     # Remove chapter title from beginning if present
     content = text.strip()
