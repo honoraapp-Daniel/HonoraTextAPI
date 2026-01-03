@@ -1915,6 +1915,16 @@ SPLIT TEXT:"""
 # V3 PIPELINE ENDPOINTS (GLM 4.7 + Gemini)
 # ============================================
 
+@app.get("/v3", tags=["V3 Pipeline"])
+async def v3_dashboard():
+    """V3 Pipeline Dashboard - Simple web interface."""
+    from fastapi.templating import Jinja2Templates
+    from fastapi import Request
+    
+    with open("templates/v3_dashboard.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    return HTMLResponse(content=html)
+
 @app.post("/v3/upload", tags=["V3 Pipeline"])
 async def v3_upload(file: UploadFile = File(...)):
     """
