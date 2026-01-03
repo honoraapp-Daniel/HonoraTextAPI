@@ -13,6 +13,24 @@ function delay(ms) {
 }
 
 /**
+ * Normalize excessive whitespace and newlines in text.
+ * - Replaces multiple consecutive newlines (with or without spaces) to max 2 newlines
+ * - Cleans up patterns like "\n  \n \n" to just "\n\n"
+ */
+function normalizeWhitespace(text) {
+  if (!text) return text;
+
+  // Replace multiple newlines (with optional whitespace between) with max 2
+  text = text.replace(/(\n\s*){3,}/g, '\n\n');
+
+  // Clean up newlines with only spaces between them
+  text = text.replace(/\n[ \t]+\n/g, '\n\n');
+
+  // Trim leading/trailing whitespace
+  return text.trim();
+}
+
+/**
  * Henter en URL med robust retry-logik for 429 errors
  */
 async function fetchUrl(url) {
@@ -789,11 +807,11 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   </div>
 `;
 
-      // Add to JSON chapters
+      // Add to JSON chapters (with normalized whitespace)
       jsonChapters.push({
         index: chapterIndex,
         title: formattedTitle,
-        content: plainText
+        content: normalizeWhitespace(plainText)
       });
 
       // Rate limiting
