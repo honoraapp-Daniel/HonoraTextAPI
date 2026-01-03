@@ -89,7 +89,7 @@ def call_glm(prompt: str, max_tokens: int = 8000) -> str:
     
     try:
         response = client.chat.completions.create(
-            model="glm-4-flash",  # Fast model for processing
+            model="glm-4-air",  # Fast model for processing (glm-4-flash doesn't exist)
             messages=[
                 {"role": "user", "content": prompt}
             ],

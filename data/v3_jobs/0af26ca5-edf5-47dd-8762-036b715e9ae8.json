@@ -1,0 +1,25 @@
+{
+  "job_id": "0af26ca5-edf5-47dd-8762-036b715e9ae8",
+  "file_path": "data/v3_uploads/c3fd65a9-0f72-4e3e-a186-7fba14e2da15.pdf",
+  "file_type": "pdf",
+  "phase": "complete",
+  "created_at": "2026-01-03T18:05:04.438905",
+  "chapters": [
+    {
+      "index": 0,
+      "title": "Full Text",
+      "raw_content": "",
+      "paragraphs": [],
+      "sections": [],
+      "processed": true
+    }
+  ],
+  "metadata": {},
+  "cover_urls": {},
+  "progress": {
+    "total_chapters": 1,
+    "processed_chapters": 1,
+    "current_chapter": "Full Text"
+  },
+  "completed_at": "2026-01-03T18:05:31.538966"
+}

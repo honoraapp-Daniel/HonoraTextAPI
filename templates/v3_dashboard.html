@@ -368,6 +368,28 @@
                 <div class="cover-preview" id="cover-preview">
                     <!-- Cover art will appear here -->
                 </div>
+
+                <div class="metadata-details" id="metadata-details" style="margin-top: 16px; display: none;">
+                    <h3 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--muted);">📖 Metadata</h3>
+                    <div class="status-bar" style="margin-top: 0;">
+                        <div class="status-item">
+                            <span class="status-label">Title</span>
+                            <span class="status-value" id="meta-title">—</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Author</span>
+                            <span class="status-value" id="meta-author">—</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Year</span>
+                            <span class="status-value" id="meta-year">—</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Category</span>
+                            <span class="status-value" id="meta-category">—</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Log Card -->
@@ -533,6 +555,13 @@
 
                 if (data.metadata?.author) {
                     document.getElementById('metadata-status').textContent = '✅';
+
+                    // Show metadata details
+                    document.getElementById('metadata-details').style.display = 'block';
+                    document.getElementById('meta-title').textContent = data.metadata.title || '—';
+                    document.getElementById('meta-author').textContent = data.metadata.author || '—';
+                    document.getElementById('meta-year').textContent = data.metadata.year || '—';
+                    document.getElementById('meta-category').textContent = data.metadata.category || '—';
                 }
 
             } catch (e) {
