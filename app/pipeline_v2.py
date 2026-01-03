@@ -288,6 +288,11 @@ async def phase_metadata(job_id: str) -> dict:
         cover_urls = None
         try:
             cover_urls = generate_cover_image(metadata, upload=True)
+            # Copy cover URLs into metadata so editor can find them
+            if cover_urls.get("cover_art_url"):
+                metadata["cover_art_url"] = cover_urls.get("cover_art_url")
+            if cover_urls.get("cover_art_url_16x9"):
+                metadata["cover_art_url_16x9"] = cover_urls.get("cover_art_url_16x9")
         except Exception as cover_err:
             print(f"[PIPELINE_V2] ⚠️ Cover art generation failed: {cover_err}")
             print("[PIPELINE_V2] Continuing without cover art (you can add it later)")
