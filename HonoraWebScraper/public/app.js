@@ -73,10 +73,14 @@ function setupSSE() {
 
 // API Calls
 async function loadCategories() {
+    console.log('loadCategories() called');
     catLoader.style.display = 'block';
     try {
+        console.log('Fetching /api/categories...');
         const res = await fetch('/api/categories');
+        console.log('Response status:', res.status);
         const categories = await res.json();
+        console.log('Categories received:', categories?.length || 0);
 
         categoryGrid.innerHTML = '';
 
@@ -86,6 +90,7 @@ async function loadCategories() {
             return;
         }
 
+        console.log('Rendering', categories.length, 'categories');
         categories.forEach(cat => {
             const card = document.createElement('div');
             card.className = 'item-card';
@@ -93,7 +98,9 @@ async function loadCategories() {
             card.onclick = () => selectCategory(cat);
             categoryGrid.appendChild(card);
         });
+        console.log('Categories rendered successfully');
     } catch (err) {
+        console.error('loadCategories error:', err);
         addLog('Kunne ikke hente kategorier: ' + err.message, 'error');
     } finally {
         catLoader.style.display = 'none';
@@ -278,3 +285,4 @@ async function selectCategory(cat) {
             }
         });
     }
+}
