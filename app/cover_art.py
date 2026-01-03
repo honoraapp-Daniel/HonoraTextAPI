@@ -78,9 +78,8 @@ Use lighting and texture to create depth and atmosphere.
 Avoid generic layouts. Make it look like a bestseller or a classic edition.
 
 COMPOSITION:
-Show the book cover as a 3D book standing at a slight angle, with the cover art filling the book.
-The background should be a blurred, zoomed-in version of the cover art itself, creating a cohesive and premium look.
-Do NOT use a plain white or solid color background.
+Create the cover art centered in the image. The background should be a blurred, zoomed-in version of the cover art itself, creating a cohesive and premium look.
+Do NOT use a plain white or solid color background. Do NOT show a 3D book - just the flat cover art with the blurred background.
 
 The cover MUST include the title "{title}" and author "{author}" integrated naturally into the design, using elegant typography that matches the mood of the artwork.
 """
