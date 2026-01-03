@@ -166,16 +166,22 @@ app.post('/api/download/book', async (req, res) => {
 
     try {
         const bookTitle = requestedTitle || 'Ukendt bog';
-        sendLog(`Starter download af bog: ${bookTitle}`);
+        sendLog(`📥 Starter download: ${bookTitle}`);
+
         const { title: scrapedTitle, html, jsonData } = await scrapeFullBook(url, (current, total, chapterTitle) => {
             sendProgress(current, total, chapterTitle, bookTitle);
+            // Log every 5th chapter or first/last
+            if (current === 1 || current === total || current % 5 === 0) {
+                sendLog(`📄 Kapitel ${current}/${total}: ${chapterTitle}`);
+            }
         });
 
         const finalTitle = requestedTitle || scrapedTitle;
 
         // Save PDF
-        sendLog(`Genererer PDF for: ${finalTitle}`);
+        sendLog(`📝 Genererer PDF: ${finalTitle}...`);
         const pdfPath = await bookToPdf(html, finalTitle, categoryName || 'Uncategorized');
+        sendLog(`✅ PDF gemt: ${path.basename(pdfPath)}`);
 
         // Save JSON file for pipeline
         const safeTitle = sanitizeFilename(finalTitle);
@@ -186,12 +192,12 @@ app.post('/api/download/book', async (req, res) => {
         }
         const jsonPath = path.join(jsonDir, `${safeTitle}.json`);
         fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2), 'utf8');
-        console.log(`  ✅ JSON gemt: ${jsonPath}`);
+        sendLog(`✅ JSON gemt: ${path.basename(jsonPath)}`, 'success');
 
-        sendLog(`Færdig! PDF gemt i ${pdfPath}, JSON gemt i ${jsonPath}`, 'success');
+        sendLog(`🎉 Download komplet: ${finalTitle}`, 'success');
         broadcast('complete', { title: finalTitle, pdfPath, jsonPath });
     } catch (error) {
-        sendLog(`Fejl ved download: ${error.message}`, 'error');
+        sendLog(`❌ Fejl ved download: ${error.message}`, 'error');
     }
 });
 
