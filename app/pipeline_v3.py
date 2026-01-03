@@ -133,8 +133,8 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                 markdown = result.get("markdown", "")
             
             # Extract chapters from markdown
-            from app.chapters import smart_extract_chapters
-            _, extracted = smart_extract_chapters(markdown)
+            from app.chapters import extract_chapters_smart
+            _, extracted = extract_chapters_smart(markdown)
             
             for i, ch in enumerate(extracted):
                 chapters.append({
