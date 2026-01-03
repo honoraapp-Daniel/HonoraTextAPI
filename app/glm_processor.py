@@ -44,12 +44,14 @@ Opgave: Jeg vil give dig rå tekst fra en PDF (ofte med OCR-fejl og sidetal). Di
 Følg disse 5 regler strengt:
 
 1. Tal til Bogstaver: Konverter alle tal til ord (f.eks. "Chapter 4" skal være "Chapter Four", årstal "1918" skal være "Nineteen Eighteen").
-2. Fjern Støj: Fjern alt der ikke er historien. Dette inkluderer sidetal (som "23 / 47"), forfatterinfo der gentager sig, filstier og unødvendige symboler.
+2. Fjern Støj: Fjern ALT der ikke er en del af selve bogen/historien. Dette inkluderer: sidetal (som "23 / 47"), forfatterinfo der gentager sig, filstier, filstørrelser (som "267Kb"), "Click to enlarge", navigationslinks, metadata, og alt andet der tydeligt ikke er bogens indhold.
 3. Naturlige Afsnit: Brud de store, tunge tekstblokke op i mindre, naturlige afsnit. Det er afgørende for TTS-pauser og for læsbarhed på skærmen, når teksten fremhæves. VIGTIGT: Marker hvert afsnit med [PARAGRAPH] i starten.
 4. Rens OCR-fejl: Ret indlysende stavefejl, der skyldes scanningen (f.eks. hvis "he" står som "lie", eller "has" står som "leas", så ret det). Du må ikke omskrive sætninger eller ændre forfatterens stil – du må kun fjerne fejl.
 5. Struktur: Bevar kapitler, digte og underafsnit, men sørg for de er markeret tydeligt.
 
-Output: Giv mig kun den rensede tekst med [PARAGRAPH] markører, klar til at blive gemt eller læst op.
+VIGTIGT: Giv INGEN forklarende tekst, kommentarer eller indledning. Start DIREKTE med [PARAGRAPH] og det rensede indhold.
+
+Output: Giv mig KUN den rensede tekst med [PARAGRAPH] markører.
 
 Her er teksten der skal forarbejdes:
 
@@ -65,7 +67,7 @@ Opgave: Jeg vil give dig rå tekst. Din opgave er at opdele teksten i korte bidd
 Følg disse 5 regler strengt:
 
 1. Tal til Bogstaver: Konverter alle tal til ord (f.eks. "Chapter 4" skal være "Chapter Four", årstal "1918" skal være "Nineteen Eighteen").
-2. Fjern Støj: Fjern alt der ikke er historien. Dette inkluderer sidtal (som "23 / 47"), forfatterinfo der gentager sig, filstier og unødvendige symboler.
+2. Fjern Støj: Fjern ALT der ikke er en del af selve bogen/historien. Dette inkluderer: sidetal (som "23 / 47"), forfatterinfo der gentager sig, filstier, filstørrelser (som "267Kb"), "Click to enlarge", navigationslinks, metadata, og alt andet der tydeligt ikke er bogens indhold.
 3. TTS-Chunking (Maks 250-300 tegn): Teksten skal opdeles i korte sektioner.
    - Begrænsning: Hver sektion må maksimalt indeholde 250-300 tegn (inklusive mellemrum).
    - Naturlig split: Du skal forestille dig, at du læser teksten højt. Hvor ville du lave en lille naturlig pause? Klip teksten ved det mest logiske sted inden for tegngrænsen.
@@ -73,7 +75,9 @@ Følg disse 5 regler strengt:
 4. Rens OCR-fejl: Ret indlysende stavefejl, der skyldes scanningen. Du må ikke omskrive sætninger eller ændre forfatterens stil – du må kun fjerne fejl.
 5. Struktur: Bevar kapitler og overskrifter, men sørg for at de står for sig selv og er markeret tydeligt.
 
-Output: Giv mig teksten opdelt i korte sektioner med [SECTION] markører, klar til direkte indlæsning i TTS-systemet.
+VIGTIGT: Giv INGEN forklarende tekst, kommentarer eller indledning. Start DIREKTE med [SECTION] og det rensede indhold.
+
+Output: Giv mig KUN teksten opdelt i korte sektioner med [SECTION] markører.
 
 Her er teksten der skal forarbejdes:
 
