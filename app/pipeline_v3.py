@@ -376,13 +376,13 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
     - Section records
     - Paragraph records
     """
-    from app.supabase import (
+    from app.chapters import (
         create_book_in_supabase,
         write_chapters_to_supabase,
         write_sections_to_supabase,
-        write_paragraphs_to_supabase,
-        update_book_cover_url
+        write_paragraphs_to_supabase
     )
+    from app.cover_art import update_book_cover_url
     
     state = get_v3_job_state(job_id)
     if not state:
