@@ -389,6 +389,19 @@
                             <span class="status-value" id="meta-category">—</span>
                         </div>
                     </div>
+                    <div id="meta-synopsis-container" style="display: none; margin-top: 12px;">
+                        <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">Synopsis</div>
+                        <div id="meta-synopsis"
+                            style="background: var(--bg); padding: 12px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5;">
+                            —</div>
+                    </div>
+                    <div id="meta-quote-container" style="display: none; margin-top: 12px;">
+                        <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">📜 Quote of the Day
+                        </div>
+                        <div id="meta-quote"
+                            style="background: var(--bg); padding: 12px; border-radius: 8px; font-style: italic; font-size: 0.9rem; border-left: 3px solid var(--accent);">
+                            —</div>
+                    </div>
                 </div>
             </div>
 
@@ -562,6 +575,18 @@
                     document.getElementById('meta-author').textContent = data.metadata.author || '—';
                     document.getElementById('meta-year').textContent = data.metadata.year || '—';
                     document.getElementById('meta-category').textContent = data.metadata.category || '—';
+
+                    // Show synopsis if available
+                    if (data.metadata.synopsis) {
+                        document.getElementById('meta-synopsis-container').style.display = 'block';
+                        document.getElementById('meta-synopsis').textContent = data.metadata.synopsis;
+                    }
+
+                    // Show quote if available
+                    if (data.metadata.quote_of_the_day) {
+                        document.getElementById('meta-quote-container').style.display = 'block';
+                        document.getElementById('meta-quote').textContent = '"' + data.metadata.quote_of_the_day + '"';
+                    }
                 }
 
             } catch (e) {

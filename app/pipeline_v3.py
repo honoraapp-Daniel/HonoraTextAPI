@@ -269,6 +269,28 @@ async def v3_generate_metadata_and_cover(job_id: str) -> Dict:
         logger.error(f"[V3] Metadata lookup error: {e}")
         results["metadata_error"] = str(e)
     
+    # Generate synopsis and quote from chapter content
+    try:
+        from app.metadata import generate_synopsis_and_category
+        
+        # Get first chapter content for synopsis
+        chapters = state.get("chapters", [])
+        if chapters and chapters[0].get("raw_content"):
+            sample_text = chapters[0]["raw_content"][:5000]  # First 5000 chars
+            
+            logger.info(f"[V3] Generating synopsis for: {metadata.get('title')}")
+            synopsis_data = generate_synopsis_and_category(sample_text)
+            
+            if synopsis_data:
+                metadata["synopsis"] = synopsis_data.get("synopsis", "")
+                metadata["quote_of_the_day"] = synopsis_data.get("book_of_the_day_quote", "")
+                if not metadata.get("category") and synopsis_data.get("category"):
+                    metadata["category"] = synopsis_data.get("category")
+                results["synopsis"] = True
+    
+    except Exception as e:
+        logger.error(f"[V3] Synopsis generation error: {e}")
+    
     state["metadata"] = metadata
     save_v3_job_state(job_id, state)
     
