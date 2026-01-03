@@ -1860,3 +1860,52 @@ async def regenerate_cover(job_id: str, request: Request):
         import logging
         logging.error(f"Cover regeneration error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v2/job/{job_id}/ai-split-paragraphs", tags=["Chapter Editor"])
+async def ai_split_paragraphs(job_id: str, request: Request):
+    """
+    Use Gemini to intelligently split continuous text into natural paragraphs.
+    Preserves exact wording - only adds paragraph breaks.
+    """
+    import google.generativeai as genai
+    import logging
+    
+    body = await request.json()
+    text = body.get("text", "")
+    
+    if not text:
+        return JSONResponse({"error": "Text required"}, status_code=400)
+    
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return JSONResponse({"error": "GEMINI_API_KEY not configured"}, status_code=500)
+    
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        
+        prompt = f"""Split this text into natural paragraphs. 
+
+CRITICAL RULES:
+1. DO NOT change, rewrite, summarize, or modify ANY words
+2. ONLY add blank lines between paragraphs (two newlines)
+3. Split at natural thought/topic transitions
+4. Keep paragraphs 3-8 sentences typically
+5. Return ONLY the text with paragraph breaks - no explanations
+
+TEXT TO SPLIT:
+{text}
+
+SPLIT TEXT:"""
+        
+        response = model.generate_content(prompt)
+        result = response.text.strip()
+        
+        logging.info(f"AI split paragraphs: {len(text)} chars -> {result.count(chr(10))+1} paragraphs")
+        
+        return {"text": result}
+        
+    except Exception as e:
+        logging.error(f"AI paragraph split error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

@@ -648,13 +648,19 @@
             </header>
 
             <!-- Tabs -->
-            <div class="tabs">
-                <button class="tab active" data-view="document" onclick="switchTab('document')">📄 Document</button>
-                <button class="tab" data-view="sections" onclick="switchTab('sections')">
-                    🔖 Sections <span class="tab-count" id="section-count">0</span>
-                </button>
-                <button class="tab" data-view="paragraphs" onclick="switchTab('paragraphs')">
-                    📝 Paragraphs <span class="tab-count" id="paragraph-count">0</span>
+            <div class="tabs" style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex;">
+                    <button class="tab active" data-view="document" onclick="switchTab('document')">📄 Document</button>
+                    <button class="tab" data-view="sections" onclick="switchTab('sections')">
+                        🔖 Sections <span class="tab-count" id="section-count">0</span>
+                    </button>
+                    <button class="tab" data-view="paragraphs" onclick="switchTab('paragraphs')">
+                        📝 Paragraphs <span class="tab-count" id="paragraph-count">0</span>
+                    </button>
+                </div>
+                <button class="btn btn-secondary btn-small" onclick="aiSplitParagraphs()" id="split-paragraphs-btn"
+                    title="Use AI to split text into natural paragraphs">
+                    🪄 Split Paragraphs
                 </button>
             </div>
 
@@ -1404,6 +1410,62 @@
             }
 
             btn.textContent = '🎨 Regenerate Cover';
+            btn.disabled = false;
+        }
+
+        // AI Split Paragraphs
+        async function aiSplitParagraphs() {
+            if (!state.jobId) { alert('Demo mode - AI disabled'); return; }
+
+            const chapter = state.chapters[state.currentChapterIndex];
+            if (!chapter || !chapter.content) {
+                alert('No content to split');
+                return;
+            }
+
+            const btn = document.getElementById('split-paragraphs-btn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '⏳ Splitting...';
+
+            try {
+                updateStatus('AI splitting paragraphs...', true);
+                const res = await fetch(`/v2/job/${state.jobId}/ai-split-paragraphs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: chapter.content })
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    updateStatus('Split failed: ' + data.error, true);
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+
+                if (data.text) {
+                    // Update chapter content
+                    chapter.content = data.text;
+
+                    // Update document editor
+                    const editor = document.getElementById('document-editor');
+                    editor.innerHTML = data.text.split('\n\n').map(p =>
+                        `<p>${p.replace(/\n/g, '<br>')}</p>`
+                    ).join('');
+
+                    state.dirty = true;
+                    updateStatus('Paragraphs split! Review and save.', false);
+                    scheduleAutoSave();
+                } else {
+                    updateStatus('No result from AI', true);
+                }
+            } catch (e) {
+                console.error('AI split error:', e);
+                updateStatus('Split failed', true);
+            }
+
+            btn.textContent = originalText;
             btn.disabled = false;
         }
 
