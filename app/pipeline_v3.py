@@ -15,7 +15,7 @@ import uuid
 from app.logger import get_logger
 from app.glm_processor import process_full_chapter
 from app.cover_art import generate_cover_image
-from app.metadata import lookup_metadata_with_gemini
+from app.metadata import extract_metadata_with_gemini
 
 logger = get_logger(__name__)
 
@@ -240,7 +240,7 @@ async def v3_generate_metadata_and_cover(job_id: str) -> Dict:
         # Enrich metadata with AI
         if metadata.get("title"):
             logger.info(f"[V3] Looking up metadata for: {metadata.get('title')}")
-            ai_metadata = lookup_metadata_with_gemini(metadata.get("title"))
+            ai_metadata = extract_metadata_with_gemini(metadata.get("title"))
             
             if ai_metadata:
                 # Only fill in missing fields
