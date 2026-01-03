@@ -136,13 +136,23 @@ def update_job_phase(job_id: str, phase: str, **kwargs):
 # ============================================
 
 def load_json_data(state: dict) -> dict:
-    """Load JSON data from file path. More reliable than storing in state."""
+    """Load JSON data from file path and normalize whitespace. More reliable than storing in state."""
+    from app.chapters import normalize_whitespace
+    
     json_path = state.get("json_path")
     if not json_path or not os.path.exists(json_path):
         return None
     try:
         with open(json_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        
+        # Normalize excessive newlines in chapter content
+        if data and "chapters" in data:
+            for chapter in data["chapters"]:
+                if chapter.get("content"):
+                    chapter["content"] = normalize_whitespace(chapter["content"])
+        
+        return data
     except Exception as e:
         print(f"[PIPELINE_V2] Error loading JSON: {e}")
         return None

@@ -23,6 +23,32 @@ def get_supabase():
     return _supabase_client
 
 
+def normalize_whitespace(text: str) -> str:
+    """
+    Normalize excessive whitespace and newlines in text.
+    - Replaces multiple consecutive newlines (with or without spaces) to max 2 newlines
+    - Cleans up patterns like "\\n \\n\\n \\n" to just "\\n\\n"
+    - Trims leading/trailing whitespace from lines
+    """
+    if not text:
+        return text
+    
+    # First, normalize \n with spaces between them (e.g., "\n  \n \n" -> "\n\n")
+    # This regex matches newline followed by optional spaces, repeated
+    text = re.sub(r'(\n\s*)+', lambda m: '\n\n' if m.group().count('\n') >= 2 else '\n', text)
+    
+    # Clean up any remaining excessive newlines (more than 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Clean up lines that are just whitespace
+    text = re.sub(r'\n\s+\n', '\n\n', text)
+    
+    # Trim leading/trailing whitespace
+    text = text.strip()
+    
+    return text
+
+
 # ============================================
 # 3NF LOOKUP HELPER FUNCTIONS
 # ============================================
