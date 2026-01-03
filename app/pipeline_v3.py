@@ -426,29 +426,23 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             if db_chapters:
                 chapter_id = db_chapters[0]["id"]
                 
-                # Write sections
+                # Write sections (expects list of strings)
                 sections = ch.get("sections", [])
                 if sections:
-                    # Format sections for Supabase
-                    formatted_sections = [
-                        {"section_index": i, "text": s["text"]}
-                        for i, s in enumerate(sections)
-                    ]
-                    write_sections_to_supabase(chapter_id, formatted_sections)
-                    total_sections += len(sections)
-                    logger.info(f"[V3] Wrote {len(sections)} sections")
+                    # Extract just text strings for Supabase
+                    section_texts = [s["text"] for s in sections if s.get("text")]
+                    write_sections_to_supabase(chapter_id, section_texts)
+                    total_sections += len(section_texts)
+                    logger.info(f"[V3] Wrote {len(section_texts)} sections")
                 
-                # Write paragraphs
+                # Write paragraphs (expects list of strings)
                 paragraphs = ch.get("paragraphs", [])
                 if paragraphs:
-                    # Format paragraphs for Supabase
-                    formatted_paragraphs = [
-                        {"paragraph_index": i, "text": p["text"]}
-                        for i, p in enumerate(paragraphs)
-                    ]
-                    write_paragraphs_to_supabase(chapter_id, formatted_paragraphs)
-                    total_paragraphs += len(paragraphs)
-                    logger.info(f"[V3] Wrote {len(paragraphs)} paragraphs")
+                    # Extract just text strings for Supabase
+                    paragraph_texts = [p["text"] for p in paragraphs if p.get("text")]
+                    write_paragraphs_to_supabase(chapter_id, paragraph_texts)
+                    total_paragraphs += len(paragraph_texts)
+                    logger.info(f"[V3] Wrote {len(paragraph_texts)} paragraphs")
         
         # Update job state
         state["phase"] = "uploaded"
