@@ -340,6 +340,8 @@
                 </div>
 
                 <button class="btn btn-success" id="run-btn" disabled>▶️ Run Pipeline</button>
+                <button class="btn" id="upload-supabase-btn" disabled style="background: #8b5cf6; margin-top: 8px;">📤
+                    Upload to Supabase</button>
             </div>
 
             <!-- Results Card -->
@@ -530,6 +532,8 @@
                 } else {
                     addLog('✅ Pipeline complete!');
                     updateResults(data);
+                    // Enable upload button
+                    document.getElementById('upload-supabase-btn').disabled = false;
                 }
             } catch (e) {
                 addLog(`❌ Pipeline error: ${e.message}`, 'error');
@@ -538,6 +542,36 @@
             clearInterval(pollInterval);
             runBtn.textContent = '✅ Complete';
             await pollStatus(); // Final update
+        });
+
+        // Upload to Supabase
+        const uploadSupabaseBtn = document.getElementById('upload-supabase-btn');
+        uploadSupabaseBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+
+            uploadSupabaseBtn.disabled = true;
+            uploadSupabaseBtn.textContent = '⏳ Uploading...';
+            addLog('📤 Uploading to Supabase...');
+
+            try {
+                const res = await fetch(`/v3/upload-supabase/${currentJobId}`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.error) {
+                    addLog(`❌ ${data.error}`, 'error');
+                    uploadSupabaseBtn.textContent = '📤 Upload to Supabase';
+                    uploadSupabaseBtn.disabled = false;
+                } else {
+                    addLog(`✅ Uploaded to Supabase! Book ID: ${data.book_id?.substring(0, 8)}...`);
+                    addLog(`📊 ${data.chapters} chapters, ${data.sections} sections, ${data.paragraphs} paragraphs`);
+                    uploadSupabaseBtn.textContent = '✅ Uploaded';
+                    uploadSupabaseBtn.style.background = '#22c55e';
+                }
+            } catch (e) {
+                addLog(`❌ Upload error: ${e.message}`, 'error');
+                uploadSupabaseBtn.textContent = '📤 Upload to Supabase';
+                uploadSupabaseBtn.disabled = false;
+            }
         });
 
         // Poll Status

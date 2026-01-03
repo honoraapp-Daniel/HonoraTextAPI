@@ -363,14 +363,27 @@ async def run_v3_pipeline(job_id: str) -> Dict:
 
 
 # ============================================
-# SUPABASE UPLOAD (PLACEHOLDER)
+# SUPABASE UPLOAD
 # ============================================
 
 async def v3_upload_to_supabase(job_id: str) -> Dict:
     """
-    Upload processed book data to Supabase.
-    Called after pipeline is complete.
+    Upload processed V3 book data to Supabase.
+    
+    Creates:
+    - Book record (with metadata, cover art URLs)
+    - Chapter records
+    - Section records
+    - Paragraph records
     """
+    from app.supabase import (
+        create_book_in_supabase,
+        write_chapters_to_supabase,
+        write_sections_to_supabase,
+        write_paragraphs_to_supabase,
+        update_book_cover_url
+    )
+    
     state = get_v3_job_state(job_id)
     if not state:
         raise ValueError(f"Job not found: {job_id}")
@@ -378,11 +391,90 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
     if state["phase"] != "complete":
         raise ValueError(f"Pipeline not complete. Current phase: {state['phase']}")
     
-    # TODO: Implement Supabase upload
-    # - Create book record
-    # - Create chapter records
-    # - Create section records
-    # - Create paragraph records
+    metadata = state.get("metadata", {})
+    chapters = state.get("chapters", [])
+    cover_urls = state.get("cover_urls", {})
     
-    logger.info(f"[V3] Ready for Supabase upload: {job_id[:8]}")
-    return {"ready": True, "job_id": job_id}
+    try:
+        logger.info(f"[V3] Starting Supabase upload for: {metadata.get('title')}")
+        
+        # Step 1: Create book record
+        book_id = create_book_in_supabase(metadata)
+        logger.info(f"[V3] Created book: {book_id}")
+        
+        # Step 2: Update cover art URLs
+        if cover_urls:
+            update_book_cover_url(book_id, cover_urls)
+            logger.info(f"[V3] Updated cover art URLs")
+        
+        # Step 3: Create chapters with sections and paragraphs
+        total_sections = 0
+        total_paragraphs = 0
+        
+        for ch in chapters:
+            logger.info(f"[V3] Uploading chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
+            
+            # Create chapter record
+            chapter_data = [{
+                "chapter_index": ch["index"],
+                "title": ch["title"],
+                "text": ch.get("raw_content", "")
+            }]
+            
+            db_chapters = write_chapters_to_supabase(book_id, chapter_data)
+            
+            if db_chapters:
+                chapter_id = db_chapters[0]["id"]
+                
+                # Write sections
+                sections = ch.get("sections", [])
+                if sections:
+                    # Format sections for Supabase
+                    formatted_sections = [
+                        {"section_index": i, "text": s["text"]}
+                        for i, s in enumerate(sections)
+                    ]
+                    write_sections_to_supabase(chapter_id, formatted_sections)
+                    total_sections += len(sections)
+                    logger.info(f"[V3] Wrote {len(sections)} sections")
+                
+                # Write paragraphs
+                paragraphs = ch.get("paragraphs", [])
+                if paragraphs:
+                    # Format paragraphs for Supabase
+                    formatted_paragraphs = [
+                        {"paragraph_index": i, "text": p["text"]}
+                        for i, p in enumerate(paragraphs)
+                    ]
+                    write_paragraphs_to_supabase(chapter_id, formatted_paragraphs)
+                    total_paragraphs += len(paragraphs)
+                    logger.info(f"[V3] Wrote {len(paragraphs)} paragraphs")
+        
+        # Update job state
+        state["phase"] = "uploaded"
+        state["book_id"] = book_id
+        state["upload_stats"] = {
+            "chapters": len(chapters),
+            "sections": total_sections,
+            "paragraphs": total_paragraphs
+        }
+        save_v3_job_state(job_id, state)
+        
+        logger.info(f"[V3] ✅ Upload complete: {len(chapters)} chapters, {total_sections} sections, {total_paragraphs} paragraphs")
+        
+        return {
+            "success": True,
+            "book_id": book_id,
+            "chapters": len(chapters),
+            "sections": total_sections,
+            "paragraphs": total_paragraphs,
+            "cover_urls": cover_urls
+        }
+        
+    except Exception as e:
+        logger.error(f"[V3] Supabase upload error: {e}")
+        state["phase"] = "upload_error"
+        state["error"] = str(e)
+        save_v3_job_state(job_id, state)
+        raise
+

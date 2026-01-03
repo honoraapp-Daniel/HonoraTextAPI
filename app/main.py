@@ -2005,3 +2005,22 @@ async def v3_get_full_job(job_id: str):
         return JSONResponse({"error": "Job not found"}, status_code=404)
     
     return state
+
+
+@app.post("/v3/upload-supabase/{job_id}", tags=["V3 Pipeline"])
+async def v3_upload_to_supabase_endpoint(job_id: str):
+    """
+    Upload completed V3 job to Supabase.
+    Creates book, chapters, sections, and paragraphs in the database.
+    """
+    from app.pipeline_v3 import v3_upload_to_supabase
+    
+    try:
+        result = await v3_upload_to_supabase(job_id)
+        return result
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        import logging
+        logging.error(f"V3 Supabase upload error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
