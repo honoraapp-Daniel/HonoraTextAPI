@@ -318,6 +318,7 @@ function cleanChapterContent(content, chapterTitle) {
 /**
  * Henter alle kapitel-links fra en bogs index-side
  * Detekterer også "Parts", "Treatises" og content types
+ * PRESERVES EXACT ORDER from the index page
  * @param {string} bookIndexUrl - URL til bogens index.htm
  * @returns {Promise<{chapters: Array, parts: Array, treatises: Array}>}
  */
@@ -330,12 +331,13 @@ export async function getBookChapters(bookIndexUrl) {
   const treatises = [];
   const baseDir = bookIndexUrl.substring(0, bookIndexUrl.lastIndexOf('/'));
 
-  // Navigation pages to skip (common on sacred-texts.com)
-  const navigationPatterns = [
+  // Pages to SKIP (navigation, TOC, title pages)
+  const skipPatterns = [
     /^start\s*reading$/i,
     /^page\s*index$/i,
     /^title\s*page$/i,
     /^table\s*of\s*contents$/i,
+    /^the\s*contents$/i,  // "The Contents" - a TOC page
     /^contents$/i,
     /^index$/i,
     /^errata$/i,
@@ -343,171 +345,150 @@ export async function getBookChapters(bookIndexUrl) {
     /^previous$/i,
     /^prev$/i,
     /^home$/i,
-    /^«\s*previous/i,
-    /^next\s*:/i,
-    /^next\s*»/i,
-    /»\s*$/,
-    /^«/,
-    /^\s*$/
   ];
 
   // Part detection patterns
   const partPatterns = [
     /^Part\s+([IVXLCDM]+)\s*[:.\-–]?\s*(.*)$/i,
     /^Part\s+(\d+)\s*[:.\-–]?\s*(.*)$/i,
-    /^Part\s+(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)\s*[:.\-–]?\s*(.*)$/i
   ];
 
-  // Track current part and treatise for chapter linking
+  // Track current context and order
   let currentPartIndex = 0;
   let currentPartTitle = null;
   let currentTreatiseIndex = 0;
   let currentTreatiseTitle = null;
+  let globalOrder = 0;  // Track order of EVERYTHING
 
-  // First pass: Scan the page for Parts, Treatises, and section headers
-  const pageContent = $.html();
+  // Store positions for treatise headers
+  const treatisePositions = [];
+  const pageHtml = $.html();
 
-  $('body').find('*').each((_, el) => {
+  // First: Find ALL section headers (treatises) and their positions
+  $('body').find('h2, h3, center, p').each((_, el) => {
     const $el = $(el);
-    const tagName = el.tagName?.toLowerCase();
+    const text = $el.text().trim();
 
-    if (['h2', 'h3', 'h4', 'b', 'strong', 'center', 'font'].includes(tagName)) {
-      const text = $el.clone().children().remove().end().text().trim() || $el.text().trim();
+    // Check if this looks like a section title (NOT a link, NOT a chapter)
+    if (text && text.length > 10 && text.length < 100 && !$el.find('a').length) {
+      // Check for section header patterns
+      const isSectionHeader =
+        text === 'The Stone of the Philosophers' ||
+        /^[A-Z][a-z]+(\s+[A-Za-z]+){2,}$/.test(text);  // Capitalized multi-word title
 
-      // Skip empty or navigation text
-      if (!text || text.length < 3) return;
-
-      // Check for Part headers
-      for (const pattern of partPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          currentPartIndex++;
-          let partNumber = match[1];
-          let partSubtitle = match[2]?.trim() || '';
-
-          if (/^[IVXLCDM]+$/i.test(partNumber)) {
-            partNumber = romanToNumber(partNumber);
-          } else if (/^(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)$/i.test(partNumber)) {
-            const wordMap = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-            partNumber = wordMap[partNumber.toLowerCase()];
-          }
-
-          currentPartTitle = partSubtitle
-            ? `Part ${partNumber}: ${partSubtitle}`
-            : `Part ${partNumber}`;
-
-          parts.push({
-            index: currentPartIndex,
-            title: currentPartTitle
-          });
-
-          console.log(`  📚 Detected Part: "${currentPartTitle}"`);
-          return;
-        }
-      }
-
-      // Check for Treatise/Section headers (for anthology-style books)
-      if (getContentType(text) === 'treatise') {
-        currentTreatiseIndex++;
-        currentTreatiseTitle = text;
-
-        treatises.push({
-          index: currentTreatiseIndex,
-          title: currentTreatiseTitle
+      if (isSectionHeader && getContentType(text) === 'treatise') {
+        const position = pageHtml.indexOf(text);
+        treatisePositions.push({
+          title: text,
+          position: position
         });
-
-        console.log(`  📖 Detected Treatise: "${currentTreatiseTitle}"`);
-        return;
+        console.log(`  📖 Found section header: "${text}" at position ${position}`);
       }
     }
   });
 
-  // Second pass: Collect chapter links
+  // Process ALL links in order
   $('a').each((_, el) => {
-    const href = $(el).attr('href');
-    let text = $(el).text().trim();
+    const $el = $(el);
+    const href = $el.attr('href');
+    let text = $el.text().trim();
 
     if (!href) return;
 
-    // Skip navigation links
+    // Skip external links
     if (href.startsWith('http') && !href.includes('sacred-texts.com')) return;
     if (href === 'index.htm' || href === './index.htm') return;
     if (href.startsWith('#')) return;
     if (href.includes('..')) return;
     if (href.endsWith('.txt') || href.endsWith('.gz')) return;
 
-    const isNavigation = navigationPatterns.some(pattern => pattern.test(text));
-    if (isNavigation) {
-      console.log(`  ⏭️ Skipping navigation page: "${text}"`);
+    // Skip navigation/TOC pages
+    const shouldSkip = skipPatterns.some(pattern => pattern.test(text));
+    if (shouldSkip) {
+      console.log(`  ⏭️ Skipping: "${text}"`);
       return;
     }
 
+    // Skip likely navigation files
     const filename = href.toLowerCase();
     if (filename.match(/00\.htm$/) || filename.match(/01\.htm$/)) {
-      if (!text.match(/chapter/i) && !text.match(/^[IVXLC]+\./) && !text.match(/book/i)) {
-        console.log(`  ⏭️ Skipping likely navigation file: ${href} ("${text}")`);
+      if (!text.match(/chapter/i) && !text.match(/^[IVXLC]+\./) && !text.match(/preface/i)) {
+        console.log(`  ⏭️ Skipping navigation file: ${href}`);
         return;
       }
     }
 
+    // Valid chapter link
     if (href.match(/^[a-z0-9_-]+\.htm$/i)) {
       const fullUrl = `${baseDir}/${href}`;
 
       if (!chapters.find(c => c.url === fullUrl)) {
         text = text.replace(/page\s+\d+/gi, '').trim();
 
-        // Determine content type
-        const contentType = getContentType(text);
+        // Find position of this link in the page
+        const linkHtml = $.html(el);
+        const linkPosition = pageHtml.indexOf(linkHtml);
 
-        // Determine which part this chapter belongs to
-        let partIndex = null;
-        let partTitle = null;
-        let treatiseIndex = null;
-        let treatiseTitle = null;
+        // Determine which treatise this link belongs to
+        let parentTreatise = null;
+        let parentTreatiseIndex = null;
 
-        if (parts.length > 0 || treatises.length > 0) {
-          const linkHtml = $.html(el);
-          const linkPos = pageContent.indexOf(linkHtml);
-
-          // Find parent part
-          for (let i = parts.length - 1; i >= 0; i--) {
-            const partPos = pageContent.indexOf(parts[i].title);
-            if (partPos < linkPos && partPos >= 0) {
-              partIndex = parts[i].index;
-              partTitle = parts[i].title;
-              break;
-            }
-          }
-
-          // Find parent treatise
-          for (let i = treatises.length - 1; i >= 0; i--) {
-            const treatisePos = pageContent.indexOf(treatises[i].title);
-            if (treatisePos < linkPos && treatisePos >= 0) {
-              treatiseIndex = treatises[i].index;
-              treatiseTitle = treatises[i].title;
-              break;
+        for (const t of treatisePositions) {
+          // Link is AFTER this treatise header
+          if (t.position < linkPosition && t.position >= 0) {
+            // Check if there's another treatise BETWEEN this one and the link
+            const hasCloserTreatise = treatisePositions.some(t2 =>
+              t2.position > t.position && t2.position < linkPosition
+            );
+            if (!hasCloserTreatise) {
+              parentTreatise = t.title;
+              parentTreatiseIndex = treatisePositions.indexOf(t) + 1;
             }
           }
         }
 
+        // Determine content type - keep original title for chapters
+        const contentType = getContentType(text);
+
         chapters.push({
-          title: text || href.replace('.htm', ''),
+          title: text,  // Keep ORIGINAL title (with "Chapter I" etc.)
           url: fullUrl,
           content_type: contentType,
-          part_index: partIndex,
-          part: partTitle,
-          treatise_index: treatiseIndex,
-          treatise: treatiseTitle
+          part_index: null,  // Will be set if there are parts
+          part: null,
+          treatise_index: parentTreatiseIndex,
+          treatise: parentTreatise,
+          order: globalOrder++
         });
       }
     }
   });
 
+  // Build treatises array from positions
+  for (let i = 0; i < treatisePositions.length; i++) {
+    treatises.push({
+      index: i + 1,
+      title: treatisePositions[i].title
+    });
+  }
+
+  // Sort everything by order
+  chapters.sort((a, b) => a.order - b.order);
+
   const partsInfo = parts.length > 0 ? ` in ${parts.length} parts` : '';
-  const treatisesInfo = treatises.length > 0 ? ` and ${treatises.length} treatises` : '';
+  const treatisesInfo = treatises.length > 0 ? ` with ${treatises.length} sections` : '';
   console.log(`📚 Found ${chapters.length} chapters${partsInfo}${treatisesInfo}`);
+
+  // Log the structure
+  console.log('📋 Chapter structure:');
+  for (const ch of chapters) {
+    const parent = ch.treatise ? `  (in "${ch.treatise}")` : '';
+    console.log(`  ${ch.order + 1}. ${ch.title}${parent}`);
+  }
+
   return { chapters, parts, treatises };
 }
+
 
 /**
  * Henter og renser indhold fra en kapitel-side
