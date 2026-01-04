@@ -1051,18 +1051,146 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 </body>
 </html>`;
 
-  // Build JSON data structure
+  // ============================================
+  // BUILD book_nodes TREE STRUCTURE (NEW FORMAT)
+  // ============================================
+
+  /**
+   * Generates order_key for a node.
+   * @param {number} index - 1-based index
+   * @param {string} parentKey - Parent's order_key (empty for root)
+   * @returns {string} Order key like "0001" or "0001.0002"
+   */
+  function generateOrderKey(index, parentKey = '') {
+    const segment = String(index).padStart(4, '0');
+    return parentKey ? `${parentKey}.${segment}` : segment;
+  }
+
+  // Build book_nodes array
+  const bookNodes = [];
+  let rootIndex = 0;
+
+  // Add Part nodes (root level, containers)
+  const partNodeMap = {}; // part.title -> order_key
+  for (const part of bookParts) {
+    rootIndex++;
+    const orderKey = generateOrderKey(rootIndex);
+    partNodeMap[part.title] = orderKey;
+
+    bookNodes.push({
+      order_key: orderKey,
+      node_type: 'part',
+      display_title: part.title,
+      source_title: part.title,
+      has_content: false,  // Parts are containers
+      parent_order_key: null
+    });
+  }
+
+  // Add Treatise nodes (can be root or under parts)
+  const treatiseNodeMap = {}; // treatise.title -> order_key
+  for (const treatise of bookTreatises) {
+    // Find parent part if any
+    const parentKey = treatise.parent_part ? partNodeMap[treatise.parent_part] : null;
+
+    if (parentKey) {
+      // Child of a part - use child index within that part
+      const childCount = bookNodes.filter(n => n.parent_order_key === parentKey).length + 1;
+      const orderKey = generateOrderKey(childCount, parentKey);
+      treatiseNodeMap[treatise.title] = orderKey;
+
+      bookNodes.push({
+        order_key: orderKey,
+        node_type: 'treatise',
+        display_title: treatise.title,
+        source_title: treatise.title,
+        has_content: false,
+        parent_order_key: parentKey
+      });
+    } else {
+      // Root level treatise
+      rootIndex++;
+      const orderKey = generateOrderKey(rootIndex);
+      treatiseNodeMap[treatise.title] = orderKey;
+
+      bookNodes.push({
+        order_key: orderKey,
+        node_type: 'treatise',
+        display_title: treatise.title,
+        source_title: treatise.title,
+        has_content: false,
+        parent_order_key: null
+      });
+    }
+  }
+
+  // Add Chapter nodes (under parts, treatises, or root)
+  const childCounters = {}; // parent_key -> count
+
+  for (const ch of jsonChapters) {
+    // Determine parent
+    let parentKey = null;
+    if (ch.treatise) {
+      parentKey = treatiseNodeMap[ch.treatise];
+    } else if (ch.part) {
+      parentKey = partNodeMap[ch.part];
+    }
+
+    // Generate order_key
+    let orderKey;
+    if (parentKey) {
+      childCounters[parentKey] = (childCounters[parentKey] || 0) + 1;
+      orderKey = generateOrderKey(childCounters[parentKey], parentKey);
+    } else {
+      rootIndex++;
+      orderKey = generateOrderKey(rootIndex);
+    }
+
+    // Determine node_type from content_type
+    let nodeType = 'chapter';
+    const contentType = ch.content_type || 'chapter';
+    switch (contentType) {
+      case 'prefatory': nodeType = 'preface'; break;
+      case 'appendix': nodeType = 'appendix'; break;
+      case 'book': nodeType = 'book'; break;
+      case 'treatise': nodeType = 'treatise'; break;
+      default: nodeType = 'chapter';
+    }
+
+    bookNodes.push({
+      order_key: orderKey,
+      node_type: nodeType,
+      display_title: ch.title,
+      source_title: ch.title,
+      has_content: true,
+      parent_order_key: parentKey,
+      // Keep original chapter data for backwards compatibility
+      chapter_index: ch.index,
+      content: ch.content
+    });
+  }
+
+  // Sort nodes by order_key
+  bookNodes.sort((a, b) => a.order_key.localeCompare(b.order_key));
+
+  // Build JSON data structure with BOTH old and new formats
   const jsonData = {
     title: bookTitle,
     author: bookAuthor,
     year: bookYear,
     publisher: bookPublisher,
+
+    // NEW: book_nodes tree structure
+    book_nodes: bookNodes,
+
+    // LEGACY: Keep old format for backwards compatibility
     partCount: bookParts.length,
-    parts: bookParts,  // Parts structure (Part I, Part II, etc.)
+    parts: bookParts,
     treatiseCount: bookTreatises.length,
-    treatises: bookTreatises,  // Treatises/sub-works (for anthology-style books)
+    treatises: bookTreatises,
     chapterCount: jsonChapters.length,
     chapters: jsonChapters,
+
     scrapedAt: new Date().toISOString(),
     sourceUrl: bookUrl
   };
