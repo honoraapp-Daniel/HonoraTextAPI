@@ -19,6 +19,41 @@ from app.metadata import extract_metadata_with_gemini
 
 logger = get_logger(__name__)
 
+
+def clean_display_title(title: str, node_type: str = None) -> str:
+    """
+    Clean a chapter title for display by removing 'Chapter X -' prefix.
+    
+    Examples:
+        'Chapter 0 - Prefatory Note' -> 'Prefatory Note'
+        'Chapter 1 - The Introduction' -> 'The Introduction'
+        'Chapter 5 - The Contents' -> 'The Contents'
+        'The Stone of the Philosophers' -> 'The Stone of the Philosophers'
+    
+    Args:
+        title: Raw chapter title
+        node_type: Optional node type for context
+    
+    Returns:
+        Cleaned title for display
+    """
+    import re
+    
+    if not title:
+        return title
+    
+    # Pattern: "Chapter X -" or "Chapter X:" where X is number or roman numeral
+    pattern = r'^Chapter\s+[\dIVXLCDM]+\s*[-–:]\s*'
+    cleaned = re.sub(pattern, '', title, flags=re.IGNORECASE)
+    
+    # If cleaning removed everything, keep original
+    if not cleaned.strip():
+        return title
+    
+    return cleaned.strip()
+
+
+
 # ============================================
 # JOB STATE MANAGEMENT
 # ============================================
@@ -587,12 +622,16 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             content_type = ch.get("content_type", "chapter")
             node_type = map_content_type_to_node_type(content_type)
             
+            # Clean display title (remove "Chapter X -" prefix)
+            raw_title = ch["title"]
+            display_title = clean_display_title(raw_title, node_type)
+            
             # Create book_node for this chapter
             chapter_node = create_book_node(
                 book_id=book_id,
                 node_type=node_type,
-                display_title=ch["title"],
-                source_title=ch.get("source_title", ch["title"]),
+                display_title=display_title,  # Cleaned title
+                source_title=raw_title,       # Keep original
                 parent_id=parent_id,
                 has_content=True
             )
