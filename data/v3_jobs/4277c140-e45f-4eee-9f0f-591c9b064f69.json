@@ -2,7 +2,7 @@
   "job_id": "4277c140-e45f-4eee-9f0f-591c9b064f69",
   "file_path": "data/v3_uploads/e052b586-f0e1-4d6f-93aa-23d9de90f80d.json",
   "file_type": "json",
-  "phase": "complete",
+  "phase": "uploaded",
   "created_at": "2026-01-04T13:23:40.130817",
   "chapters": [
     {
@@ -6701,5 +6701,12 @@
       "title": "The Book of the Revelation of Hermes"
     }
   ],
-  "completed_at": "2026-01-04T13:31:23.860820"
+  "completed_at": "2026-01-04T13:31:23.860820",
+  "book_id": "9de807c2-726c-46d2-8ece-5e00b659873e",
+  "upload_stats": {
+    "parts": 3,
+    "chapters": 26,
+    "sections": 1168,
+    "paragraphs": 420
+  }
 }

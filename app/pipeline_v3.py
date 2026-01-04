@@ -68,6 +68,49 @@ def create_v3_job(file_path: str, file_type: str) -> str:
     return job_id
 
 
+def update_v3_job_metadata(job_id: str, metadata_updates: Dict) -> Dict:
+    """
+    Update metadata for a V3 job (allows manual editing before Supabase upload).
+    
+    Args:
+        job_id: The job UUID
+        metadata_updates: Dict with fields to update (title, author, year, etc.)
+    
+    Returns:
+        Updated metadata dict
+    """
+    state = get_v3_job_state(job_id)
+    if not state:
+        raise ValueError(f"Job not found: {job_id}")
+    
+    # Update metadata fields
+    current_metadata = state.get("metadata", {})
+    
+    # Allow updating these fields
+    editable_fields = [
+        "title", "author", "year", "publishing_year", "publisher",
+        "language", "original_language", "category", "synopsis",
+        "book_of_the_day_quote"
+    ]
+    
+    for field in editable_fields:
+        if field in metadata_updates:
+            value = metadata_updates[field]
+            # Convert year to int if possible
+            if field in ["year", "publishing_year"] and value:
+                try:
+                    value = int(value) if value else None
+                except (ValueError, TypeError):
+                    value = None
+            current_metadata[field] = value
+    
+    state["metadata"] = current_metadata
+    save_v3_job_state(job_id, state)
+    
+    logger.info(f"[V3] Updated metadata for job {job_id[:8]}: {list(metadata_updates.keys())}")
+    return current_metadata
+
+
 # ============================================
 # EXTRACTION PHASE
 # ============================================

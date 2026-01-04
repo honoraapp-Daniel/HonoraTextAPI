@@ -277,6 +277,35 @@
         .hidden {
             display: none;
         }
+
+        .meta-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .meta-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .meta-input:hover {
+            border-color: var(--accent);
+        }
+
+        select.meta-input {
+            cursor: pointer;
+        }
+
+        textarea.meta-input {
+            font-family: inherit;
+        }
     </style>
 </head>
 
@@ -372,50 +401,68 @@
                 </div>
 
                 <div class="metadata-details" id="metadata-details" style="margin-top: 16px; display: none;">
-                    <h3 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--muted);">📖 Metadata</h3>
+                    <h3 style="font-size: 0.9rem; margin-bottom: 12px; color: var(--muted);">📖 Metadata <span
+                            style="font-weight: normal; font-size: 0.8rem;">(editable)</span></h3>
                     <div class="status-bar" style="margin-top: 0;">
                         <div class="status-item">
                             <span class="status-label">Title</span>
-                            <span class="status-value" id="meta-title">—</span>
+                            <input type="text" class="meta-input" id="meta-title" value="—">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Author</span>
-                            <span class="status-value" id="meta-author">—</span>
+                            <input type="text" class="meta-input" id="meta-author" value="—">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Year</span>
-                            <span class="status-value" id="meta-year">—</span>
+                            <input type="text" class="meta-input" id="meta-year" value="—" style="width: 100px;">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Publisher</span>
-                            <span class="status-value" id="meta-publisher">—</span>
+                            <input type="text" class="meta-input" id="meta-publisher" value="—">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Language</span>
-                            <span class="status-value" id="meta-language">—</span>
+                            <input type="text" class="meta-input" id="meta-language" value="—" style="width: 120px;">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Original Language</span>
-                            <span class="status-value" id="meta-original-language">—</span>
+                            <input type="text" class="meta-input" id="meta-original-language" value="—"
+                                style="width: 120px;">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Category</span>
-                            <span class="status-value" id="meta-category">—</span>
+                            <select class="meta-input" id="meta-category" style="width: 180px;">
+                                <option value="">— Select —</option>
+                                <option value="Philosophy">Philosophy</option>
+                                <option value="Religion">Religion</option>
+                                <option value="Spirituality">Spirituality</option>
+                                <option value="Occult">Occult</option>
+                                <option value="Alchemy">Alchemy</option>
+                                <option value="Mysticism">Mysticism</option>
+                                <option value="History">History</option>
+                                <option value="Fiction">Fiction</option>
+                                <option value="Poetry">Poetry</option>
+                                <option value="Science">Science</option>
+                                <option value="Psychology">Psychology</option>
+                                <option value="Other">Other</option>
+                            </select>
                         </div>
                     </div>
-                    <div id="meta-synopsis-container" style="display: none; margin-top: 12px;">
+                    <div style="margin-top: 12px;">
                         <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">Synopsis</div>
-                        <div id="meta-synopsis"
-                            style="background: var(--bg); padding: 12px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5;">
-                            —</div>
+                        <textarea id="meta-synopsis" class="meta-input"
+                            style="width: 100%; height: 80px; resize: vertical; background: var(--bg); padding: 12px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5;"
+                            placeholder="Enter book synopsis..."></textarea>
                     </div>
-                    <div id="meta-quote-container" style="display: none; margin-top: 12px;">
+                    <div style="margin-top: 12px;">
                         <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">📜 Quote of the Day
                         </div>
-                        <div id="meta-quote"
-                            style="background: var(--bg); padding: 12px; border-radius: 8px; font-style: italic; font-size: 0.9rem; border-left: 3px solid var(--accent);">
-                            —</div>
+                        <textarea id="meta-quote" class="meta-input"
+                            style="width: 100%; height: 60px; resize: vertical; background: var(--bg); padding: 12px; border-radius: 8px; font-style: italic; font-size: 0.9rem; border-left: 3px solid var(--accent);"
+                            placeholder="Enter a memorable quote from the book..."></textarea>
                     </div>
+                    <button class="btn" id="save-metadata-btn" style="background: #f59e0b; margin-top: 12px;">💾 Save
+                        Metadata</button>
                 </div>
             </div>
 
@@ -617,25 +664,19 @@
 
                     // Show metadata details
                     document.getElementById('metadata-details').style.display = 'block';
-                    document.getElementById('meta-title').textContent = data.metadata.title || '—';
-                    document.getElementById('meta-author').textContent = data.metadata.author || '—';
-                    document.getElementById('meta-year').textContent = data.metadata.publishing_year || data.metadata.year || '—';
-                    document.getElementById('meta-publisher').textContent = data.metadata.publisher || '—';
-                    document.getElementById('meta-language').textContent = data.metadata.language || '—';
-                    document.getElementById('meta-original-language').textContent = data.metadata.original_language || '—';
-                    document.getElementById('meta-category').textContent = data.metadata.category || '—';
+                    document.getElementById('meta-title').value = data.metadata.title || '';
+                    document.getElementById('meta-author').value = data.metadata.author || '';
+                    document.getElementById('meta-year').value = data.metadata.publishing_year || data.metadata.year || '';
+                    document.getElementById('meta-publisher').value = data.metadata.publisher || '';
+                    document.getElementById('meta-language').value = data.metadata.language || 'English';
+                    document.getElementById('meta-original-language').value = data.metadata.original_language || 'English';
+                    document.getElementById('meta-category').value = data.metadata.category || '';
 
-                    // Show synopsis if available
-                    if (data.metadata.synopsis) {
-                        document.getElementById('meta-synopsis-container').style.display = 'block';
-                        document.getElementById('meta-synopsis').textContent = data.metadata.synopsis;
-                    }
+                    // Set synopsis
+                    document.getElementById('meta-synopsis').value = data.metadata.synopsis || '';
 
-                    // Show quote if available
-                    if (data.metadata.book_of_the_day_quote) {
-                        document.getElementById('meta-quote-container').style.display = 'block';
-                        document.getElementById('meta-quote').textContent = '"' + data.metadata.book_of_the_day_quote + '"';
-                    }
+                    // Set quote
+                    document.getElementById('meta-quote').value = data.metadata.book_of_the_day_quote || '';
                 }
 
             } catch (e) {
@@ -677,6 +718,57 @@
             logContainer.appendChild(entry);
             logContainer.scrollTop = logContainer.scrollHeight;
         }
+
+        // Save Metadata
+        const saveMetadataBtn = document.getElementById('save-metadata-btn');
+        saveMetadataBtn.addEventListener('click', async () => {
+            if (!currentJobId) return;
+
+            const metadata = {
+                title: document.getElementById('meta-title').value,
+                author: document.getElementById('meta-author').value,
+                year: document.getElementById('meta-year').value,
+                publishing_year: document.getElementById('meta-year').value,
+                publisher: document.getElementById('meta-publisher').value,
+                language: document.getElementById('meta-language').value,
+                original_language: document.getElementById('meta-original-language').value,
+                category: document.getElementById('meta-category').value,
+                synopsis: document.getElementById('meta-synopsis').value,
+                book_of_the_day_quote: document.getElementById('meta-quote').value
+            };
+
+            saveMetadataBtn.disabled = true;
+            saveMetadataBtn.textContent = '⏳ Saving...';
+            addLog('💾 Saving metadata...');
+
+            try {
+                const res = await fetch(`/v3/update-metadata/${currentJobId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(metadata)
+                });
+                const data = await res.json();
+
+                if (data.error) {
+                    addLog(`❌ ${data.error}`, 'error');
+                    saveMetadataBtn.textContent = '💾 Save Metadata';
+                    saveMetadataBtn.disabled = false;
+                } else {
+                    addLog('✅ Metadata saved!');
+                    saveMetadataBtn.textContent = '✅ Saved';
+                    saveMetadataBtn.style.background = '#22c55e';
+                    setTimeout(() => {
+                        saveMetadataBtn.textContent = '💾 Save Metadata';
+                        saveMetadataBtn.style.background = '#f59e0b';
+                        saveMetadataBtn.disabled = false;
+                    }, 2000);
+                }
+            } catch (e) {
+                addLog(`❌ Save error: ${e.message}`, 'error');
+                saveMetadataBtn.textContent = '💾 Save Metadata';
+                saveMetadataBtn.disabled = false;
+            }
+        });
     </script>
 </body>
 

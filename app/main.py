@@ -2024,3 +2024,23 @@ async def v3_upload_to_supabase_endpoint(job_id: str):
         import logging
         logging.error(f"V3 Supabase upload error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v3/update-metadata/{job_id}", tags=["V3 Pipeline"])
+async def v3_update_metadata_endpoint(job_id: str, request: Request):
+    """
+    Update metadata for a V3 job.
+    Allows manual editing of title, author, year, etc. before Supabase upload.
+    """
+    from app.pipeline_v3 import update_v3_job_metadata
+    
+    try:
+        body = await request.json()
+        updated_metadata = update_v3_job_metadata(job_id, body)
+        return {"success": True, "metadata": updated_metadata}
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    except Exception as e:
+        import logging
+        logging.error(f"V3 metadata update error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
