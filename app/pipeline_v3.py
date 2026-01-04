@@ -76,6 +76,7 @@ async def v3_extract_chapters(job_id: str) -> Dict:
     """
     Extract chapters from uploaded file.
     Supports JSON (from scraper) and PDF files.
+    Now also extracts 'parts' for multi-part books.
     """
     state = get_v3_job_state(job_id)
     if not state:
@@ -85,6 +86,7 @@ async def v3_extract_chapters(job_id: str) -> Dict:
     file_type = state["file_type"]
     
     chapters = []
+    parts = []
     metadata = {}
     
     try:
@@ -101,15 +103,34 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                 "language": data.get("language", "English")
             }
             
+            # Extract parts if present
+            for p in data.get("parts", []):
+                parts.append({
+                    "part_index": p.get("index", len(parts) + 1),
+                    "title": p.get("title", f"Part {len(parts) + 1}")
+                })
+            
+            # Build part title lookup for chapter linking
+            part_titles = {p["part_index"]: p["title"] for p in parts}
+            
+            # Extract chapters with optional part linking
             for ch in data.get("chapters", []):
-                chapters.append({
+                chapter_data = {
                     "index": ch.get("index", len(chapters)),
                     "title": ch.get("title", f"Chapter {len(chapters)+1}"),
                     "raw_content": ch.get("content", ""),
                     "paragraphs": [],
                     "sections": [],
                     "processed": False
-                })
+                }
+                
+                # Link to part if specified
+                if "part_index" in ch:
+                    chapter_data["parent_part"] = part_titles.get(ch["part_index"])
+                elif "part" in ch:
+                    chapter_data["parent_part"] = ch["part"]
+                
+                chapters.append(chapter_data)
         
         elif file_type == "pdf":
             # Use Marker API for PDF extraction
@@ -147,13 +168,16 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                 })
         
         state["chapters"] = chapters
+        state["parts"] = parts  # Store parts in job state
         state["metadata"] = metadata
         state["progress"]["total_chapters"] = len(chapters)
+        state["progress"]["total_parts"] = len(parts)
         state["phase"] = "extracted"
         save_v3_job_state(job_id, state)
         
-        logger.info(f"[V3] Extracted {len(chapters)} chapters from {file_type}")
-        return {"success": True, "chapters": len(chapters), "metadata": metadata}
+        parts_info = f" ({len(parts)} parts)" if parts else ""
+        logger.info(f"[V3] Extracted {len(chapters)} chapters{parts_info} from {file_type}")
+        return {"success": True, "chapters": len(chapters), "parts": len(parts), "metadata": metadata}
     
     except Exception as e:
         logger.error(f"[V3] Extraction error: {e}")
@@ -424,6 +448,7 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
     
     metadata = state.get("metadata", {})
     chapters = state.get("chapters", [])
+    parts = state.get("parts", [])
     cover_urls = state.get("cover_urls", {})
     
     try:
@@ -438,21 +463,29 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             update_book_cover_url(book_id, cover_urls)
             logger.info(f"[V3] Updated cover art URLs")
         
-        # Step 3: Create chapters with sections and paragraphs
+        # Step 3: Create parts (if any)
+        part_id_map = {}
+        if parts:
+            from app.chapters import write_parts_to_supabase
+            part_id_map = write_parts_to_supabase(book_id, parts)
+            logger.info(f"[V3] Created {len(parts)} parts")
+        
+        # Step 4: Create chapters with sections and paragraphs
         total_sections = 0
         total_paragraphs = 0
         
         for ch in chapters:
             logger.info(f"[V3] Uploading chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
             
-            # Create chapter record
+            # Create chapter record with parent_part for linking
             chapter_data = [{
                 "chapter_index": ch["index"],
                 "title": ch["title"],
-                "text": ch.get("raw_content", "")
+                "text": ch.get("raw_content", ""),
+                "parent_part": ch.get("parent_part")  # Will be used for part_id lookup
             }]
             
-            db_chapters = write_chapters_to_supabase(book_id, chapter_data)
+            db_chapters = write_chapters_to_supabase(book_id, chapter_data, part_id_map=part_id_map)
             
             if db_chapters:
                 chapter_id = db_chapters[0]["id"]
@@ -479,17 +512,20 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
         state["phase"] = "uploaded"
         state["book_id"] = book_id
         state["upload_stats"] = {
+            "parts": len(parts),
             "chapters": len(chapters),
             "sections": total_sections,
             "paragraphs": total_paragraphs
         }
         save_v3_job_state(job_id, state)
         
-        logger.info(f"[V3] ✅ Upload complete: {len(chapters)} chapters, {total_sections} sections, {total_paragraphs} paragraphs")
+        parts_info = f"{len(parts)} parts, " if parts else ""
+        logger.info(f"[V3] ✅ Upload complete: {parts_info}{len(chapters)} chapters, {total_sections} sections, {total_paragraphs} paragraphs")
         
         return {
             "success": True,
             "book_id": book_id,
+            "parts": len(parts),
             "chapters": len(chapters),
             "sections": total_sections,
             "paragraphs": total_paragraphs,

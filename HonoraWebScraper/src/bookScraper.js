@@ -237,14 +237,16 @@ function cleanChapterContent(content, chapterTitle) {
 
 /**
  * Henter alle kapitel-links fra en bogs index-side
+ * Detekterer også "Parts" struktur (Part I, Part II, etc.)
  * @param {string} bookIndexUrl - URL til bogens index.htm
- * @returns {Promise<Array<{title: string, url: string}>>}
+ * @returns {Promise<{chapters: Array, parts: Array}>}
  */
 export async function getBookChapters(bookIndexUrl) {
   const response = await fetchUrl(bookIndexUrl);
 
   const $ = cheerio.load(response.data);
   const chapters = [];
+  const parts = [];
   const baseDir = bookIndexUrl.substring(0, bookIndexUrl.lastIndexOf('/'));
 
   // Navigation pages to skip (common on sacred-texts.com)
@@ -268,7 +270,61 @@ export async function getBookChapters(bookIndexUrl) {
     /^\s*$/                      // Empty titles
   ];
 
-  // Find alle kapitel-links
+  // Part detection patterns
+  const partPatterns = [
+    /^Part\s+([IVXLCDM]+)\s*[:.\-–]?\s*(.*)$/i,   // Part I: Historical
+    /^Part\s+(\d+)\s*[:.\-–]?\s*(.*)$/i,          // Part 1: Historical
+    /^Part\s+(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)\s*[:.\-–]?\s*(.*)$/i
+  ];
+
+  // Track current part for chapter linking
+  let currentPartIndex = 0;
+  let currentPartTitle = null;
+
+  // First pass: Scan the page for Parts and Chapters in order
+  const pageContent = $.html();
+
+  // Find all text nodes and links in document order
+  $('body').find('*').each((_, el) => {
+    const $el = $(el);
+    const tagName = el.tagName?.toLowerCase();
+
+    // Check for Part headers (typically in h2, h3, b, strong, or center)
+    if (['h2', 'h3', 'h4', 'b', 'strong', 'center', 'font'].includes(tagName)) {
+      const text = $el.clone().children().remove().end().text().trim() || $el.text().trim();
+
+      for (const pattern of partPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          currentPartIndex++;
+          let partNumber = match[1];
+          let partSubtitle = match[2]?.trim() || '';
+
+          // Convert Roman numerals or word numbers to Arabic
+          if (/^[IVXLCDM]+$/i.test(partNumber)) {
+            partNumber = romanToNumber(partNumber);
+          } else if (/^(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)$/i.test(partNumber)) {
+            const wordMap = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+            partNumber = wordMap[partNumber.toLowerCase()];
+          }
+
+          currentPartTitle = partSubtitle
+            ? `Part ${partNumber}: ${partSubtitle}`
+            : `Part ${partNumber}`;
+
+          parts.push({
+            index: currentPartIndex,
+            title: currentPartTitle
+          });
+
+          console.log(`  📚 Detected Part: "${currentPartTitle}"`);
+          return; // Don't process this element as a chapter link
+        }
+      }
+    }
+  });
+
+  // Second pass: Collect chapter links
   $('a').each((_, el) => {
     const href = $(el).attr('href');
     let text = $(el).text().trim();
@@ -308,16 +364,64 @@ export async function getBookChapters(bookIndexUrl) {
         // Clean up title - remove page numbers
         text = text.replace(/page\s+\d+/gi, '').trim();
 
+        // Determine which part this chapter belongs to
+        // We need to figure out if this link appears after a Part header
+        // For now, use the element's position relative to Part headers
+        let partIndex = null;
+        let partTitle = null;
+
+        // Find the closest preceding Part header
+        const $link = $(el);
+        let $prev = $link.parent();
+        let foundPart = false;
+
+        while ($prev.length && !foundPart) {
+          // Check if there's a Part header text in siblings before this
+          $prev.prevAll().each((_, sibling) => {
+            const sibText = $(sibling).text().trim();
+            for (const pattern of partPatterns) {
+              if (pattern.test(sibText)) {
+                // Find the matching part
+                const partMatch = parts.find(p => sibText.includes(p.title.split(':')[1]?.trim() || p.title));
+                if (partMatch) {
+                  partIndex = partMatch.index;
+                  partTitle = partMatch.title;
+                  foundPart = true;
+                }
+              }
+            }
+          });
+          $prev = $prev.parent();
+        }
+
+        // If we have parts but couldn't determine which one, use the last seen part
+        if (parts.length > 0 && !partIndex) {
+          // Find the part by searching backwards through the page
+          const linkHtml = $.html(el);
+          const linkPos = pageContent.indexOf(linkHtml);
+
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const partPos = pageContent.indexOf(parts[i].title);
+            if (partPos < linkPos && partPos >= 0) {
+              partIndex = parts[i].index;
+              partTitle = parts[i].title;
+              break;
+            }
+          }
+        }
+
         chapters.push({
           title: text || href.replace('.htm', ''),
-          url: fullUrl
+          url: fullUrl,
+          part_index: partIndex,
+          part: partTitle
         });
       }
     }
   });
 
-  console.log(`📚 Found ${chapters.length} actual chapters (filtered out navigation)`);
-  return chapters;
+  console.log(`📚 Found ${chapters.length} chapters${parts.length > 0 ? ` in ${parts.length} parts` : ''}`);
+  return { chapters, parts };
 }
 
 /**
@@ -481,8 +585,11 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
   // Hent kapitler først så vi kan hente attribution fra første kapitel
   let chapters = [];
+  let bookParts = [];  // Parts detected from index page
   try {
-    chapters = await getBookChapters(bookUrl);
+    const result = await getBookChapters(bookUrl);
+    chapters = result.chapters || [];
+    bookParts = result.parts || [];
   } catch (e) {
     console.log(`  ℹ️ Kunne ikke hente chapters: ${e.message}`);
   }
@@ -542,7 +649,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     }
   }
 
-  console.log(`📚 Fandt ${chapters.length} kapitler i "${bookTitle}"`);
+  const partsInfo = bookParts.length > 0 ? ` (${bookParts.length} parts)` : '';
+  console.log(`📚 Fandt ${chapters.length} kapitler${partsInfo} i "${bookTitle}"`);
 
   // Ekstraher forfatter og år fra første kapitels side (mere pålidelig end index)
   let bookAuthor = 'Unknown Author';
@@ -807,12 +915,20 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   </div>
 `;
 
-      // Add to JSON chapters (with normalized whitespace)
-      jsonChapters.push({
+      // Add to JSON chapters (with normalized whitespace and part info)
+      const jsonChapter = {
         index: chapterIndex,
         title: formattedTitle,
         content: normalizeWhitespace(plainText)
-      });
+      };
+
+      // Add part info if chapter belongs to a part
+      if (chapter.part_index) {
+        jsonChapter.part_index = chapter.part_index;
+        jsonChapter.part = chapter.part;
+      }
+
+      jsonChapters.push(jsonChapter);
 
       // Rate limiting
       await delay(config.requestDelay);
@@ -846,6 +962,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     author: bookAuthor,
     year: bookYear,
     publisher: bookPublisher,
+    partCount: bookParts.length,
+    parts: bookParts,  // Parts structure (Part I, Part II, etc.)
     chapterCount: jsonChapters.length,
     chapters: jsonChapters,
     scrapedAt: new Date().toISOString(),

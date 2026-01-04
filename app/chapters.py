@@ -607,21 +607,65 @@ def write_stories_to_supabase(book_id: str, stories: list) -> dict:
     return story_id_map
 
 
-def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None) -> list:
+def write_parts_to_supabase(book_id: str, parts: list) -> dict:
+    """
+    Writes parts to the 'parts' table for books with multi-part structure.
+    
+    Args:
+        book_id: The book UUID
+        parts: List of part dicts with 'part_index' and 'title'
+               e.g., [{"part_index": 1, "title": "Part I: Historical"}, ...]
+    
+    Returns:
+        Mapping of part_title -> part_id for linking chapters
+    """
+    if not parts:
+        return {}
+    
+    supabase = get_supabase()
+    part_id_map = {}
+    
+    for part in parts:
+        result = supabase.table("parts").insert({
+            "book_id": book_id,
+            "part_index": part["part_index"],
+            "title": part["title"]
+        }).execute()
+        
+        part_id = result.data[0]["id"]
+        part_id_map[part["title"]] = part_id
+        print(f"[SUPABASE] ✅ Created part: {part['title']}")
+    
+    return part_id_map
+
+
+def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None, part_id_map: dict = None) -> list:
     """
     Writes chapters to the 'chapters' table, including chapter text.
     Optionally links to stories for anthology books.
+    Optionally links to parts for multi-part books.
+    
+    Args:
+        book_id: The book UUID
+        chapters: List of chapter dicts
+        story_id_map: Optional mapping of story_title -> story_id
+        part_id_map: Optional mapping of part_title -> part_id
     
     Returns:
         List of created chapter dicts (including database UUIDs)
     """
     supabase = get_supabase()
     story_id_map = story_id_map or {}
+    part_id_map = part_id_map or {}
     created_chapters = []
     
     for chapter in chapters:
         parent_story = chapter.get("parent_story")
         story_id = story_id_map.get(parent_story) if parent_story else None
+        
+        # Get part_id from the chapter's parent_part field
+        parent_part = chapter.get("parent_part")
+        part_id = part_id_map.get(parent_part) if parent_part else None
         
         insert_data = {
             "book_id": book_id,
@@ -633,12 +677,16 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
         if story_id:
             insert_data["story_id"] = story_id
         
+        if part_id:
+            insert_data["part_id"] = part_id
+        
         result = supabase.table("chapters").insert(insert_data).execute()
         
         if result.data:
             created_chapters.append(result.data[0])
-            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}" + 
-                  (f" (story: {parent_story})" if parent_story else ""))
+            part_info = f" (part: {parent_part})" if parent_part else ""
+            story_info = f" (story: {parent_story})" if parent_story else ""
+            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}{part_info}{story_info}")
     
     return created_chapters
 
