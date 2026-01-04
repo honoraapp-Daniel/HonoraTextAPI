@@ -167,10 +167,19 @@ async def v3_extract_chapters(job_id: str) -> Dict:
 # GLM PROCESSING PHASE
 # ============================================
 
+# Batch size for context refresh - prevents model degradation on large books
+BATCH_SIZE = 5
+
+
 async def v3_process_chapters(job_id: str) -> Dict:
     """
-    Process all chapters through GLM 4.7.
+    Process all chapters through Gemini.
     Creates paragraphs and sections for each chapter.
+    
+    BATCH PROCESSING: Every 5 chapters, we "refresh" the model context
+    by re-initializing the Gemini client. This prevents quality degradation
+    on large books (35+ chapters) where the model might start producing
+    poor paragraph splits after many consecutive calls.
     """
     state = get_v3_job_state(job_id)
     if not state:
@@ -182,12 +191,23 @@ async def v3_process_chapters(job_id: str) -> Dict:
     total = len(state["chapters"])
     processed = 0
     
+    # Import for context refresh
+    from app.glm_processor import _gemini_configured
+    import app.glm_processor as glm_module
+    
     for i, chapter in enumerate(state["chapters"]):
         if chapter.get("processed"):
             processed += 1
             continue
         
+        # BATCH CONTEXT REFRESH every 5 chapters
+        if i > 0 and i % BATCH_SIZE == 0:
+            logger.info(f"[V3] 🔄 Refreshing Gemini context at chapter {i+1} (batch boundary)")
+            # Reset the configured flag to force re-initialization
+            glm_module._gemini_configured = False
+        
         state["progress"]["current_chapter"] = chapter["title"]
+        state["progress"]["batch_info"] = f"Batch {(i // BATCH_SIZE) + 1} of {(total // BATCH_SIZE) + 1}"
         save_v3_job_state(job_id, state)
         
         logger.info(f"[V3] Processing chapter {i+1}/{total}: {chapter['title']}")
@@ -204,6 +224,11 @@ async def v3_process_chapters(job_id: str) -> Dict:
             chapter["processed"] = True
             processed += 1
             
+            # Log paragraph stats for monitoring
+            para_count = len(result["paragraphs"])
+            avg_words = sum(len(p["text"].split()) for p in result["paragraphs"]) / max(para_count, 1)
+            logger.info(f"[V3] Chapter {i+1}: {para_count} paragraphs, avg {avg_words:.1f} words per paragraph")
+            
             state["progress"]["processed_chapters"] = processed
             save_v3_job_state(job_id, state)
             
@@ -217,6 +242,7 @@ async def v3_process_chapters(job_id: str) -> Dict:
     
     logger.info(f"[V3] Processed {processed}/{total} chapters")
     return {"success": True, "processed": processed, "total": total}
+
 
 
 # ============================================

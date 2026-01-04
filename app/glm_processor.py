@@ -35,25 +35,80 @@ def get_gemini_model():
 # PROMPTS
 # ============================================
 
-PARAGRAPH_PROMPT = """Instruktion til AI:
+PARAGRAPH_PROMPT = """INSTRUKTION TIL TEKST-EDITOR (STRENG PARAGRAF-OPDELING):
 
-Du skal fungere som en specialiseret teksteditor, der forbereder bøger til Tekst-til-Tale (TTS) med synkroniseret tekstfremhævning på skærmen.
+Du er en teksteditor der forbereder bøger til en lydbogs-app. Din opgave er at opdele kapiteltekst i PARAGRAPHS.
 
-Opgave: Jeg vil give dig rå tekst fra en PDF (ofte med OCR-fejl og sidetal). Din opgave er at "rense" teksten så den er optimal til lyd og skærmvisning.
+═══════════════════════════════════════════════════════════════
+REGEL 1: PARAGRAPH 0 - KAPITELTITEL (OBLIGATORISK)
+═══════════════════════════════════════════════════════════════
+Det FØRSTE [PARAGRAPH] SKAL være kapitlets titel og eventuelt kapitelnummer.
+- KORREKT: "Chapter One: The Beginning" eller "I. Apprentice" eller "The Fellow-Craft"
+- FORKERT: Bogens titel (f.eks. "Morals and Dogma") må ALDRIG være Paragraph 0
+- Hvis kapitlets titel er f.eks. "I. Apprentice", så skriv det SAMLET som én Paragraph 0
 
-Følg disse 5 regler strengt:
+═══════════════════════════════════════════════════════════════
+REGEL 2: MINIMUM ORDANTAL FOR NORMALE PARAGRAPHS
+═══════════════════════════════════════════════════════════════
+Hver normal paragraph SKAL indeholde MINIMUM 20-30 ord (ca. 3-4 linjer tekst).
+- ALDRIG enkeltlinjer som "It adds insolency to power." - disse skal SAMLES med næste tekst
+- ALDRIG korte sætninger alene som "It is destruction and ruin." - saml dem!
+- Hvis flere korte sætninger følger hinanden, FLET DEM til én større paragraph
 
-1. Tal til Bogstaver: Konverter alle tal til ord (f.eks. "Chapter 4" skal være "Chapter Four", årstal "1918" skal være "Nineteen Eighteen").
-2. Fjern Støj: Fjern ALT der ikke er en del af selve bogen/historien. Dette inkluderer: sidetal (som "23 / 47"), forfatterinfo der gentager sig, filstier, filstørrelser (som "267Kb"), "Click to enlarge", navigationslinks, metadata, og alt andet der tydeligt ikke er bogens indhold.
-3. Naturlige Afsnit: Brud de store, tunge tekstblokke op i mindre, naturlige afsnit. Det er afgørende for TTS-pauser og for læsbarhed på skærmen, når teksten fremhæves. VIGTIGT: Marker hvert afsnit med [PARAGRAPH] i starten.
-4. Rens OCR-fejl: Ret indlysende stavefejl, der skyldes scanningen (f.eks. hvis "he" står som "lie", eller "has" står som "leas", så ret det). Du må ikke omskrive sætninger eller ændre forfatterens stil – du må kun fjerne fejl.
-5. Struktur: Bevar kapitler, digte og underafsnit, men sørg for de er markeret tydeligt.
+UNDTAGELSER (korte paragraphs tilladt):
+- Kapiteltitler og underoverskrifter
+- Direkte citater markeret med anførselstegn
+- Verslinjer fra digte
+- Korte udbrud eller dialog
 
-VIGTIGT: Giv INGEN forklarende tekst, kommentarer eller indledning. Start DIREKTE med [PARAGRAPH] og det rensede indhold.
+═══════════════════════════════════════════════════════════════
+REGEL 3: LISTER SKAL HOLDES SAMMEN
+═══════════════════════════════════════════════════════════════
+Når teksten har punktopstilling, BEHOLD dem i SAMME paragraph:
+- A., B., C. lister → én paragraph
+- 1., 2., 3. lister → én paragraph  
+- (one), (two), (three) lister → én paragraph
+- Romertal i., ii., iii. lister → én paragraph
 
-Output: Giv mig KUN den rensede tekst med [PARAGRAPH] markører.
+UNDTAGELSE: Hvis listen har MERE end 10 punkter, del op i 2 paragraphs.
 
-Her er teksten der skal forarbejdes:
+═══════════════════════════════════════════════════════════════
+REGEL 4: TAL TIL ORD
+═══════════════════════════════════════════════════════════════
+Konverter alle tal til ord:
+- "Chapter 4" → "Chapter Four"
+- "1918" → "Nineteen Eighteen"
+- "12 men" → "Twelve men"
+
+═══════════════════════════════════════════════════════════════
+REGEL 5: FJERN STØJ
+═══════════════════════════════════════════════════════════════
+Fjern ALT der ikke er bogindhold:
+- Sidetal (som "23 / 47")
+- Filstørrelser ("267Kb")
+- "Click to enlarge"
+- Navigation, metadata, forfatterinfo der gentages
+
+═══════════════════════════════════════════════════════════════
+REGEL 6: OCR-RETTELSER
+═══════════════════════════════════════════════════════════════
+Ret scanningsfejl ("lie" → "he", "leas" → "has") men BEVAR forfatterens stil.
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+Start DIREKTE med [PARAGRAPH] - ingen forklaringer.
+Hvert afsnit markeres med [PARAGRAPH] i starten.
+
+EKSEMPEL PÅ KORREKT OUTPUT:
+[PARAGRAPH]
+Chapter One: The Beginning
+[PARAGRAPH]
+This is a properly formatted paragraph with sufficient content. It contains multiple sentences that flow naturally together and provides meaningful context for the reader. The minimum word count ensures a smooth reading and listening experience.
+[PARAGRAPH]
+Another substantial paragraph follows here, containing at least twenty to thirty words as required by the formatting rules.
+
+Her er teksten:
 
 {text}"""
 
@@ -101,12 +156,130 @@ def call_gemini(prompt: str) -> str:
         raise
 
 
-def process_chapter_paragraphs(text: str) -> List[Dict]:
+def count_words(text: str) -> int:
+    """Count words in text."""
+    return len(text.split())
+
+
+def is_heading_or_special(text: str) -> bool:
+    """
+    Check if text appears to be a heading, quote, or other special content
+    that's allowed to be short.
+    """
+    text = text.strip()
+    
+    # Very short texts that look like chapter/section headers
+    if len(text) < 100:
+        # All caps or title case with few words = likely heading
+        words = text.split()
+        if len(words) <= 6:
+            if text.isupper():
+                return True
+            # Starts with chapter/roman numeral
+            if re.match(r'^(Chapter|CHAPTER|I{1,3}|IV|V|VI{0,3}|IX|X|XI{0,3}|[0-9]+\.)', text):
+                return True
+    
+    # Quoted text
+    if text.startswith('"') and text.endswith('"'):
+        return True
+    if text.startswith("'") and text.endswith("'"):
+        return True
+    
+    # Poetry-like (very short lines ending with specific patterns)
+    lines = text.split('\n')
+    if len(lines) > 1 and all(len(line) < 50 for line in lines):
+        return True
+    
+    return False
+
+
+def validate_and_merge_paragraphs(paragraphs: List[Dict], chapter_title: str = None) -> List[Dict]:
+    """
+    Post-process paragraphs to ensure minimum word counts.
+    Merges consecutive short paragraphs (under 20 words) unless they're headings/quotes.
+    Ensures paragraph 0 is the chapter title, not the book title.
+    """
+    if not paragraphs:
+        return paragraphs
+    
+    MIN_WORDS = 20
+    validated = []
+    pending_merge = ""
+    
+    for i, para in enumerate(paragraphs):
+        text = para["text"]
+        word_count = count_words(text)
+        
+        # First paragraph (index 0) should be chapter title
+        if i == 0:
+            # If chapter_title is provided, use it
+            if chapter_title:
+                validated.append({"id": "p0", "text": chapter_title})
+                # If original p0 was the chapter title, skip it; otherwise keep as p1
+                if text.lower().strip() != chapter_title.lower().strip():
+                    # Original content wasn't the title, add it
+                    if word_count >= MIN_WORDS or is_heading_or_special(text):
+                        validated.append({"id": f"p{len(validated)}", "text": text})
+                    else:
+                        pending_merge = text
+            else:
+                validated.append({"id": "p0", "text": text})
+            continue
+        
+        # Check if it's a heading/special content
+        if is_heading_or_special(text):
+            # Flush any pending merge first
+            if pending_merge:
+                validated.append({"id": f"p{len(validated)}", "text": pending_merge})
+                pending_merge = ""
+            validated.append({"id": f"p{len(validated)}", "text": text})
+            continue
+        
+        # Normal paragraph checks
+        if word_count < MIN_WORDS:
+            # Too short - merge with pending or start pending
+            if pending_merge:
+                pending_merge = pending_merge + " " + text
+            else:
+                pending_merge = text
+            
+            # If merged content is now long enough, flush it
+            if count_words(pending_merge) >= MIN_WORDS:
+                validated.append({"id": f"p{len(validated)}", "text": pending_merge})
+                pending_merge = ""
+        else:
+            # Normal paragraph with sufficient words
+            if pending_merge:
+                # Merge pending with this paragraph
+                text = pending_merge + " " + text
+                pending_merge = ""
+            validated.append({"id": f"p{len(validated)}", "text": text})
+    
+    # Flush any remaining merge
+    if pending_merge:
+        if validated:
+            # Append to last paragraph
+            validated[-1]["text"] = validated[-1]["text"] + " " + pending_merge
+        else:
+            validated.append({"id": "p0", "text": pending_merge})
+    
+    # Re-number all paragraphs
+    for i, para in enumerate(validated):
+        para["id"] = f"p{i}"
+    
+    return validated
+
+
+def process_chapter_paragraphs(text: str, chapter_title: str = None) -> List[Dict]:
     """
     Process chapter text to create natural paragraphs.
     
+    Args:
+        text: Raw chapter text content
+        chapter_title: The chapter title (will be used as Paragraph 0)
+    
     Returns list of paragraph dicts:
-    [{"id": "p1", "text": "..."}, {"id": "p2", "text": "..."}]
+    [{"id": "p0", "text": "Chapter Title"}, {"id": "p1", "text": "..."}, ...]
     """
     if not text or not text.strip():
         return []
@@ -138,7 +311,10 @@ def process_chapter_paragraphs(text: str) -> List[Dict]:
                     "text": cleaned
                 })
     
-    logger.info(f"GLM created {len(paragraphs)} paragraphs from {len(text)} chars")
+    # POST-PROCESSING: Validate and merge short paragraphs
+    paragraphs = validate_and_merge_paragraphs(paragraphs, chapter_title)
+    
+    logger.info(f"GLM created {len(paragraphs)} validated paragraphs from {len(text)} chars")
     return paragraphs
 
 
@@ -225,11 +401,12 @@ def process_full_chapter(chapter_title: str, chapter_text: str) -> Dict:
     """
     logger.info(f"Processing chapter: {chapter_title}")
     
-    # Get paragraphs first
-    paragraphs = process_chapter_paragraphs(chapter_text)
+    # Get paragraphs first - pass chapter_title to ensure Paragraph 0 is correct
+    paragraphs = process_chapter_paragraphs(chapter_text, chapter_title=chapter_title)
     
-    # Use cleaned paragraph text for sections
-    cleaned_text = "\n\n".join([p["text"] for p in paragraphs])
+    # Use cleaned paragraph text for sections (skip paragraph 0 which is the title)
+    content_paragraphs = paragraphs[1:] if len(paragraphs) > 1 else paragraphs
+    cleaned_text = "\n\n".join([p["text"] for p in content_paragraphs])
     sections = process_chapter_sections(cleaned_text)
     
     return {

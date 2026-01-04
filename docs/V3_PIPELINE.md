@@ -99,17 +99,40 @@ Gå til: **http://localhost:8000/v3**
 
 ## Prompts
 
-### Paragraph Prompt (Dansk)
-- Konverterer tal til ord
-- Fjerner støj (sidetal, metadata, navigation)
-- Opdeler i naturlige afsnit
-- Retter OCR-fejl
+### Paragraph Prompt (STRENGE REGLER - v2.0)
+
+**Regel 1: Paragraph 0 = Kapiteltitel**
+- Paragraph 0 er ALTID kapitlets titel (f.eks. "I. Apprentice" eller "Chapter One: The Beginning")
+- Bogens titel (f.eks. "Morals and Dogma") må ALDRIG være Paragraph 0
+
+**Regel 2: Minimum ordantal**
+- Normale paragraphs SKAL indeholde minimum **20-30 ord** (ca. 3-4 linjer)
+- Enkeltlinjer som "It adds insolency to power." flettes automatisk sammen
+- Undtagelser: Overskrifter, citater ("..."), digte, dialog
+
+**Regel 3: Lister holdes sammen**
+- A., B., C. lister → én paragraph
+- 1., 2., 3. lister → én paragraph
+- Undtagelse: Lister med 10+ punkter deles i 2
+
+**Regel 4: Tal til ord**
+- Konverterer alle tal til ord
+
+**Regel 5: Fjern støj**
+- Sidetal, filstørrelser, navigation, metadata
+
+**Regel 6: Post-processing validering**
+- Korte paragraphs flettes automatisk efter Gemini-output
 - Output: `[PARAGRAPH]` markers
 
-### Section Prompt (Dansk)
-- Samme som paragraph +
-- Maks 250-300 tegn per sektion (TTS-optimeret)
+### Section Prompt (TTS)
+- Maks 250-300 tegn per sektion
 - Output: `[SECTION]` markers
+
+### Batch Processing (Store Bøger)
+- Hver **5. kapitel** refreshes Gemini-konteksten
+- Forhindrer kvalitetsforringelse ved 35+ kapitler
+- Automatisk statistik-logging per kapitel
 
 ### Cover Art Prompt
 - Premium bogcover design
