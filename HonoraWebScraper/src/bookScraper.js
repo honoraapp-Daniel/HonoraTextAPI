@@ -960,10 +960,24 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
       progressCallback(chapterIndex, chapters.length, chapter.title);
     }
 
-    // Opret ren kapitel-titel: "Chapter One - Salaam"
+    // Determine the formatted title based on content_type
+    const contentType = chapter.content_type || 'chapter';
     const isFirstChapter = (chapterIndex === 1);
-    const formattedTitle = cleanChapterTitle(chapter.title, chapterIndex, isFirstChapter);
-    console.log(`  📖 Henter kapitel ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
+
+    let formattedTitle;
+    if (contentType === 'prefatory' || contentType === 'treatise' || contentType === 'appendix') {
+      // For prefatory material, treatises, and appendices: use original title without "Chapter X -"
+      // Just clean up the title without adding chapter prefix
+      formattedTitle = chapter.title
+        .replace(/^Chapter\s+(\d+|[IVXLCDM]+)[:.\\s-]*/i, '')  // Remove existing "Chapter X:" prefix
+        .replace(/page\s+\d+/gi, '')  // Remove page refs
+        .trim() || chapter.title;
+    } else {
+      // For regular chapters: use cleanChapterTitle with "Chapter X -" format
+      formattedTitle = cleanChapterTitle(chapter.title, chapterIndex, isFirstChapter);
+    }
+
+    console.log(`  📖 Henter ${contentType} ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
 
     try {
       let { content, plainText } = await fetchChapterContent(chapter.url);
