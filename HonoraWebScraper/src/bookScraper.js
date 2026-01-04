@@ -331,7 +331,7 @@ export async function getBookChapters(bookIndexUrl) {
   const treatises = [];
   const baseDir = bookIndexUrl.substring(0, bookIndexUrl.lastIndexOf('/'));
 
-  // Pages to SKIP (navigation, TOC, title pages)
+  // Pages to SKIP (navigation, TOC, title pages, errata)
   const skipPatterns = [
     /^start\s*reading$/i,
     /^page\s*index$/i,
@@ -341,6 +341,8 @@ export async function getBookChapters(bookIndexUrl) {
     /^contents$/i,
     /^index$/i,
     /^errata$/i,
+    /^«\s*previous/i,     // Navigation links
+    /previous:\s*errata/i, // "« Previous: Errata"
     /^next$/i,
     /^previous$/i,
     /^prev$/i,
@@ -1145,10 +1147,15 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
     } else if (event.type === 'chapter') {
       const ch = event.chapter;
+      const contentType = ch.content_type || 'chapter';
 
       // Determine parent
+      // IMPORTANT: If this chapter IS itself a treatise, it should be at ROOT level
       let parentKey = null;
-      if (ch.treatise && treatiseNodeMap.has(ch.treatise)) {
+      if (contentType === 'treatise') {
+        // Treatise chapters are always at root level, never children
+        parentKey = null;
+      } else if (ch.treatise && treatiseNodeMap.has(ch.treatise)) {
         parentKey = treatiseNodeMap.get(ch.treatise).orderKey;
       } else if (ch.part && partNodeMap.has(ch.part)) {
         parentKey = partNodeMap.get(ch.part).orderKey;
@@ -1167,7 +1174,6 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
       // Determine node_type from content_type
       let nodeType = 'chapter';
-      const contentType = ch.content_type || 'chapter';
       switch (contentType) {
         case 'prefatory': nodeType = 'preface'; break;
         case 'appendix': nodeType = 'appendix'; break;
