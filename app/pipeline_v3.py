@@ -488,19 +488,26 @@ async def run_v3_pipeline(job_id: str) -> Dict:
 
 async def v3_upload_to_supabase(job_id: str) -> Dict:
     """
-    Upload processed V3 book data to Supabase.
+    Upload processed V3 book data to Supabase using book_nodes tree structure.
     
     Creates:
     - Book record (with metadata, cover art URLs)
-    - Chapter records
-    - Section records
-    - Paragraph records
+    - book_nodes (tree structure: parts → chapters)
+    - chapters (legacy, linked to nodes)
+    - tts_chunks (TTS audio chunks)
+    - paragraphs (UI text for highlighting)
+    - book_node_paragraphs (links nodes to paragraphs)
+    - paragraph_tts_chunks (links paragraphs to TTS chunks)
     """
     from app.chapters import (
         create_book_in_supabase,
         write_chapters_to_supabase,
-        write_sections_to_supabase,
-        write_paragraphs_to_supabase
+        write_sections_to_supabase,  # Now uses tts_chunks table
+        write_paragraphs_to_supabase,
+        create_book_node,
+        link_node_paragraphs,
+        link_paragraph_tts_chunks,
+        map_content_type_to_node_type
     )
     from app.cover_art import update_book_cover_url
     
@@ -529,84 +536,151 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             update_book_cover_url(book_id, cover_urls)
             logger.info(f"[V3] Updated cover art URLs")
         
-        # Step 3: Create parts (if any)
-        part_id_map = {}
-        if parts:
-            from app.chapters import write_parts_to_supabase
-            part_id_map = write_parts_to_supabase(book_id, parts)
-            logger.info(f"[V3] Created {len(parts)} parts")
+        # Step 3: Build book_nodes tree structure
+        # Maps: part_title -> node_id, treatise_title -> node_id
+        part_node_map = {}
+        treatise_node_map = {}
         
-        # Step 3b: Create treatises (if any) - for anthology-style books
-        treatise_id_map = {}
-        if treatises:
-            from app.chapters import write_treatises_to_supabase
-            treatise_id_map = write_treatises_to_supabase(book_id, treatises)
-            logger.info(f"[V3] Created {len(treatises)} treatises")
+        # Create Part nodes (root level, no content themselves)
+        for part in parts:
+            node = create_book_node(
+                book_id=book_id,
+                node_type="part",
+                display_title=part.get("title", f"Part {part.get('part_index', 0)}"),
+                source_title=part.get("title"),
+                has_content=False  # Parts are containers, chapters have content
+            )
+            part_node_map[part.get("title")] = node["id"]
+            logger.info(f"[V3] Created part node: {part.get('title')}")
         
-        # Step 4: Create chapters with sections and paragraphs
-        total_sections = 0
+        # Create Treatise nodes (can be root or under parts)
+        for treatise in treatises:
+            parent_part = treatise.get("parent_part")
+            parent_id = part_node_map.get(parent_part) if parent_part else None
+            
+            node = create_book_node(
+                book_id=book_id,
+                node_type="treatise",
+                display_title=treatise.get("title", f"Treatise {treatise.get('treatise_index', 0)}"),
+                source_title=treatise.get("title"),
+                parent_id=parent_id,
+                has_content=False  # Treatises are containers
+            )
+            treatise_node_map[treatise.get("title")] = node["id"]
+            logger.info(f"[V3] Created treatise node: {treatise.get('title')}")
+        
+        # Step 4: Create chapter nodes and content
+        total_tts_chunks = 0
         total_paragraphs = 0
         
         for ch in chapters:
-            logger.info(f"[V3] Uploading chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
+            logger.info(f"[V3] Processing chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
             
-            # Create chapter record with parent_part, parent_treatise, and content_type
+            # Determine parent node
+            parent_id = None
+            if ch.get("parent_treatise"):
+                parent_id = treatise_node_map.get(ch["parent_treatise"])
+            elif ch.get("parent_part"):
+                parent_id = part_node_map.get(ch["parent_part"])
+            
+            # Determine node_type from content_type
+            content_type = ch.get("content_type", "chapter")
+            node_type = map_content_type_to_node_type(content_type)
+            
+            # Create book_node for this chapter
+            chapter_node = create_book_node(
+                book_id=book_id,
+                node_type=node_type,
+                display_title=ch["title"],
+                source_title=ch.get("source_title", ch["title"]),
+                parent_id=parent_id,
+                has_content=True
+            )
+            chapter_node_id = chapter_node["id"]
+            
+            # Create legacy chapter record (for backwards compatibility)
             chapter_data = [{
                 "chapter_index": ch["index"],
                 "title": ch["title"],
                 "text": ch.get("raw_content", ""),
-                "content_type": ch.get("content_type", "chapter"),
-                "parent_part": ch.get("parent_part"),
-                "parent_story": ch.get("parent_treatise")  # Treatises use story_id in DB
+                "node_id": chapter_node_id  # Link to book_node
             }]
             
-            db_chapters = write_chapters_to_supabase(
-                book_id, chapter_data, 
-                story_id_map=treatise_id_map,  # Treatises map to story_id
-                part_id_map=part_id_map
-            )
+            db_chapters = write_chapters_to_supabase(book_id, chapter_data)
             
             if db_chapters:
                 chapter_id = db_chapters[0]["id"]
                 
-                # Write sections (expects list of strings)
-                sections = ch.get("sections", [])
-                if sections:
-                    # Extract just text strings for Supabase
-                    section_texts = [s["text"] for s in sections if s.get("text")]
-                    write_sections_to_supabase(chapter_id, section_texts)
-                    total_sections += len(section_texts)
-                    logger.info(f"[V3] Wrote {len(section_texts)} sections")
-                
-                # Write paragraphs (expects list of strings)
+                # Get paragraph and section data
                 paragraphs = ch.get("paragraphs", [])
+                sections = ch.get("sections", [])
+                
+                # Write paragraphs to Supabase and collect IDs
+                paragraph_ids = []
                 if paragraphs:
-                    # Extract just text strings for Supabase
                     paragraph_texts = [p["text"] for p in paragraphs if p.get("text")]
-                    write_paragraphs_to_supabase(chapter_id, paragraph_texts)
-                    total_paragraphs += len(paragraph_texts)
-                    logger.info(f"[V3] Wrote {len(paragraph_texts)} paragraphs")
+                    # Write and get back IDs
+                    from app.chapters import get_supabase
+                    supabase = get_supabase()
+                    
+                    for idx, text in enumerate(paragraph_texts):
+                        result = supabase.table("paragraphs").insert({
+                            "chapter_id": chapter_id,
+                            "paragraph_index": idx,
+                            "text": text,
+                            "start_ms": None,
+                            "end_ms": None
+                        }).execute()
+                        if result.data:
+                            paragraph_ids.append(result.data[0]["id"])
+                    
+                    total_paragraphs += len(paragraph_ids)
+                    logger.info(f"[V3] Wrote {len(paragraph_ids)} paragraphs")
+                    
+                    # Link paragraphs to book_node
+                    link_node_paragraphs(chapter_node_id, paragraph_ids)
+                
+                # Write TTS chunks and link to paragraphs
+                if sections:
+                    section_texts = [s["text"] for s in sections if s.get("text")]
+                    tts_chunk_ids = write_sections_to_supabase(chapter_id, section_texts)
+                    total_tts_chunks += len(tts_chunk_ids)
+                    logger.info(f"[V3] Wrote {len(tts_chunk_ids)} TTS chunks")
+                    
+                    # Link TTS chunks to paragraphs (distribute evenly for now)
+                    # TODO: Smarter mapping based on text overlap
+                    if paragraph_ids and tts_chunk_ids:
+                        chunks_per_para = max(1, len(tts_chunk_ids) // len(paragraph_ids))
+                        chunk_idx = 0
+                        for para_id in paragraph_ids:
+                            para_chunks = tts_chunk_ids[chunk_idx:chunk_idx + chunks_per_para]
+                            if para_chunks:
+                                link_paragraph_tts_chunks(para_id, para_chunks)
+                            chunk_idx += chunks_per_para
         
         # Update job state
         state["phase"] = "uploaded"
         state["book_id"] = book_id
         state["upload_stats"] = {
             "parts": len(parts),
+            "treatises": len(treatises),
             "chapters": len(chapters),
-            "sections": total_sections,
+            "tts_chunks": total_tts_chunks,  # Renamed from sections
             "paragraphs": total_paragraphs
         }
         save_v3_job_state(job_id, state)
         
         parts_info = f"{len(parts)} parts, " if parts else ""
-        logger.info(f"[V3] ✅ Upload complete: {parts_info}{len(chapters)} chapters, {total_sections} sections, {total_paragraphs} paragraphs")
+        treatises_info = f"{len(treatises)} treatises, " if treatises else ""
+        logger.info(f"[V3] ✅ Upload complete: {parts_info}{treatises_info}{len(chapters)} chapters, {total_tts_chunks} TTS chunks, {total_paragraphs} paragraphs")
         
         return {
             "success": True,
             "book_id": book_id,
             "parts": len(parts),
+            "treatises": len(treatises),
             "chapters": len(chapters),
-            "sections": total_sections,
+            "tts_chunks": total_tts_chunks,
             "paragraphs": total_paragraphs,
             "cover_urls": cover_urls
         }
@@ -617,4 +691,6 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
         state["error"] = str(e)
         save_v3_job_state(job_id, state)
         raise
+
+
 

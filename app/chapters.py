@@ -584,123 +584,49 @@ def extract_chapters_from_text(full_text: str):
 
 def write_stories_to_supabase(book_id: str, stories: list) -> dict:
     """
-    Writes stories to the 'stories' table for anthology books.
-    Returns mapping of story_title -> story_id for linking chapters.
+    DEPRECATED: Stories table was removed in book_nodes migration.
+    Use create_book_node() with node_type='treatise' instead.
     """
-    if not stories:
-        return {}
-    
-    supabase = get_supabase()
-    story_id_map = {}
-    
-    for story in stories:
-        result = supabase.table("stories").insert({
-            "book_id": book_id,
-            "story_index": story["story_index"],
-            "title": story["title"]
-        }).execute()
-        
-        story_id = result.data[0]["id"]
-        story_id_map[story["title"]] = story_id
-        print(f"[SUPABASE] Created story: {story['title']}")
-    
-    return story_id_map
+    logger.warning("[DEPRECATED] write_stories_to_supabase called - stories table no longer exists. Use book_nodes instead.")
+    return {}
 
 
 def write_treatises_to_supabase(book_id: str, treatises: list) -> dict:
     """
-    Writes treatises to the 'stories' table for anthology-style books.
-    Treatises are sub-works within a collection (like essays, fragments, etc.)
-    We use the stories table since it has the same structure.
-    
-    Args:
-        book_id: The book UUID
-        treatises: List of treatise dicts with 'treatise_index' and 'title'
-               e.g., [{"treatise_index": 1, "title": "The Stone of the Philosophers"}, ...]
-    
-    Returns:
-        Mapping of treatise_title -> story_id for linking chapters
+    DEPRECATED: Stories table was removed in book_nodes migration.
+    Use create_book_node() with node_type='treatise' instead.
     """
-    if not treatises:
-        return {}
-    
-    supabase = get_supabase()
-    treatise_id_map = {}
-    
-    for treatise in treatises:
-        result = supabase.table("stories").insert({
-            "book_id": book_id,
-            "story_index": treatise["treatise_index"],
-            "title": treatise["title"]
-        }).execute()
-        
-        treatise_id = result.data[0]["id"]
-        treatise_id_map[treatise["title"]] = treatise_id
-        print(f"[SUPABASE] ✅ Created treatise: {treatise['title']}")
-    
-    return treatise_id_map
+    logger.warning("[DEPRECATED] write_treatises_to_supabase called - stories table no longer exists. Use book_nodes instead.")
+    return {}
 
 
 def write_parts_to_supabase(book_id: str, parts: list) -> dict:
     """
-    Writes parts to the 'parts' table for books with multi-part structure.
-    
-    Args:
-        book_id: The book UUID
-        parts: List of part dicts with 'part_index' and 'title'
-               e.g., [{"part_index": 1, "title": "Part I: Historical"}, ...]
-    
-    Returns:
-        Mapping of part_title -> part_id for linking chapters
+    DEPRECATED: Parts table was removed in book_nodes migration.
+    Use create_book_node() with node_type='part' instead.
     """
-    if not parts:
-        return {}
-    
-    supabase = get_supabase()
-    part_id_map = {}
-    
-    for part in parts:
-        result = supabase.table("parts").insert({
-            "book_id": book_id,
-            "part_index": part["part_index"],
-            "title": part["title"]
-        }).execute()
-        
-        part_id = result.data[0]["id"]
-        part_id_map[part["title"]] = part_id
-        print(f"[SUPABASE] ✅ Created part: {part['title']}")
-    
-    return part_id_map
+    logger.warning("[DEPRECATED] write_parts_to_supabase called - parts table no longer exists. Use book_nodes instead.")
+    return {}
 
 
 def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict = None, part_id_map: dict = None) -> list:
     """
     Writes chapters to the 'chapters' table, including chapter text.
-    Optionally links to stories for anthology books.
-    Optionally links to parts for multi-part books.
+    Now links to book_nodes via node_id instead of story_id/part_id.
     
     Args:
         book_id: The book UUID
-        chapters: List of chapter dicts
-        story_id_map: Optional mapping of story_title -> story_id
-        part_id_map: Optional mapping of part_title -> part_id
+        chapters: List of chapter dicts (with optional node_id)
+        story_id_map: DEPRECATED - no longer used (stories table removed)
+        part_id_map: DEPRECATED - no longer used (parts table removed)
     
     Returns:
         List of created chapter dicts (including database UUIDs)
     """
     supabase = get_supabase()
-    story_id_map = story_id_map or {}
-    part_id_map = part_id_map or {}
     created_chapters = []
     
     for chapter in chapters:
-        parent_story = chapter.get("parent_story")
-        story_id = story_id_map.get(parent_story) if parent_story else None
-        
-        # Get part_id from the chapter's parent_part field
-        parent_part = chapter.get("parent_part")
-        part_id = part_id_map.get(parent_part) if parent_part else None
-        
         insert_data = {
             "book_id": book_id,
             "chapter_index": chapter["chapter_index"],
@@ -708,25 +634,16 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
             "text": chapter.get("text", "")
         }
         
-        # Add content_type if specified (prefatory, chapter, book, appendix)
-        content_type = chapter.get("content_type", "chapter")
-        if content_type:
-            insert_data["content_type"] = content_type
-        
-        if story_id:
-            insert_data["story_id"] = story_id
-        
-        if part_id:
-            insert_data["part_id"] = part_id
+        # Add node_id if provided (links to book_nodes tree)
+        if chapter.get("node_id"):
+            insert_data["node_id"] = chapter["node_id"]
         
         result = supabase.table("chapters").insert(insert_data).execute()
         
         if result.data:
             created_chapters.append(result.data[0])
-            part_info = f" (part: {parent_part})" if parent_part else ""
-            story_info = f" (story: {parent_story})" if parent_story else ""
-            type_info = f" [{content_type}]" if content_type != "chapter" else ""
-            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}{type_info}{part_info}{story_info}")
+            node_info = f" (node: {chapter.get('node_id', '')[:8]}...)" if chapter.get('node_id') else ""
+            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}{node_info}")
     
     return created_chapters
 
@@ -955,30 +872,39 @@ def chunk_chapter_text(text: str, max_chars: int = 250) -> list:
 
 def write_sections_to_supabase(chapter_id: str, sections: list):
     """
-    Writes sections to the 'sections' table.
-    Applies final TTS cleanup to each section.
+    Writes TTS chunks to the 'tts_chunks' table (renamed from 'sections').
+    Applies final TTS cleanup to each chunk.
     
     Args:
         chapter_id: UUID of the parent chapter
-        sections: List of text chunks
+        sections: List of text chunks (~250 chars each)
+    
+    Returns:
+        List of created chunk IDs
     """
     supabase = get_supabase()
+    chunk_ids = []
     
     for index, text in enumerate(sections):
         # Apply final cleanup for TTS
         cleaned_text = clean_section_text(text)
         
-        # Skip empty sections after cleanup
+        # Skip empty chunks after cleanup
         if not cleaned_text:
             continue
-            
-        supabase.table("sections").insert({
+        
+        result = supabase.table("tts_chunks").insert({
             "chapter_id": chapter_id,
-            "section_index": index,
+            "chunk_index": index,  # Renamed from section_index
             "text_ref": cleaned_text,
             "start_ms": None,  # Will be calculated after TTS
             "end_ms": None     # Will be calculated after TTS
         }).execute()
+        
+        if result.data:
+            chunk_ids.append(result.data[0]["id"])
+    
+    return chunk_ids
 
 
 def get_chapters_for_book(book_id: str) -> list:
@@ -1665,3 +1591,244 @@ def split_into_sections_perfect(text: str, chapter_title: str, max_chars: int = 
     sections = [s for s in sections if s and s.strip()]
     
     return sections
+
+
+# ============================================
+# BOOK NODES FUNCTIONS (Tree-based structure)
+# ============================================
+
+# Valid node types (must match Supabase CHECK constraint)
+VALID_NODE_TYPES = [
+    # Front matter
+    'front_matter', 'toc', 'preface', 'foreword', 'introduction',
+    'dedication', 'acknowledgments', 'prologue', 'authors_note',
+    # Main content
+    'part', 'book', 'volume', 'section', 'chapter', 'subsection',
+    'main_work', 'treatise', 'fragment', 'letter', 'discourse',
+    'essay', 'sermon', 'dialogue', 'meditation',
+    # Back matter
+    'epilogue', 'appendix', 'glossary', 'bibliography', 'index',
+    'back_matter', 'notes', 'afterword', 'postscript', 'endnotes'
+]
+
+
+def generate_order_key(book_id: str, parent_id: str = None) -> str:
+    """
+    Generate the next order_key for a node at a given level.
+    
+    Args:
+        book_id: The book UUID
+        parent_id: Parent node UUID (None for root level)
+    
+    Returns:
+        Order key string (e.g., "0001", "0002.0001")
+    """
+    supabase = get_supabase()
+    
+    # Get parent's order_key as prefix
+    prefix = ""
+    if parent_id:
+        parent_result = supabase.table("book_nodes").select("order_key").eq("id", parent_id).execute()
+        if parent_result.data:
+            prefix = parent_result.data[0]["order_key"] + "."
+    
+    # Find highest existing key at this level
+    if parent_id:
+        existing = supabase.table("book_nodes").select("order_key").eq("book_id", book_id).eq("parent_id", parent_id).execute()
+    else:
+        existing = supabase.table("book_nodes").select("order_key").eq("book_id", book_id).is_("parent_id", "null").execute()
+    
+    if not existing.data:
+        next_num = 1
+    else:
+        # Find max order_key and increment
+        max_key = max(row["order_key"] for row in existing.data)
+        last_segment = max_key.split(".")[-1]
+        next_num = int(last_segment) + 1
+    
+    return f"{prefix}{next_num:04d}"
+
+
+def create_book_node(
+    book_id: str,
+    node_type: str,
+    display_title: str,
+    parent_id: str = None,
+    source_title: str = None,
+    order_key: str = None,
+    exclude_from_frontend: bool = False,
+    exclude_from_audio: bool = False,
+    has_content: bool = True,
+    confidence: float = 1.0
+) -> dict:
+    """
+    Create a book_node in the tree structure.
+    
+    Args:
+        book_id: The book UUID
+        node_type: One of VALID_NODE_TYPES (preface, chapter, part, etc.)
+        display_title: What the user sees
+        parent_id: Parent node UUID (None for root nodes)
+        source_title: Raw title from source (optional)
+        order_key: Explicit key (auto-generated if None)
+        exclude_from_frontend: Hide from app navigation
+        exclude_from_audio: Skip during TTS
+        has_content: Does this node have paragraphs?
+        confidence: AI detection confidence (0-1)
+    
+    Returns:
+        Created node dict with id
+    """
+    supabase = get_supabase()
+    
+    # Validate node_type
+    if node_type not in VALID_NODE_TYPES:
+        raise ValueError(f"Invalid node_type: {node_type}. Must be one of {VALID_NODE_TYPES}")
+    
+    # Auto-generate order_key if not provided
+    if not order_key:
+        order_key = generate_order_key(book_id, parent_id)
+    
+    insert_data = {
+        "book_id": book_id,
+        "parent_id": parent_id,
+        "node_type": node_type,
+        "order_key": order_key,
+        "display_title": display_title,
+        "source_title": source_title or display_title,
+        "exclude_from_frontend": exclude_from_frontend,
+        "exclude_from_audio": exclude_from_audio,
+        "has_content": has_content,
+        "confidence": confidence
+    }
+    
+    result = supabase.table("book_nodes").insert(insert_data).execute()
+    
+    if result.data:
+        node = result.data[0]
+        logger.info(f"[BOOK_NODES] Created {node_type}: {display_title} (order: {order_key})")
+        return node
+    
+    raise Exception(f"Failed to create book_node: {display_title}")
+
+
+def link_node_paragraphs(node_id: str, paragraph_ids: list) -> int:
+    """
+    Link paragraphs to a book_node.
+    
+    Args:
+        node_id: The book_node UUID
+        paragraph_ids: List of paragraph UUIDs in order
+    
+    Returns:
+        Number of links created
+    """
+    supabase = get_supabase()
+    
+    for position, para_id in enumerate(paragraph_ids):
+        supabase.table("book_node_paragraphs").insert({
+            "node_id": node_id,
+            "paragraph_id": para_id,
+            "position_in_node": position
+        }).execute()
+    
+    logger.info(f"[BOOK_NODES] Linked {len(paragraph_ids)} paragraphs to node {node_id[:8]}")
+    return len(paragraph_ids)
+
+
+def link_paragraph_tts_chunks(paragraph_id: str, tts_chunk_ids: list) -> int:
+    """
+    Link TTS chunks to a paragraph.
+    
+    Args:
+        paragraph_id: The paragraph UUID
+        tts_chunk_ids: List of TTS chunk UUIDs in order
+    
+    Returns:
+        Number of links created
+    """
+    supabase = get_supabase()
+    
+    for position, chunk_id in enumerate(tts_chunk_ids):
+        supabase.table("paragraph_tts_chunks").insert({
+            "paragraph_id": paragraph_id,
+            "tts_chunk_id": chunk_id,
+            "position_in_paragraph": position
+        }).execute()
+    
+    return len(tts_chunk_ids)
+
+
+def get_book_nodes(book_id: str, include_hidden: bool = False) -> list:
+    """
+    Fetch all book_nodes for a book in order.
+    
+    Args:
+        book_id: The book UUID
+        include_hidden: Include nodes with exclude_from_frontend=True
+    
+    Returns:
+        List of node dicts ordered by order_key
+    """
+    supabase = get_supabase()
+    
+    query = supabase.table("book_nodes").select("*").eq("book_id", book_id).order("order_key")
+    
+    if not include_hidden:
+        query = query.eq("exclude_from_frontend", False)
+    
+    result = query.execute()
+    return result.data
+
+
+def get_node_content(node_id: str) -> dict:
+    """
+    Get full content for a node (paragraphs and TTS chunks).
+    
+    Args:
+        node_id: The book_node UUID
+    
+    Returns:
+        Dict with node info, paragraphs, and tts_chunks
+    """
+    supabase = get_supabase()
+    
+    # Get node
+    node = supabase.table("book_nodes").select("*").eq("id", node_id).single().execute()
+    if not node.data:
+        return None
+    
+    # Get paragraphs
+    paragraphs = supabase.table("book_node_paragraphs").select(
+        "position_in_node, paragraphs(id, text, paragraph_index)"
+    ).eq("node_id", node_id).order("position_in_node").execute()
+    
+    return {
+        "node": node.data,
+        "paragraphs": [p["paragraphs"] for p in paragraphs.data] if paragraphs.data else []
+    }
+
+
+def map_content_type_to_node_type(content_type: str) -> str:
+    """
+    Map legacy content_type values to new node_type values.
+    
+    Args:
+        content_type: Legacy type ('prefatory', 'chapter', 'book', 'appendix', 'treatise')
+    
+    Returns:
+        New node_type value
+    """
+    mapping = {
+        'prefatory': 'preface',       # Most common prefatory type
+        'chapter': 'chapter',
+        'book': 'book',               # "Book I", "Book II" style
+        'appendix': 'appendix',
+        'treatise': 'treatise',
+        'introduction': 'introduction',
+        'preface': 'preface',
+        'foreword': 'foreword',
+        'prologue': 'prologue',
+        'epilogue': 'epilogue'
+    }
+    return mapping.get(content_type, 'chapter')
