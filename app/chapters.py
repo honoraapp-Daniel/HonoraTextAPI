@@ -607,6 +607,40 @@ def write_stories_to_supabase(book_id: str, stories: list) -> dict:
     return story_id_map
 
 
+def write_treatises_to_supabase(book_id: str, treatises: list) -> dict:
+    """
+    Writes treatises to the 'stories' table for anthology-style books.
+    Treatises are sub-works within a collection (like essays, fragments, etc.)
+    We use the stories table since it has the same structure.
+    
+    Args:
+        book_id: The book UUID
+        treatises: List of treatise dicts with 'treatise_index' and 'title'
+               e.g., [{"treatise_index": 1, "title": "The Stone of the Philosophers"}, ...]
+    
+    Returns:
+        Mapping of treatise_title -> story_id for linking chapters
+    """
+    if not treatises:
+        return {}
+    
+    supabase = get_supabase()
+    treatise_id_map = {}
+    
+    for treatise in treatises:
+        result = supabase.table("stories").insert({
+            "book_id": book_id,
+            "story_index": treatise["treatise_index"],
+            "title": treatise["title"]
+        }).execute()
+        
+        treatise_id = result.data[0]["id"]
+        treatise_id_map[treatise["title"]] = treatise_id
+        print(f"[SUPABASE] ✅ Created treatise: {treatise['title']}")
+    
+    return treatise_id_map
+
+
 def write_parts_to_supabase(book_id: str, parts: list) -> dict:
     """
     Writes parts to the 'parts' table for books with multi-part structure.
@@ -674,6 +708,11 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
             "text": chapter.get("text", "")
         }
         
+        # Add content_type if specified (prefatory, chapter, book, appendix)
+        content_type = chapter.get("content_type", "chapter")
+        if content_type:
+            insert_data["content_type"] = content_type
+        
         if story_id:
             insert_data["story_id"] = story_id
         
@@ -686,7 +725,8 @@ def write_chapters_to_supabase(book_id: str, chapters: list, story_id_map: dict 
             created_chapters.append(result.data[0])
             part_info = f" (part: {parent_part})" if parent_part else ""
             story_info = f" (story: {parent_story})" if parent_story else ""
-            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}{part_info}{story_info}")
+            type_info = f" [{content_type}]" if content_type != "chapter" else ""
+            print(f"[SUPABASE] Created chapter {chapter.get('chapter_index')}: {chapter['title']}{type_info}{part_info}{story_info}")
     
     return created_chapters
 

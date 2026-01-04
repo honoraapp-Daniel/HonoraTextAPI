@@ -110,15 +110,25 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                     "title": p.get("title", f"Part {len(parts) + 1}")
                 })
             
-            # Build part title lookup for chapter linking
-            part_titles = {p["part_index"]: p["title"] for p in parts}
+            # Extract treatises if present (for anthology-style books)
+            treatises = []
+            for t in data.get("treatises", []):
+                treatises.append({
+                    "treatise_index": t.get("index", len(treatises) + 1),
+                    "title": t.get("title", f"Treatise {len(treatises) + 1}")
+                })
             
-            # Extract chapters with optional part linking
+            # Build lookup tables for chapter linking
+            part_titles = {p["part_index"]: p["title"] for p in parts}
+            treatise_titles = {t["treatise_index"]: t["title"] for t in treatises}
+            
+            # Extract chapters with optional part/treatise linking and content_type
             for ch in data.get("chapters", []):
                 chapter_data = {
                     "index": ch.get("index", len(chapters)),
                     "title": ch.get("title", f"Chapter {len(chapters)+1}"),
                     "raw_content": ch.get("content", ""),
+                    "content_type": ch.get("content_type", "chapter"),  # prefatory, chapter, book, appendix
                     "paragraphs": [],
                     "sections": [],
                     "processed": False
@@ -129,6 +139,12 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                     chapter_data["parent_part"] = part_titles.get(ch["part_index"])
                 elif "part" in ch:
                     chapter_data["parent_part"] = ch["part"]
+                
+                # Link to treatise if specified (anthology-style books)
+                if "treatise_index" in ch:
+                    chapter_data["parent_treatise"] = treatise_titles.get(ch["treatise_index"])
+                elif "treatise" in ch:
+                    chapter_data["parent_treatise"] = ch["treatise"]
                 
                 chapters.append(chapter_data)
         
@@ -162,22 +178,28 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                     "index": i,
                     "title": ch.get("title", f"Chapter {i+1}"),
                     "raw_content": ch.get("content", ""),
+                    "content_type": "chapter",
                     "paragraphs": [],
                     "sections": [],
                     "processed": False
                 })
+            
+            treatises = []  # PDFs don't have treatise detection yet
         
         state["chapters"] = chapters
-        state["parts"] = parts  # Store parts in job state
+        state["parts"] = parts
+        state["treatises"] = treatises if 'treatises' in dir() else []
         state["metadata"] = metadata
         state["progress"]["total_chapters"] = len(chapters)
         state["progress"]["total_parts"] = len(parts)
+        state["progress"]["total_treatises"] = len(treatises) if 'treatises' in dir() else 0
         state["phase"] = "extracted"
         save_v3_job_state(job_id, state)
         
         parts_info = f" ({len(parts)} parts)" if parts else ""
-        logger.info(f"[V3] Extracted {len(chapters)} chapters{parts_info} from {file_type}")
-        return {"success": True, "chapters": len(chapters), "parts": len(parts), "metadata": metadata}
+        treatises_info = f" ({len(treatises)} treatises)" if treatises else ""
+        logger.info(f"[V3] Extracted {len(chapters)} chapters{parts_info}{treatises_info} from {file_type}")
+        return {"success": True, "chapters": len(chapters), "parts": len(parts), "treatises": len(treatises) if 'treatises' in dir() else 0, "metadata": metadata}
     
     except Exception as e:
         logger.error(f"[V3] Extraction error: {e}")
@@ -449,6 +471,7 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
     metadata = state.get("metadata", {})
     chapters = state.get("chapters", [])
     parts = state.get("parts", [])
+    treatises = state.get("treatises", [])
     cover_urls = state.get("cover_urls", {})
     
     try:
@@ -470,6 +493,13 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             part_id_map = write_parts_to_supabase(book_id, parts)
             logger.info(f"[V3] Created {len(parts)} parts")
         
+        # Step 3b: Create treatises (if any) - for anthology-style books
+        treatise_id_map = {}
+        if treatises:
+            from app.chapters import write_treatises_to_supabase
+            treatise_id_map = write_treatises_to_supabase(book_id, treatises)
+            logger.info(f"[V3] Created {len(treatises)} treatises")
+        
         # Step 4: Create chapters with sections and paragraphs
         total_sections = 0
         total_paragraphs = 0
@@ -477,15 +507,21 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
         for ch in chapters:
             logger.info(f"[V3] Uploading chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
             
-            # Create chapter record with parent_part for linking
+            # Create chapter record with parent_part, parent_treatise, and content_type
             chapter_data = [{
                 "chapter_index": ch["index"],
                 "title": ch["title"],
                 "text": ch.get("raw_content", ""),
-                "parent_part": ch.get("parent_part")  # Will be used for part_id lookup
+                "content_type": ch.get("content_type", "chapter"),
+                "parent_part": ch.get("parent_part"),
+                "parent_story": ch.get("parent_treatise")  # Treatises use story_id in DB
             }]
             
-            db_chapters = write_chapters_to_supabase(book_id, chapter_data, part_id_map=part_id_map)
+            db_chapters = write_chapters_to_supabase(
+                book_id, chapter_data, 
+                story_id_map=treatise_id_map,  # Treatises map to story_id
+                part_id_map=part_id_map
+            )
             
             if db_chapters:
                 chapter_id = db_chapters[0]["id"]

@@ -99,7 +99,7 @@ function romanToNumber(roman) {
 
 // List of introduction-like chapter titles that should be labeled as "Chapter 0"
 // These are prefatory material, not the actual first chapter of content
-const INTRODUCTION_TITLES = [
+const PREFATORY_TITLES = [
   'introduction',
   'preface',
   'foreword',
@@ -109,6 +109,7 @@ const INTRODUCTION_TITLES = [
   "editor's introduction",
   'introductory note',
   'introductory notes',
+  'introductory essays',
   'background',
   'context',
   'scope and purpose',
@@ -118,27 +119,106 @@ const INTRODUCTION_TITLES = [
   'why this book',
   'before you begin',
   'a note to the reader',
+  'note',
   'invocation',
   'opening discourse',
   'on the nature of this work',
   'introduction to the mysteries',
   'preliminary discourse',
-  'author\'s note',
-  'translator\'s note',
+  "author's note",
+  "translator's note",
   'dedication',
   'acknowledgements',
-  'acknowledgments'
+  'acknowledgments',
+  'prefatory note',
+  'to the reader',
+  'logical structure',
+  'the hermetic books',
+  'the hermetic system'
+];
+
+// Appendix/back matter patterns
+const APPENDIX_TITLES = [
+  'appendix',
+  'glossary',
+  'index',
+  'bibliography',
+  'notes',
+  'endnotes',
+  'conclusion',
+  'epilogue',
+  'afterword',
+  'postscript',
+  'supplementary',
+  'addendum',
+  'addenda'
+];
+
+// Treatise/Section header patterns - these indicate a sub-book within a collection
+const TREATISE_PATTERNS = [
+  /^the stone of the philosophers$/i,
+  /^the virgin of the world$/i,
+  /^a treatise on/i,
+  /^the definitions of/i,
+  /^fragments of/i,
+  /^various .* fragments$/i,
+  /^the book of/i,
+  /^the bosom book/i,
+  /^preparations of/i,
+  /^the secret of/i,
+  /^aurum potabile/i,
+  /^the oil of/i,
+  /^exit from the old/i,
+  /^'?aureus,?'?\s*or\s+the\s+golden/i
+];
+
+// "Book" as chapter - patterns for texts that use "Book I" instead of "Chapter I"
+const BOOK_AS_CHAPTER_PATTERNS = [
+  /^(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\s+book/i,
+  /^(?:the\s+)?(?:[IVXLCDM]+|[0-9]+)(?:st|nd|rd|th)?\s+book/i,
+  /^book\s+(?:[IVXLCDM]+|[0-9]+|one|two|three|four|five|six|seven|eight|nine|ten)/i,
+  /^hermes\s+trismegistus,?\s+his\s+/i  // "Hermes Trismegistus, His First Book"
 ];
 
 /**
- * Checks if a title is an introduction-like chapter
+ * Determines the content type of a chapter/section
+ * @param {string} title - The title to check
+ * @returns {'prefatory'|'chapter'|'book'|'appendix'|'treatise'}
+ */
+function getContentType(title) {
+  if (!title) return 'chapter';
+  const normalizedTitle = title.toLowerCase().trim();
+
+  // Check if it's prefatory material
+  if (PREFATORY_TITLES.some(p => normalizedTitle === p || normalizedTitle.includes(p))) {
+    return 'prefatory';
+  }
+
+  // Check if it's appendix/back matter
+  if (APPENDIX_TITLES.some(a => normalizedTitle === a || normalizedTitle.startsWith(a))) {
+    return 'appendix';
+  }
+
+  // Check if it's a treatise/section header
+  if (TREATISE_PATTERNS.some(pattern => pattern.test(title))) {
+    return 'treatise';
+  }
+
+  // Check if it's "Book X" format (used instead of "Chapter X")
+  if (BOOK_AS_CHAPTER_PATTERNS.some(pattern => pattern.test(title))) {
+    return 'book';
+  }
+
+  return 'chapter';
+}
+
+/**
+ * Checks if a title is an introduction-like chapter (legacy function)
  * @param {string} title - The chapter title to check
  * @returns {boolean}
  */
 function isIntroductionChapter(title) {
-  if (!title) return false;
-  const normalizedTitle = title.toLowerCase().trim();
-  return INTRODUCTION_TITLES.some(intro => normalizedTitle === intro || normalizedTitle.includes(intro));
+  return getContentType(title) === 'prefatory';
 }
 
 /**
@@ -237,9 +317,9 @@ function cleanChapterContent(content, chapterTitle) {
 
 /**
  * Henter alle kapitel-links fra en bogs index-side
- * Detekterer også "Parts" struktur (Part I, Part II, etc.)
+ * Detekterer også "Parts", "Treatises" og content types
  * @param {string} bookIndexUrl - URL til bogens index.htm
- * @returns {Promise<{chapters: Array, parts: Array}>}
+ * @returns {Promise<{chapters: Array, parts: Array, treatises: Array}>}
  */
 export async function getBookChapters(bookIndexUrl) {
   const response = await fetchUrl(bookIndexUrl);
@@ -247,6 +327,7 @@ export async function getBookChapters(bookIndexUrl) {
   const $ = cheerio.load(response.data);
   const chapters = [];
   const parts = [];
+  const treatises = [];
   const baseDir = bookIndexUrl.substring(0, bookIndexUrl.lastIndexOf('/'));
 
   // Navigation pages to skip (common on sacred-texts.com)
@@ -262,37 +343,41 @@ export async function getBookChapters(bookIndexUrl) {
     /^previous$/i,
     /^prev$/i,
     /^home$/i,
-    /^«\s*previous/i,           // « Previous: X
-    /^next\s*:/i,                // Next: X
-    /^next\s*»/i,                // Next: X »
-    /»\s*$/,                     // Ends with »
-    /^«/,                        // Starts with «
-    /^\s*$/                      // Empty titles
+    /^«\s*previous/i,
+    /^next\s*:/i,
+    /^next\s*»/i,
+    /»\s*$/,
+    /^«/,
+    /^\s*$/
   ];
 
   // Part detection patterns
   const partPatterns = [
-    /^Part\s+([IVXLCDM]+)\s*[:.\-–]?\s*(.*)$/i,   // Part I: Historical
-    /^Part\s+(\d+)\s*[:.\-–]?\s*(.*)$/i,          // Part 1: Historical
+    /^Part\s+([IVXLCDM]+)\s*[:.\-–]?\s*(.*)$/i,
+    /^Part\s+(\d+)\s*[:.\-–]?\s*(.*)$/i,
     /^Part\s+(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)\s*[:.\-–]?\s*(.*)$/i
   ];
 
-  // Track current part for chapter linking
+  // Track current part and treatise for chapter linking
   let currentPartIndex = 0;
   let currentPartTitle = null;
+  let currentTreatiseIndex = 0;
+  let currentTreatiseTitle = null;
 
-  // First pass: Scan the page for Parts and Chapters in order
+  // First pass: Scan the page for Parts, Treatises, and section headers
   const pageContent = $.html();
 
-  // Find all text nodes and links in document order
   $('body').find('*').each((_, el) => {
     const $el = $(el);
     const tagName = el.tagName?.toLowerCase();
 
-    // Check for Part headers (typically in h2, h3, b, strong, or center)
     if (['h2', 'h3', 'h4', 'b', 'strong', 'center', 'font'].includes(tagName)) {
       const text = $el.clone().children().remove().end().text().trim() || $el.text().trim();
 
+      // Skip empty or navigation text
+      if (!text || text.length < 3) return;
+
+      // Check for Part headers
       for (const pattern of partPatterns) {
         const match = text.match(pattern);
         if (match) {
@@ -300,7 +385,6 @@ export async function getBookChapters(bookIndexUrl) {
           let partNumber = match[1];
           let partSubtitle = match[2]?.trim() || '';
 
-          // Convert Roman numerals or word numbers to Arabic
           if (/^[IVXLCDM]+$/i.test(partNumber)) {
             partNumber = romanToNumber(partNumber);
           } else if (/^(One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten)$/i.test(partNumber)) {
@@ -318,8 +402,22 @@ export async function getBookChapters(bookIndexUrl) {
           });
 
           console.log(`  📚 Detected Part: "${currentPartTitle}"`);
-          return; // Don't process this element as a chapter link
+          return;
         }
+      }
+
+      // Check for Treatise/Section headers (for anthology-style books)
+      if (getContentType(text) === 'treatise') {
+        currentTreatiseIndex++;
+        currentTreatiseTitle = text;
+
+        treatises.push({
+          index: currentTreatiseIndex,
+          title: currentTreatiseTitle
+        });
+
+        console.log(`  📖 Detected Treatise: "${currentTreatiseTitle}"`);
+        return;
       }
     }
   });
@@ -331,75 +429,47 @@ export async function getBookChapters(bookIndexUrl) {
 
     if (!href) return;
 
-    // Skip navigation links, external links, og index selv
+    // Skip navigation links
     if (href.startsWith('http') && !href.includes('sacred-texts.com')) return;
     if (href === 'index.htm' || href === './index.htm') return;
     if (href.startsWith('#')) return;
-    if (href.includes('..')) return; // Skip parent directory links
-    if (href.endsWith('.txt') || href.endsWith('.gz')) return; // Skip text files
+    if (href.includes('..')) return;
+    if (href.endsWith('.txt') || href.endsWith('.gz')) return;
 
-    // Skip navigation pages based on link text
     const isNavigation = navigationPatterns.some(pattern => pattern.test(text));
     if (isNavigation) {
       console.log(`  ⏭️ Skipping navigation page: "${text}"`);
       return;
     }
 
-    // Skip if filename suggests navigation (sof00.htm, sof01.htm typically are nav)
     const filename = href.toLowerCase();
     if (filename.match(/00\.htm$/) || filename.match(/01\.htm$/)) {
-      // Check if it's actually a chapter by looking at the link text
-      if (!text.match(/chapter/i) && !text.match(/^[IVXLC]+\./)) {
+      if (!text.match(/chapter/i) && !text.match(/^[IVXLC]+\./) && !text.match(/book/i)) {
         console.log(`  ⏭️ Skipping likely navigation file: ${href} ("${text}")`);
         return;
       }
     }
 
-    // Match .htm filer i samme mappe
     if (href.match(/^[a-z0-9_-]+\.htm$/i)) {
       const fullUrl = `${baseDir}/${href}`;
 
-      // Undgå duplikater
       if (!chapters.find(c => c.url === fullUrl)) {
-        // Clean up title - remove page numbers
         text = text.replace(/page\s+\d+/gi, '').trim();
 
+        // Determine content type
+        const contentType = getContentType(text);
+
         // Determine which part this chapter belongs to
-        // We need to figure out if this link appears after a Part header
-        // For now, use the element's position relative to Part headers
         let partIndex = null;
         let partTitle = null;
+        let treatiseIndex = null;
+        let treatiseTitle = null;
 
-        // Find the closest preceding Part header
-        const $link = $(el);
-        let $prev = $link.parent();
-        let foundPart = false;
-
-        while ($prev.length && !foundPart) {
-          // Check if there's a Part header text in siblings before this
-          $prev.prevAll().each((_, sibling) => {
-            const sibText = $(sibling).text().trim();
-            for (const pattern of partPatterns) {
-              if (pattern.test(sibText)) {
-                // Find the matching part
-                const partMatch = parts.find(p => sibText.includes(p.title.split(':')[1]?.trim() || p.title));
-                if (partMatch) {
-                  partIndex = partMatch.index;
-                  partTitle = partMatch.title;
-                  foundPart = true;
-                }
-              }
-            }
-          });
-          $prev = $prev.parent();
-        }
-
-        // If we have parts but couldn't determine which one, use the last seen part
-        if (parts.length > 0 && !partIndex) {
-          // Find the part by searching backwards through the page
+        if (parts.length > 0 || treatises.length > 0) {
           const linkHtml = $.html(el);
           const linkPos = pageContent.indexOf(linkHtml);
 
+          // Find parent part
           for (let i = parts.length - 1; i >= 0; i--) {
             const partPos = pageContent.indexOf(parts[i].title);
             if (partPos < linkPos && partPos >= 0) {
@@ -408,20 +478,35 @@ export async function getBookChapters(bookIndexUrl) {
               break;
             }
           }
+
+          // Find parent treatise
+          for (let i = treatises.length - 1; i >= 0; i--) {
+            const treatisePos = pageContent.indexOf(treatises[i].title);
+            if (treatisePos < linkPos && treatisePos >= 0) {
+              treatiseIndex = treatises[i].index;
+              treatiseTitle = treatises[i].title;
+              break;
+            }
+          }
         }
 
         chapters.push({
           title: text || href.replace('.htm', ''),
           url: fullUrl,
+          content_type: contentType,
           part_index: partIndex,
-          part: partTitle
+          part: partTitle,
+          treatise_index: treatiseIndex,
+          treatise: treatiseTitle
         });
       }
     }
   });
 
-  console.log(`📚 Found ${chapters.length} chapters${parts.length > 0 ? ` in ${parts.length} parts` : ''}`);
-  return { chapters, parts };
+  const partsInfo = parts.length > 0 ? ` in ${parts.length} parts` : '';
+  const treatisesInfo = treatises.length > 0 ? ` and ${treatises.length} treatises` : '';
+  console.log(`📚 Found ${chapters.length} chapters${partsInfo}${treatisesInfo}`);
+  return { chapters, parts, treatises };
 }
 
 /**
@@ -585,11 +670,13 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 
   // Hent kapitler først så vi kan hente attribution fra første kapitel
   let chapters = [];
-  let bookParts = [];  // Parts detected from index page
+  let bookParts = [];      // Parts detected from index page
+  let bookTreatises = [];  // Treatises/sub-works detected from index page
   try {
     const result = await getBookChapters(bookUrl);
     chapters = result.chapters || [];
     bookParts = result.parts || [];
+    bookTreatises = result.treatises || [];
   } catch (e) {
     console.log(`  ℹ️ Kunne ikke hente chapters: ${e.message}`);
   }
@@ -650,7 +737,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   }
 
   const partsInfo = bookParts.length > 0 ? ` (${bookParts.length} parts)` : '';
-  console.log(`📚 Fandt ${chapters.length} kapitler${partsInfo} i "${bookTitle}"`);
+  const treatisesInfo = bookTreatises.length > 0 ? ` (${bookTreatises.length} treatises)` : '';
+  console.log(`📚 Fandt ${chapters.length} kapitler${partsInfo}${treatisesInfo} i "${bookTitle}"`);
 
   // Ekstraher forfatter og år fra første kapitels side (mere pålidelig end index)
   let bookAuthor = 'Unknown Author';
@@ -915,17 +1003,24 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
   </div>
 `;
 
-      // Add to JSON chapters (with normalized whitespace and part info)
+      // Add to JSON chapters (with normalized whitespace, part, treatise, and content type info)
       const jsonChapter = {
         index: chapterIndex,
         title: formattedTitle,
-        content: normalizeWhitespace(plainText)
+        content: normalizeWhitespace(plainText),
+        content_type: chapter.content_type || 'chapter'
       };
 
       // Add part info if chapter belongs to a part
       if (chapter.part_index) {
         jsonChapter.part_index = chapter.part_index;
         jsonChapter.part = chapter.part;
+      }
+
+      // Add treatise info if chapter belongs to a treatise (anthology-style books)
+      if (chapter.treatise_index) {
+        jsonChapter.treatise_index = chapter.treatise_index;
+        jsonChapter.treatise = chapter.treatise;
       }
 
       jsonChapters.push(jsonChapter);
@@ -964,6 +1059,8 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     publisher: bookPublisher,
     partCount: bookParts.length,
     parts: bookParts,  // Parts structure (Part I, Part II, etc.)
+    treatiseCount: bookTreatises.length,
+    treatises: bookTreatises,  // Treatises/sub-works (for anthology-style books)
     chapterCount: jsonChapters.length,
     chapters: jsonChapters,
     scrapedAt: new Date().toISOString(),
