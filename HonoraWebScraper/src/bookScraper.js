@@ -1001,6 +1001,7 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
       // Add to JSON chapters (with normalized whitespace, part, treatise, and content type info)
       const jsonChapter = {
         index: chapterIndex,
+        order: chapter.order,  // Preserve original DOM order
         title: formattedTitle,
         content: normalizeWhitespace(plainText),
         content_type: chapter.content_type || 'chapter'
@@ -1061,111 +1062,141 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     return parentKey ? `${parentKey}.${segment}` : segment;
   }
 
-  // Build book_nodes array
+  // Build book_nodes array - RESPECTING ORIGINAL ORDER FROM PAGE
   const bookNodes = [];
+
+  // First, sort all chapters by their `order` field (from DOM position)
+  const sortedChapters = [...jsonChapters].sort((a, b) => {
+    const orderA = a.order ?? a.index;
+    const orderB = b.order ?? b.index;
+    return orderA - orderB;
+  });
+
+  // Track which treatises we've seen and their order_keys
+  const treatiseNodeMap = new Map(); // treatise.title -> { orderKey, insertedAt }
+  const partNodeMap = new Map();
+
+  // Track children for each parent
+  const childCounters = new Map();
   let rootIndex = 0;
 
-  // Add Part nodes (root level, containers)
-  const partNodeMap = {}; // part.title -> order_key
-  for (const part of bookParts) {
-    rootIndex++;
-    const orderKey = generateOrderKey(rootIndex);
-    partNodeMap[part.title] = orderKey;
+  // First pass: identify treatise positions based on the FIRST chapter that references them
+  for (const ch of sortedChapters) {
+    if (ch.treatise && !treatiseNodeMap.has(ch.treatise)) {
+      // This chapter is UNDER a treatise, and we haven't seen this treatise yet
+      // The treatise should be inserted RIGHT BEFORE this chapter at root level
+      treatiseNodeMap.set(ch.treatise, {
+        title: ch.treatise,
+        insertedAt: ch.order ?? ch.index,
+        orderKey: null  // Will be assigned later
+      });
+    }
+  }
 
-    bookNodes.push({
-      order_key: orderKey,
-      node_type: 'part',
-      display_title: part.title,
-      source_title: part.title,
-      has_content: false,  // Parts are containers
-      parent_order_key: null
+  // Second pass: build nodes in order
+  // We need to interleave treatises with chapters based on their position
+
+  // Create a merged list of events (chapters + treatise insertions)
+  const events = [];
+
+  for (const ch of sortedChapters) {
+    const order = ch.order ?? ch.index;
+
+    // Check if we need to insert a treatise before this chapter
+    for (const [title, info] of treatiseNodeMap.entries()) {
+      if (info.insertedAt === order && !info.orderKey) {
+        // Insert treatise node first
+        events.push({
+          type: 'treatise',
+          title: title,
+          order: order - 0.5  // Slightly before the chapter
+        });
+      }
+    }
+
+    // Add the chapter
+    events.push({
+      type: 'chapter',
+      chapter: ch,
+      order: order
     });
   }
 
-  // Add Treatise nodes (can be root or under parts)
-  const treatiseNodeMap = {}; // treatise.title -> order_key
-  for (const treatise of bookTreatises) {
-    // Find parent part if any
-    const parentKey = treatise.parent_part ? partNodeMap[treatise.parent_part] : null;
+  // Sort events by order
+  events.sort((a, b) => a.order - b.order);
 
-    if (parentKey) {
-      // Child of a part - use child index within that part
-      const childCount = bookNodes.filter(n => n.parent_order_key === parentKey).length + 1;
-      const orderKey = generateOrderKey(childCount, parentKey);
-      treatiseNodeMap[treatise.title] = orderKey;
-
-      bookNodes.push({
-        order_key: orderKey,
-        node_type: 'treatise',
-        display_title: treatise.title,
-        source_title: treatise.title,
-        has_content: false,
-        parent_order_key: parentKey
-      });
-    } else {
-      // Root level treatise
+  // Now process events and assign order_keys
+  for (const event of events) {
+    if (event.type === 'treatise') {
+      // Root-level treatise container
       rootIndex++;
       const orderKey = generateOrderKey(rootIndex);
-      treatiseNodeMap[treatise.title] = orderKey;
+
+      treatiseNodeMap.get(event.title).orderKey = orderKey;
 
       bookNodes.push({
         order_key: orderKey,
         node_type: 'treatise',
-        display_title: treatise.title,
-        source_title: treatise.title,
-        has_content: false,
+        display_title: event.title,
+        source_title: event.title,
+        has_content: false,  // Container
         parent_order_key: null
+      });
+
+    } else if (event.type === 'chapter') {
+      const ch = event.chapter;
+
+      // Determine parent
+      let parentKey = null;
+      if (ch.treatise && treatiseNodeMap.has(ch.treatise)) {
+        parentKey = treatiseNodeMap.get(ch.treatise).orderKey;
+      } else if (ch.part && partNodeMap.has(ch.part)) {
+        parentKey = partNodeMap.get(ch.part).orderKey;
+      }
+
+      // Generate order_key
+      let orderKey;
+      if (parentKey) {
+        const count = (childCounters.get(parentKey) || 0) + 1;
+        childCounters.set(parentKey, count);
+        orderKey = generateOrderKey(count, parentKey);
+      } else {
+        rootIndex++;
+        orderKey = generateOrderKey(rootIndex);
+      }
+
+      // Determine node_type from content_type
+      let nodeType = 'chapter';
+      const contentType = ch.content_type || 'chapter';
+      switch (contentType) {
+        case 'prefatory': nodeType = 'preface'; break;
+        case 'appendix': nodeType = 'appendix'; break;
+        case 'book': nodeType = 'book'; break;
+        case 'treatise': nodeType = 'treatise'; break;
+        default: nodeType = 'chapter';
+      }
+
+      // Clean the display title (remove "Chapter X -" prefix for non-chapters)
+      let displayTitle = ch.title;
+      if (nodeType !== 'chapter') {
+        displayTitle = ch.title.replace(/^Chapter\s+\d+\s*[-–:]\s*/i, '').trim();
+      }
+
+      bookNodes.push({
+        order_key: orderKey,
+        node_type: nodeType,
+        display_title: displayTitle,
+        source_title: ch.title,
+        has_content: true,
+        parent_order_key: parentKey,
+        // Keep original chapter data for backwards compatibility
+        chapter_index: ch.index,
+        content: ch.content
       });
     }
   }
 
-  // Add Chapter nodes (under parts, treatises, or root)
-  const childCounters = {}; // parent_key -> count
-
-  for (const ch of jsonChapters) {
-    // Determine parent
-    let parentKey = null;
-    if (ch.treatise) {
-      parentKey = treatiseNodeMap[ch.treatise];
-    } else if (ch.part) {
-      parentKey = partNodeMap[ch.part];
-    }
-
-    // Generate order_key
-    let orderKey;
-    if (parentKey) {
-      childCounters[parentKey] = (childCounters[parentKey] || 0) + 1;
-      orderKey = generateOrderKey(childCounters[parentKey], parentKey);
-    } else {
-      rootIndex++;
-      orderKey = generateOrderKey(rootIndex);
-    }
-
-    // Determine node_type from content_type
-    let nodeType = 'chapter';
-    const contentType = ch.content_type || 'chapter';
-    switch (contentType) {
-      case 'prefatory': nodeType = 'preface'; break;
-      case 'appendix': nodeType = 'appendix'; break;
-      case 'book': nodeType = 'book'; break;
-      case 'treatise': nodeType = 'treatise'; break;
-      default: nodeType = 'chapter';
-    }
-
-    bookNodes.push({
-      order_key: orderKey,
-      node_type: nodeType,
-      display_title: ch.title,
-      source_title: ch.title,
-      has_content: true,
-      parent_order_key: parentKey,
-      // Keep original chapter data for backwards compatibility
-      chapter_index: ch.index,
-      content: ch.content
-    });
-  }
-
-  // Sort nodes by order_key
+  // Sort nodes by order_key for final output
   bookNodes.sort((a, b) => a.order_key.localeCompare(b.order_key));
 
   // Build JSON data structure with BOTH old and new formats
