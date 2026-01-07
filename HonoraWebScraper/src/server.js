@@ -16,7 +16,8 @@ const port = 3001;
 const LOG_FILE = path.join(__dirname, '../logs.json');
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Persistent Log Management
@@ -240,6 +241,135 @@ app.post('/api/download/category', async (req, res) => {
         broadcast('complete-all', { category: name });
     } catch (error) {
         sendLog(`Fejl ved kategori download: ${error.message}`, 'error');
+    }
+});
+
+// ============================================
+// MAPPING EDITOR API ENDPOINTS
+// ============================================
+
+// List all available JSON files with mapping status
+app.get('/api/mapping/files', async (req, res) => {
+    try {
+        const outputDir = path.resolve(config.outputDir);
+        const files = [];
+
+        if (!fs.existsSync(outputDir)) {
+            return res.json([]);
+        }
+
+        // Scan all category directories
+        const categories = fs.readdirSync(outputDir, { withFileTypes: true })
+            .filter(d => d.isDirectory())
+            .map(d => d.name);
+
+        for (const category of categories) {
+            const categoryPath = path.join(outputDir, category);
+            const jsonFiles = fs.readdirSync(categoryPath)
+                .filter(f => f.endsWith('.json') && !f.endsWith('_mapping.json'));
+
+            for (const jsonFile of jsonFiles) {
+                const filePath = path.join(categoryPath, jsonFile);
+                const mappingPath = filePath.replace('.json', '_mapping.json');
+
+                // Try to read book title from JSON
+                let title = jsonFile.replace('.json', '');
+                try {
+                    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    title = data.title || title;
+                } catch (e) {
+                    // Ignore read errors
+                }
+
+                files.push({
+                    name: jsonFile,
+                    title,
+                    category,
+                    path: filePath,
+                    hasMapping: fs.existsSync(mappingPath)
+                });
+            }
+        }
+
+        // Sort by title
+        files.sort((a, b) => a.title.localeCompare(b.title));
+
+        res.json(files);
+    } catch (error) {
+        console.error('Error listing mapping files:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Load a book JSON file (with mapping if exists)
+app.post('/api/mapping/load', async (req, res) => {
+    const { filePath } = req.body;
+
+    if (!filePath) {
+        return res.status(400).json({ error: 'filePath is required' });
+    }
+
+    try {
+        // Security: ensure path is within output directory
+        const outputDir = path.resolve(config.outputDir);
+        const resolvedPath = path.resolve(filePath);
+
+        if (!resolvedPath.startsWith(outputDir)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        if (!fs.existsSync(resolvedPath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        // Read book JSON
+        const bookData = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+
+        // Check for existing mapping file
+        const mappingPath = resolvedPath.replace('.json', '_mapping.json');
+        if (fs.existsSync(mappingPath)) {
+            try {
+                const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+                bookData.mapping = mapping;
+            } catch (e) {
+                console.error('Error reading mapping file:', e);
+            }
+        }
+
+        res.json(bookData);
+    } catch (error) {
+        console.error('Error loading book:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Save mapping for a book
+app.post('/api/mapping/save', async (req, res) => {
+    const { filePath, mapping } = req.body;
+
+    if (!filePath || !mapping) {
+        return res.status(400).json({ error: 'filePath and mapping are required' });
+    }
+
+    try {
+        // Security: ensure path is within output directory
+        const outputDir = path.resolve(config.outputDir);
+        const resolvedPath = path.resolve(filePath);
+
+        if (!resolvedPath.startsWith(outputDir)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Save mapping to _mapping.json file
+        const mappingPath = resolvedPath.replace('.json', '_mapping.json');
+        fs.writeFileSync(mappingPath, JSON.stringify(mapping, null, 2), 'utf8');
+
+        sendLog(`📝 Mapping gemt: ${path.basename(mappingPath)}`, 'success');
+
+        res.json({ success: true, path: mappingPath });
+    } catch (error) {
+        console.error('Error saving mapping:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 

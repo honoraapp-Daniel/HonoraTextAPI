@@ -189,6 +189,12 @@ function getContentType(title) {
   if (!title) return 'chapter';
   const normalizedTitle = title.toLowerCase().trim();
 
+  // PRIORITY CHECK: If the title starts with "Chapter X", it's a chapter
+  // This overrides any prefatory detection (e.g., "Chapter I. The Introduction" is a CHAPTER)
+  if (/^chapter\s+([ivxlcdm]+|\d+)/i.test(title)) {
+    return 'chapter';
+  }
+
   // Check if it's prefatory material
   if (PREFATORY_TITLES.some(p => normalizedTitle === p || normalizedTitle.includes(p))) {
     return 'prefatory';
@@ -493,14 +499,72 @@ export async function getBookChapters(bookIndexUrl) {
 
 
 /**
+ * Extracts chapter marker information from page content.
+ * Looks for patterns like "CHAPTER I. The Introduction" or "CHAPTER 1: Something"
+ * inside the actual page content (not just the header).
+ * 
+ * @param {CheerioStatic} $ - Cheerio instance
+ * @returns {{ found: boolean, chapterNumber: string, chapterTitle: string, isRoman: boolean }}
+ */
+function extractChapterMarkerFromContent($) {
+  // Pattern to match "CHAPTER I", "CHAPTER 1", "CHAPTER XII", etc.
+  // Followed by optional title like ". The Introduction" or ": Something"
+  const chapterPattern = /\bCHAPTER\s+([IVXLCDM]+|\d+)\.?\s*[:\.\-–—]?\s*(.*?)(?:\.|$)/i;
+
+  // Search in headers first (h1, h2, h3, center, b, strong)
+  const elementsToCheck = ['h1', 'h2', 'h3', 'h4', 'center', 'b', 'strong'];
+
+  for (const tagName of elementsToCheck) {
+    const elements = $(tagName).toArray();
+    for (const el of elements) {
+      const text = $(el).text().trim();
+      const match = text.match(chapterPattern);
+      if (match) {
+        const number = match[1];
+        const title = match[2] ? match[2].trim() : '';
+        const isRoman = /^[IVXLCDM]+$/i.test(number);
+        console.log(`    📖 Found chapter marker in <${tagName}>: "CHAPTER ${number}${title ? ': ' + title : ''}"`);
+        return {
+          found: true,
+          chapterNumber: number,
+          chapterTitle: title,
+          isRoman
+        };
+      }
+    }
+  }
+
+  // Also check body text for chapter patterns (sometimes in plain text)
+  const bodyText = $('body').text();
+  const match = bodyText.match(chapterPattern);
+  if (match) {
+    const number = match[1];
+    const title = match[2] ? match[2].trim() : '';
+    const isRoman = /^[IVXLCDM]+$/i.test(number);
+    console.log(`    📖 Found chapter marker in body text: "CHAPTER ${number}${title ? ': ' + title : ''}"`);
+    return {
+      found: true,
+      chapterNumber: number,
+      chapterTitle: title,
+      isRoman
+    };
+  }
+
+  return { found: false, chapterNumber: null, chapterTitle: null, isRoman: false };
+}
+
+/**
  * Henter og renser indhold fra en kapitel-side
  * @param {string} chapterUrl - URL til kapitlet
- * @returns {Promise<{title: string, content: string}>}
+ * @returns {Promise<{title: string, content: string, chapterMarker: object}>}
  */
 export async function fetchChapterContent(chapterUrl) {
   const response = await fetchUrl(chapterUrl);
 
   const $ = cheerio.load(response.data);
+
+  // FIRST: Extract chapter marker from content BEFORE removing elements
+  const chapterMarker = extractChapterMarkerFromContent($);
 
   // Fjern navigation og andre uønskede elementer
   $('script').remove();
@@ -624,7 +688,8 @@ export async function fetchChapterContent(chapterUrl) {
   return {
     title,
     content,
-    plainText
+    plainText,
+    chapterMarker  // Include chapter marker info
   };
 }
 
@@ -944,7 +1009,7 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     }
 
     // Determine the formatted title based on content_type
-    const contentType = chapter.content_type || 'chapter';
+    let contentType = chapter.content_type || 'chapter';
     const isFirstChapter = (chapterIndex === 1);
 
     let formattedTitle;
@@ -963,7 +1028,30 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
     console.log(`  📖 Henter ${contentType} ${chapterIndex}/${chapters.length}: ${formattedTitle}...`);
 
     try {
-      let { content, plainText } = await fetchChapterContent(chapter.url);
+      let { content, plainText, chapterMarker } = await fetchChapterContent(chapter.url);
+
+      // CRITICAL: If we found a real "CHAPTER X" marker in the content,
+      // this OVERRIDES any earlier classification. The content is a chapter!
+      if (chapterMarker && chapterMarker.found) {
+        const actualNumber = chapterMarker.isRoman
+          ? romanToNumber(chapterMarker.chapterNumber)
+          : parseInt(chapterMarker.chapterNumber, 10);
+
+        const chapterTitle = chapterMarker.chapterTitle || chapter.title
+          .replace(/^Chapter\s+(\d+|[IVXLCDM]+)[:.\\s-]*/i, '')
+          .replace(/page\s+\d+/gi, '')
+          .trim();
+
+        // Override content_type to chapter
+        contentType = 'chapter';
+
+        // Build properly formatted title with actual chapter number
+        formattedTitle = chapterTitle
+          ? `Chapter ${actualNumber} - ${chapterTitle}`
+          : `Chapter ${actualNumber}`;
+
+        console.log(`    ✅ Overriding with chapter marker: "${formattedTitle}" (was: ${chapter.content_type})`);
+      }
 
       // Fjern duplikerede kapitel-headers fra indholdet
       content = cleanChapterContent(content, formattedTitle);
@@ -1001,12 +1089,13 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
 `;
 
       // Add to JSON chapters (with normalized whitespace, part, treatise, and content type info)
+      // NOTE: Use the potentially overridden contentType
       const jsonChapter = {
         index: chapterIndex,
         order: chapter.order,  // Preserve original DOM order
         title: formattedTitle,
         content: normalizeWhitespace(plainText),
-        content_type: chapter.content_type || 'chapter'
+        content_type: contentType  // Use possibly overridden content_type
       };
 
       // Add part info if chapter belongs to a part

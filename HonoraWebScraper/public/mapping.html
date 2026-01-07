@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="da">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honora Mapping Editor</title>
+    <link rel="stylesheet" href="mapping.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <a href="/" class="back-link">← Tilbage til Scraper</a>
+                <h1>📚 Mapping Editor</h1>
+            </div>
+            <div class="header-right">
+                <span id="status-indicator" class="status-badge">Ingen ændringer</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- File Selector Panel -->
+            <section id="file-selector" class="panel file-selector-panel">
+                <h2>Vælg JSON Fil</h2>
+                <p class="panel-description">Vælg en scraped bog eller upload en JSON fil for at åbne mapping editoren.
+                </p>
+
+                <div class="file-options">
+                    <!-- Recent Files -->
+                    <div class="file-option-group">
+                        <h3>Seneste Bøger</h3>
+                        <div id="recent-files" class="file-list">
+                            <div class="loader"></div>
+                        </div>
+                    </div>
+
+                    <!-- Upload -->
+                    <div class="file-option-group">
+                        <h3>Upload JSON</h3>
+                        <div class="upload-area" id="upload-area">
+                            <input type="file" id="file-input" accept=".json" hidden>
+                            <div class="upload-content">
+                                <span class="upload-icon">📁</span>
+                                <span>Træk fil hertil eller klik for at vælge</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Editor Panel (Hidden initially) -->
+            <section id="editor-panel" class="panel editor-panel hidden">
+                <!-- Book Info Header -->
+                <div class="book-header">
+                    <div class="book-info">
+                        <h2 id="book-title">-</h2>
+                        <div class="book-meta">
+                            <span id="book-author">-</span>
+                            <span class="separator">•</span>
+                            <span id="book-year">-</span>
+                            <span class="separator">•</span>
+                            <span id="node-count">0 noder</span>
+                        </div>
+                    </div>
+                    <div class="book-actions">
+                        <button id="btn-close-book" class="btn btn-ghost">✕ Luk</button>
+                    </div>
+                </div>
+
+                <!-- Editor Layout -->
+                <div class="editor-layout">
+                    <!-- Tree View -->
+                    <div class="tree-container">
+                        <div class="tree-toolbar">
+                            <button id="btn-expand-all" class="btn btn-sm">Udvid alle</button>
+                            <button id="btn-collapse-all" class="btn btn-sm">Kollaps alle</button>
+                            <div class="search-box">
+                                <input type="text" id="search-nodes" placeholder="Søg i noder...">
+                            </div>
+                        </div>
+                        <div id="tree-view" class="tree-view">
+                            <!-- Tree nodes rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Details Panel -->
+                    <div class="details-container">
+                        <div id="no-selection" class="empty-state">
+                            <span class="empty-icon">👆</span>
+                            <p>Vælg en node i træet for at se og redigere detaljer</p>
+                        </div>
+
+                        <div id="node-details" class="node-details hidden">
+                            <h3>Node Detaljer</h3>
+
+                            <div class="detail-group">
+                                <label>Order Key</label>
+                                <input type="text" id="detail-order-key" class="detail-input" readonly>
+                                <span class="help-text">Automatisk genereret baseret på position</span>
+                            </div>
+
+                            <div class="detail-group">
+                                <label>Titel</label>
+                                <input type="text" id="detail-title" class="detail-input">
+                            </div>
+
+                            <div class="detail-group">
+                                <label>Original Titel</label>
+                                <input type="text" id="detail-source-title" class="detail-input" readonly>
+                                <span class="help-text">Fra original scrape</span>
+                            </div>
+
+                            <div class="detail-group">
+                                <label>Node Type</label>
+                                <select id="detail-node-type" class="detail-select">
+                                    <optgroup label="Front Matter">
+                                        <option value="front_matter">Front Matter</option>
+                                        <option value="toc">Table of Contents</option>
+                                        <option value="preface">Preface</option>
+                                        <option value="foreword">Foreword</option>
+                                        <option value="introduction">Introduction</option>
+                                        <option value="dedication">Dedication</option>
+                                        <option value="acknowledgments">Acknowledgments</option>
+                                        <option value="prologue">Prologue</option>
+                                        <option value="authors_note">Author's Note</option>
+                                    </optgroup>
+                                    <optgroup label="Main Content">
+                                        <option value="part">Part</option>
+                                        <option value="book">Book</option>
+                                        <option value="volume">Volume</option>
+                                        <option value="section">Section</option>
+                                        <option value="chapter">Chapter</option>
+                                        <option value="subsection">Subsection</option>
+                                        <option value="main_work">Main Work</option>
+                                        <option value="treatise">Treatise</option>
+                                        <option value="fragment">Fragment</option>
+                                        <option value="letter">Letter</option>
+                                        <option value="discourse">Discourse</option>
+                                        <option value="essay">Essay</option>
+                                        <option value="sermon">Sermon</option>
+                                        <option value="dialogue">Dialogue</option>
+                                        <option value="meditation">Meditation</option>
+                                    </optgroup>
+                                    <optgroup label="Back Matter">
+                                        <option value="epilogue">Epilogue</option>
+                                        <option value="appendix">Appendix</option>
+                                        <option value="glossary">Glossary</option>
+                                        <option value="bibliography">Bibliography</option>
+                                        <option value="index">Index</option>
+                                        <option value="back_matter">Back Matter</option>
+                                        <option value="notes">Notes</option>
+                                        <option value="afterword">Afterword</option>
+                                        <option value="postscript">Postscript</option>
+                                        <option value="endnotes">Endnotes</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+
+                            <!-- Chapter Number (shown when type is chapter) -->
+                            <div id="chapter-number-group" class="detail-group hidden">
+                                <label>Kapitel Nummer</label>
+                                <input type="number" id="detail-chapter-number" class="detail-input" min="0">
+                                <span class="help-text">Brug 0 for introduktion/forord</span>
+                            </div>
+
+                            <div class="detail-group">
+                                <label>Ekskludering</label>
+                                <div class="checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="detail-exclude-frontend">
+                                        <span>Skjul fra app navigation</span>
+                                    </label>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="detail-exclude-audio">
+                                        <span>Spring over i TTS</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="detail-group">
+                                <label>Har indhold?</label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="detail-has-content">
+                                    <span>Denne node har paragraph-indhold</span>
+                                </label>
+                            </div>
+
+                            <div class="detail-actions">
+                                <button id="btn-move-up" class="btn btn-sm">↑ Flyt op</button>
+                                <button id="btn-move-down" class="btn btn-sm">↓ Flyt ned</button>
+                                <button id="btn-indent" class="btn btn-sm">→ Indryk (gør til barn)</button>
+                                <button id="btn-outdent" class="btn btn-sm">← Udryk (gør til forælder-niveau)</button>
+                            </div>
+
+                            <div class="detail-danger">
+                                <button id="btn-delete-node" class="btn btn-danger btn-sm">🗑 Fjern node</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom Toolbar -->
+                <div class="editor-toolbar">
+                    <div class="toolbar-left">
+                        <button id="btn-reset" class="btn btn-ghost">↺ Nulstil til original</button>
+                        <button id="btn-add-node" class="btn btn-ghost">+ Tilføj node</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <button id="btn-preview" class="btn btn-secondary">👁 Preview</button>
+                        <button id="btn-save" class="btn btn-primary">💾 Gem Mapping</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Preview Modal -->
+        <div id="preview-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Preview: Pipeline Output</h3>
+                    <button class="modal-close">✕</button>
+                </div>
+                <div class="modal-body">
+                    <pre id="preview-json"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="mapping.js"></script>
+</body>
+
+</html>

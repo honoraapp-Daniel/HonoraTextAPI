@@ -53,6 +53,103 @@ def clean_display_title(title: str, node_type: str = None) -> str:
     return cleaned.strip()
 
 
+def load_mapping_file(json_file_path: str) -> Optional[Dict]:
+    """
+    Check for and load a manual mapping file (_mapping.json).
+    
+    The Mapping Editor saves manual changes to {filename}_mapping.json
+    alongside the original JSON. If this file exists, it contains
+    user-curated node types, titles, and hierarchy.
+    
+    Args:
+        json_file_path: Path to the original book JSON file
+        
+    Returns:
+        Mapping dict with 'nodes' array if found, None otherwise
+    """
+    if not json_file_path:
+        return None
+    
+    # Construct mapping file path: book.json -> book_mapping.json
+    mapping_path = json_file_path.replace('.json', '_mapping.json')
+    
+    if os.path.exists(mapping_path):
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                mapping = json.load(f)
+            
+            if mapping and mapping.get('nodes'):
+                logger.info(f"[V3] ✅ Found manual mapping: {os.path.basename(mapping_path)} ({len(mapping['nodes'])} nodes)")
+                return mapping
+            else:
+                logger.warning(f"[V3] Mapping file exists but has no nodes: {mapping_path}")
+        except Exception as e:
+            logger.error(f"[V3] Error loading mapping file: {e}")
+    
+    return None
+
+
+def apply_mapping_to_chapters(chapters: List[Dict], mapping: Dict) -> List[Dict]:
+    """
+    Apply manual mapping overrides to extracted chapters.
+    
+    Matches chapters to mapping nodes by source_title or order,
+    then applies display_title, node_type, and exclusion flags.
+    
+    Args:
+        chapters: List of chapter dicts from extraction
+        mapping: Mapping dict with 'nodes' array
+        
+    Returns:
+        Updated chapters list with mapping applied
+    """
+    if not mapping or not mapping.get('nodes'):
+        return chapters
+    
+    nodes = mapping['nodes']
+    
+    # Build lookup by source_title and chapter_index
+    node_by_source = {}
+    node_by_index = {}
+    
+    for node in nodes:
+        if node.get('source_title'):
+            node_by_source[node['source_title']] = node
+        if node.get('chapter_index') is not None:
+            node_by_index[node['chapter_index']] = node
+    
+    # Apply mapping to each chapter
+    mapped_count = 0
+    for ch in chapters:
+        original_title = ch.get('title', '')
+        chapter_index = ch.get('index')
+        
+        # Try to find matching node
+        node = None
+        if original_title in node_by_source:
+            node = node_by_source[original_title]
+        elif chapter_index is not None and chapter_index in node_by_index:
+            node = node_by_index[chapter_index]
+        
+        if node:
+            # Apply mapping overrides
+            ch['display_title'] = node.get('display_title', original_title)
+            ch['content_type'] = node.get('node_type', ch.get('content_type', 'chapter'))
+            ch['exclude_from_frontend'] = node.get('exclude_from_frontend', False)
+            ch['exclude_from_audio'] = node.get('exclude_from_audio', False)
+            ch['has_content'] = node.get('has_content', True)
+            ch['order_key'] = node.get('order_key')
+            ch['parent_order_key'] = node.get('parent_order_key')
+            
+            mapped_count += 1
+            
+            # Log significant changes
+            if node.get('display_title') != original_title:
+                logger.info(f"[V3] Mapping: '{original_title}' -> '{node.get('display_title')}' (type: {ch['content_type']})")
+    
+    logger.info(f"[V3] Applied mapping to {mapped_count}/{len(chapters)} chapters")
+    return chapters
+
 
 # ============================================
 # JOB STATE MANAGEMENT
@@ -264,6 +361,22 @@ async def v3_extract_chapters(job_id: str) -> Dict:
             
             treatises = []  # PDFs don't have treatise detection yet
         
+        # ============================================
+        # APPLY MANUAL MAPPING (if exists)
+        # ============================================
+        # Check for _mapping.json file from Mapping Editor
+        mapping = load_mapping_file(file_path)
+        if mapping:
+            # Apply manual overrides to chapters
+            chapters = apply_mapping_to_chapters(chapters, mapping)
+            
+            # Store mapping info in state for later reference
+            state["has_manual_mapping"] = True
+            state["mapping_version"] = mapping.get("version", 1)
+            state["mapping_created_at"] = mapping.get("createdAt")
+        else:
+            state["has_manual_mapping"] = False
+        
         state["chapters"] = chapters
         state["parts"] = parts
         state["treatises"] = treatises if 'treatises' in dir() else []
@@ -274,10 +387,11 @@ async def v3_extract_chapters(job_id: str) -> Dict:
         state["phase"] = "extracted"
         save_v3_job_state(job_id, state)
         
+        mapping_info = " (with manual mapping)" if mapping else ""
         parts_info = f" ({len(parts)} parts)" if parts else ""
         treatises_info = f" ({len(treatises)} treatises)" if treatises else ""
-        logger.info(f"[V3] Extracted {len(chapters)} chapters{parts_info}{treatises_info} from {file_type}")
-        return {"success": True, "chapters": len(chapters), "parts": len(parts), "treatises": len(treatises) if 'treatises' in dir() else 0, "metadata": metadata}
+        logger.info(f"[V3] Extracted {len(chapters)} chapters{parts_info}{treatises_info}{mapping_info} from {file_type}")
+        return {"success": True, "chapters": len(chapters), "parts": len(parts), "treatises": len(treatises) if 'treatises' in dir() else 0, "metadata": metadata, "has_mapping": bool(mapping)}
     
     except Exception as e:
         logger.error(f"[V3] Extraction error: {e}")
@@ -611,6 +725,11 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
         for ch in chapters:
             logger.info(f"[V3] Processing chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
             
+            # Skip chapters excluded from frontend AND audio (completely skipped)
+            if ch.get('exclude_from_frontend') and ch.get('exclude_from_audio'):
+                logger.info(f"[V3] Skipping excluded chapter: {ch['title']}")
+                continue
+            
             # Determine parent node
             parent_id = None
             if ch.get("parent_treatise"):
@@ -618,22 +737,32 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             elif ch.get("parent_part"):
                 parent_id = part_node_map.get(ch["parent_part"])
             
-            # Determine node_type from content_type
+            # Determine node_type from content_type (may be set by mapping)
             content_type = ch.get("content_type", "chapter")
             node_type = map_content_type_to_node_type(content_type)
             
-            # Clean display title (remove "Chapter X -" prefix)
+            # Use display_title from mapping if set, otherwise clean the raw title
             raw_title = ch["title"]
-            display_title = clean_display_title(raw_title, node_type)
+            if ch.get("display_title"):
+                # Mapping provided custom display title
+                display_title = ch["display_title"]
+            else:
+                # Clean display title (remove "Chapter X -" prefix)
+                display_title = clean_display_title(raw_title, node_type)
+            
+            # Respect has_content from mapping (default True)
+            has_content = ch.get("has_content", True)
             
             # Create book_node for this chapter
             chapter_node = create_book_node(
                 book_id=book_id,
                 node_type=node_type,
-                display_title=display_title,  # Cleaned title
+                display_title=display_title,  # From mapping or cleaned
                 source_title=raw_title,       # Keep original
                 parent_id=parent_id,
-                has_content=True
+                has_content=has_content,
+                exclude_from_frontend=ch.get('exclude_from_frontend', False),
+                exclude_from_audio=ch.get('exclude_from_audio', False)
             )
             chapter_node_id = chapter_node["id"]
             
