@@ -17,9 +17,9 @@
     --accent-warning: #f59e0b;
     --accent-danger: #ef4444;
     --accent-info: #3b82f6;
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
-    --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 16px;
@@ -611,6 +611,17 @@ body {
     color: white;
 }
 
+.btn-success {
+    background: linear-gradient(135deg, var(--accent-success), #16a34a);
+    color: white;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, #22c55e, #15803d);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
 /* Editor Toolbar */
 .editor-toolbar {
     display: flex;
@@ -738,6 +749,7 @@ body {
         transform: translateX(100%);
         opacity: 0;
     }
+
     to {
         transform: translateX(0);
         opacity: 1;
@@ -756,7 +768,9 @@ body {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Scrollbar */
@@ -783,11 +797,11 @@ body {
     .editor-layout {
         grid-template-columns: 1fr;
     }
-    
+
     .details-container {
         border-top: 1px solid var(--border-color);
     }
-    
+
     .tree-container {
         max-height: 50vh;
     }
@@ -797,13 +811,13 @@ body {
     .file-options {
         grid-template-columns: 1fr;
     }
-    
+
     .app-header {
         flex-direction: column;
         gap: 1rem;
         text-align: center;
     }
-    
+
     .header-left {
         flex-direction: column;
     }

@@ -373,6 +373,55 @@ app.post('/api/mapping/save', async (req, res) => {
     }
 });
 
+// Export book JSON with mapping embedded (for V3 Pipeline upload)
+app.post('/api/mapping/export', async (req, res) => {
+    const { filePath } = req.body;
+
+    if (!filePath) {
+        return res.status(400).json({ error: 'filePath is required' });
+    }
+
+    try {
+        // Security: ensure path is within output directory
+        const outputDir = path.resolve(config.outputDir);
+        const resolvedPath = path.resolve(filePath);
+
+        if (!resolvedPath.startsWith(outputDir)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        if (!fs.existsSync(resolvedPath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        // Read book JSON
+        const bookData = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+
+        // Check for existing mapping file and embed it
+        const mappingPath = resolvedPath.replace('.json', '_mapping.json');
+        if (fs.existsSync(mappingPath)) {
+            try {
+                const mapping = JSON.parse(fs.readFileSync(mappingPath, 'utf8'));
+                // Embed mapping in the JSON under "manual_mapping" key
+                bookData.manual_mapping = mapping;
+                sendLog(`📦 Eksporterer med mapping: ${path.basename(resolvedPath)}`, 'success');
+            } catch (e) {
+                console.error('Error reading mapping file:', e);
+            }
+        } else {
+            sendLog(`📦 Eksporterer uden mapping: ${path.basename(resolvedPath)}`, 'info');
+        }
+
+        // Return merged JSON for download
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(resolvedPath)}"`);
+        res.json(bookData);
+    } catch (error) {
+        console.error('Error exporting book:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Server kører på http://localhost:${port}`);
 });

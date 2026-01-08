@@ -53,20 +53,34 @@ def clean_display_title(title: str, node_type: str = None) -> str:
     return cleaned.strip()
 
 
-def load_mapping_file(json_file_path: str) -> Optional[Dict]:
+def load_mapping_file(json_file_path: str, json_data: Dict = None) -> Optional[Dict]:
     """
-    Check for and load a manual mapping file (_mapping.json).
+    Check for and load a manual mapping file (_mapping.json) or embedded mapping.
     
     The Mapping Editor saves manual changes to {filename}_mapping.json
     alongside the original JSON. If this file exists, it contains
     user-curated node types, titles, and hierarchy.
     
+    For V3 Pipeline on Railway, the mapping can also be embedded directly
+    in the JSON file under the 'manual_mapping' key (via /api/mapping/export).
+    
     Args:
         json_file_path: Path to the original book JSON file
+        json_data: Optional pre-loaded JSON data to check for embedded mapping
         
     Returns:
         Mapping dict with 'nodes' array if found, None otherwise
     """
+    # First check for embedded mapping in JSON data (from /api/mapping/export)
+    if json_data and json_data.get('manual_mapping'):
+        mapping = json_data.get('manual_mapping')
+        if mapping and mapping.get('nodes'):
+            logger.info(f"[V3] ✅ Found embedded mapping in JSON ({len(mapping['nodes'])} nodes)")
+            return mapping
+        else:
+            logger.warning(f"[V3] Embedded mapping exists but has no nodes")
+    
+    # Fall back to external _mapping.json file
     if not json_file_path:
         return None
     
@@ -79,7 +93,7 @@ def load_mapping_file(json_file_path: str) -> Optional[Dict]:
                 mapping = json.load(f)
             
             if mapping and mapping.get('nodes'):
-                logger.info(f"[V3] ✅ Found manual mapping: {os.path.basename(mapping_path)} ({len(mapping['nodes'])} nodes)")
+                logger.info(f"[V3] ✅ Found external mapping: {os.path.basename(mapping_path)} ({len(mapping['nodes'])} nodes)")
                 return mapping
             else:
                 logger.warning(f"[V3] Mapping file exists but has no nodes: {mapping_path}")
@@ -364,8 +378,9 @@ async def v3_extract_chapters(job_id: str) -> Dict:
         # ============================================
         # APPLY MANUAL MAPPING (if exists)
         # ============================================
-        # Check for _mapping.json file from Mapping Editor
-        mapping = load_mapping_file(file_path)
+        # Check for embedded mapping in JSON or external _mapping.json file
+        json_data = data if file_type == "json" else None
+        mapping = load_mapping_file(file_path, json_data)
         if mapping:
             # Apply manual overrides to chapters
             chapters = apply_mapping_to_chapters(chapters, mapping)

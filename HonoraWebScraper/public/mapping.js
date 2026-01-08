@@ -709,6 +709,49 @@ function resetMapping() {
     showToast('Nulstillet til original', 'success');
 }
 
+async function exportForV3() {
+    if (!currentFilePath) {
+        showToast('Ingen filsti - kan kun eksportere server-bøger', 'error');
+        return;
+    }
+
+    try {
+        // First save the mapping
+        await saveMapping();
+
+        showToast('Forbereder eksport til V3...', 'info');
+
+        // Then export with embedded mapping
+        const res = await fetch('/api/mapping/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filePath: currentFilePath })
+        });
+
+        if (!res.ok) throw new Error('Kunne ikke eksportere');
+
+        // Get the merged JSON
+        const mergedData = await res.json();
+
+        // Create download
+        const blob = new Blob([JSON.stringify(mergedData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentBookData.title || 'book'}_with_mapping.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('🚀 Eksporteret med mapping! Upload denne fil til V3 Pipeline.', 'success');
+
+    } catch (err) {
+        console.error('Export error:', err);
+        showToast('Fejl ved eksport: ' + err.message, 'error');
+    }
+}
+
 function closeBook() {
     if (hasChanges && !confirm('Du har ugemte ændringer. Luk alligevel?')) return;
 
@@ -879,6 +922,7 @@ function setupEventListeners() {
     document.getElementById('btn-reset').onclick = resetMapping;
     document.getElementById('btn-preview').onclick = showPreview;
     document.getElementById('btn-save').onclick = saveMapping;
+    document.getElementById('btn-export').onclick = exportForV3;
     document.getElementById('btn-close-book').onclick = closeBook;
 
     // Modal
