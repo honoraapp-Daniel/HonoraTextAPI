@@ -1,0 +1,33 @@
+{
+  "job_id": "7059f73b-0af2-4a20-8f83-71474ad03c82",
+  "file_path": "data/v3_uploads/e3686d44-f85c-47b5-acee-5ef6c00e2ff5.json",
+  "file_type": "json",
+  "phase": "complete",
+  "created_at": "2026-01-07T21:07:00.515049",
+  "chapters": [],
+  "metadata": {
+    "title": "Unknown",
+    "author": "Unknown",
+    "year": "",
+    "publisher": "",
+    "language": "English",
+    "cover_art_url": "https://dwhimlmsygzpwxvlnucb.supabase.co//storage/v1/object/public/audio/covers/ce8546df-5ef4-4606-b89a-5f699e5cd43a_1x1.png",
+    "cover_art_url_16x9": "https://dwhimlmsygzpwxvlnucb.supabase.co//storage/v1/object/public/audio/covers/ce8546df-5ef4-4606-b89a-5f699e5cd43a_16x9.png",
+    "original_language": "English"
+  },
+  "cover_urls": {
+    "cover_art_url_16x9": "https://dwhimlmsygzpwxvlnucb.supabase.co//storage/v1/object/public/audio/covers/ce8546df-5ef4-4606-b89a-5f699e5cd43a_16x9.png",
+    "cover_art_url": "https://dwhimlmsygzpwxvlnucb.supabase.co//storage/v1/object/public/audio/covers/ce8546df-5ef4-4606-b89a-5f699e5cd43a_1x1.png"
+  },
+  "progress": {
+    "total_chapters": 0,
+    "processed_chapters": 0,
+    "current_chapter": null,
+    "total_parts": 0,
+    "total_treatises": 0
+  },
+  "has_manual_mapping": false,
+  "parts": [],
+  "treatises": [],
+  "completed_at": "2026-01-07T21:07:09.917175"
+}

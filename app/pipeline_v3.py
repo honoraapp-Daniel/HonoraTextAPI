@@ -374,8 +374,11 @@ async def v3_extract_chapters(job_id: str) -> Dict:
             state["has_manual_mapping"] = True
             state["mapping_version"] = mapping.get("version", 1)
             state["mapping_created_at"] = mapping.get("createdAt")
+            # Store full mapping nodes for upload (includes container nodes)
+            state["mapping_nodes"] = mapping.get("nodes", [])
         else:
             state["has_manual_mapping"] = False
+            state["mapping_nodes"] = []
         
         state["chapters"] = chapters
         state["parts"] = parts
@@ -635,6 +638,65 @@ async def run_v3_pipeline(job_id: str) -> Dict:
 # SUPABASE UPLOAD
 # ============================================
 
+def create_nodes_from_mapping(book_id: str, mapping_nodes: List[Dict]) -> Dict[str, str]:
+    """
+    Create book_nodes in Supabase from mapping structure.
+    
+    This handles the complex tree structure from the Mapping Editor,
+    including container nodes (has_content=False) and proper parent-child
+    relationships via order_key.
+    
+    Args:
+        book_id: The book UUID
+        mapping_nodes: List of mapping node dicts from mapping.json
+        
+    Returns:
+        Dict mapping order_key -> node_id for chapter content linking
+    """
+    from app.chapters import create_book_node
+    
+    # Sort by order_key to ensure parents are created before children
+    sorted_nodes = sorted(mapping_nodes, key=lambda n: n.get('order_key', '9999'))
+    
+    # Map order_key -> node_id for parent lookups
+    order_key_to_id = {}
+    
+    for node in sorted_nodes:
+        order_key = node.get('order_key')
+        parent_order_key = node.get('parent_order_key')
+        
+        # Resolve parent_id from parent_order_key
+        parent_id = order_key_to_id.get(parent_order_key) if parent_order_key else None
+        
+        # Get node properties with defaults
+        node_type = node.get('node_type', 'chapter')
+        display_title = node.get('display_title', 'Untitled')
+        source_title = node.get('source_title', display_title)
+        has_content = node.get('has_content', True)
+        exclude_from_frontend = node.get('exclude_from_frontend', False)
+        exclude_from_audio = node.get('exclude_from_audio', False)
+        
+        # Create the node
+        created_node = create_book_node(
+            book_id=book_id,
+            node_type=node_type,
+            display_title=display_title,
+            source_title=source_title,
+            parent_id=parent_id,
+            order_key=order_key,  # Use the order_key from mapping!
+            has_content=has_content,
+            exclude_from_frontend=exclude_from_frontend,
+            exclude_from_audio=exclude_from_audio
+        )
+        
+        # Store mapping
+        order_key_to_id[order_key] = created_node['id']
+        
+        logger.info(f"[V3] Created node: {node_type} '{display_title}' (order: {order_key}, parent: {parent_order_key or 'root'})")
+    
+    return order_key_to_id
+
+
 async def v3_upload_to_supabase(job_id: str) -> Dict:
     """
     Upload processed V3 book data to Supabase using book_nodes tree structure.
@@ -672,6 +734,8 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
     parts = state.get("parts", [])
     treatises = state.get("treatises", [])
     cover_urls = state.get("cover_urls", {})
+    has_manual_mapping = state.get("has_manual_mapping", False)
+    mapping_nodes = state.get("mapping_nodes", [])
     
     try:
         logger.info(f"[V3] Starting Supabase upload for: {metadata.get('title')}")
@@ -685,172 +749,270 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
             update_book_cover_url(book_id, cover_urls)
             logger.info(f"[V3] Updated cover art URLs")
         
-        # Step 3: Build book_nodes tree structure
-        # Maps: part_title -> node_id, treatise_title -> node_id
-        part_node_map = {}
-        treatise_node_map = {}
-        
-        # Create Part nodes (root level, no content themselves)
-        for part in parts:
-            node = create_book_node(
-                book_id=book_id,
-                node_type="part",
-                display_title=part.get("title", f"Part {part.get('part_index', 0)}"),
-                source_title=part.get("title"),
-                has_content=False  # Parts are containers, chapters have content
-            )
-            part_node_map[part.get("title")] = node["id"]
-            logger.info(f"[V3] Created part node: {part.get('title')}")
-        
-        # Create Treatise nodes (can be root or under parts)
-        for treatise in treatises:
-            parent_part = treatise.get("parent_part")
-            parent_id = part_node_map.get(parent_part) if parent_part else None
-            
-            node = create_book_node(
-                book_id=book_id,
-                node_type="treatise",
-                display_title=treatise.get("title", f"Treatise {treatise.get('treatise_index', 0)}"),
-                source_title=treatise.get("title"),
-                parent_id=parent_id,
-                has_content=False  # Treatises are containers
-            )
-            treatise_node_map[treatise.get("title")] = node["id"]
-            logger.info(f"[V3] Created treatise node: {treatise.get('title')}")
-        
-        # Step 4: Create chapter nodes and content
+        # Step 3 & 4: Create book_nodes and link content
         total_tts_chunks = 0
         total_paragraphs = 0
+        total_nodes_created = 0
         
-        for ch in chapters:
-            logger.info(f"[V3] Processing chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
+        # Build a lookup: chapter_index -> chapter data (for content linking)
+        chapter_by_index = {ch.get('index'): ch for ch in chapters}
+        
+        if has_manual_mapping and mapping_nodes:
+            # ============================================
+            # MAPPING-BASED UPLOAD (uses full tree structure)
+            # ============================================
+            logger.info(f"[V3] Using manual mapping with {len(mapping_nodes)} nodes")
             
-            # Skip chapters excluded from frontend AND audio (completely skipped)
-            if ch.get('exclude_from_frontend') and ch.get('exclude_from_audio'):
-                logger.info(f"[V3] Skipping excluded chapter: {ch['title']}")
-                continue
+            # Create all nodes from mapping (including containers)
+            order_key_to_node_id = create_nodes_from_mapping(book_id, mapping_nodes)
+            total_nodes_created = len(order_key_to_node_id)
             
-            # Determine parent node
-            parent_id = None
-            if ch.get("parent_treatise"):
-                parent_id = treatise_node_map.get(ch["parent_treatise"])
-            elif ch.get("parent_part"):
-                parent_id = part_node_map.get(ch["parent_part"])
-            
-            # Determine node_type from content_type (may be set by mapping)
-            content_type = ch.get("content_type", "chapter")
-            node_type = map_content_type_to_node_type(content_type)
-            
-            # Use display_title from mapping if set, otherwise clean the raw title
-            raw_title = ch["title"]
-            if ch.get("display_title"):
-                # Mapping provided custom display title
-                display_title = ch["display_title"]
-            else:
-                # Clean display title (remove "Chapter X -" prefix)
-                display_title = clean_display_title(raw_title, node_type)
-            
-            # Respect has_content from mapping (default True)
-            has_content = ch.get("has_content", True)
-            
-            # Create book_node for this chapter
-            chapter_node = create_book_node(
-                book_id=book_id,
-                node_type=node_type,
-                display_title=display_title,  # From mapping or cleaned
-                source_title=raw_title,       # Keep original
-                parent_id=parent_id,
-                has_content=has_content,
-                exclude_from_frontend=ch.get('exclude_from_frontend', False),
-                exclude_from_audio=ch.get('exclude_from_audio', False)
-            )
-            chapter_node_id = chapter_node["id"]
-            
-            # Create legacy chapter record (for backwards compatibility)
-            chapter_data = [{
-                "chapter_index": ch["index"],
-                "title": ch["title"],
-                "text": ch.get("raw_content", ""),
-                "node_id": chapter_node_id  # Link to book_node
-            }]
-            
-            db_chapters = write_chapters_to_supabase(book_id, chapter_data)
-            
-            if db_chapters:
-                chapter_id = db_chapters[0]["id"]
+            # Now link chapter content to nodes
+            # Mapping nodes have chapter_index pointing to which chapter's content they use
+            for map_node in mapping_nodes:
+                chapter_index = map_node.get('chapter_index')
+                order_key = map_node.get('order_key')
+                node_id = order_key_to_node_id.get(order_key)
                 
-                # Get paragraph and section data
-                paragraphs = ch.get("paragraphs", [])
-                sections = ch.get("sections", [])
+                # Skip nodes without chapter_index (containers or manually added)
+                if chapter_index is None or node_id is None:
+                    continue
                 
-                # Write paragraphs to Supabase and collect IDs
-                paragraph_ids = []
-                if paragraphs:
-                    paragraph_texts = [p["text"] for p in paragraphs if p.get("text")]
-                    # Write and get back IDs
-                    from app.chapters import get_supabase
-                    supabase = get_supabase()
-                    
-                    for idx, text in enumerate(paragraph_texts):
-                        result = supabase.table("paragraphs").insert({
-                            "chapter_id": chapter_id,
-                            "paragraph_index": idx,
-                            "text": text,
-                            "start_ms": None,
-                            "end_ms": None
-                        }).execute()
-                        if result.data:
-                            paragraph_ids.append(result.data[0]["id"])
-                    
-                    total_paragraphs += len(paragraph_ids)
-                    logger.info(f"[V3] Wrote {len(paragraph_ids)} paragraphs")
-                    
-                    # Link paragraphs to book_node
-                    link_node_paragraphs(chapter_node_id, paragraph_ids)
+                # Find the corresponding chapter with content
+                ch = chapter_by_index.get(chapter_index)
+                if not ch:
+                    logger.warning(f"[V3] No chapter found for index {chapter_index}")
+                    continue
                 
-                # Write TTS chunks and link to paragraphs
-                if sections:
-                    section_texts = [s["text"] for s in sections if s.get("text")]
-                    tts_chunk_ids = write_sections_to_supabase(chapter_id, section_texts)
-                    total_tts_chunks += len(tts_chunk_ids)
-                    logger.info(f"[V3] Wrote {len(tts_chunk_ids)} TTS chunks")
+                # Skip if completely excluded
+                if map_node.get('exclude_from_frontend') and map_node.get('exclude_from_audio'):
+                    logger.info(f"[V3] Skipping excluded node: {map_node.get('display_title')}")
+                    continue
+                
+                logger.info(f"[V3] Linking content for: {map_node.get('display_title')} (chapter_index={chapter_index})")
+                
+                # Create legacy chapter record (for backwards compatibility)
+                chapter_data = [{
+                    "chapter_index": ch["index"],
+                    "title": ch["title"],
+                    "text": ch.get("raw_content", ""),
+                    "node_id": node_id  # Link to book_node
+                }]
+                
+                db_chapters = write_chapters_to_supabase(book_id, chapter_data)
+                
+                if db_chapters:
+                    chapter_id = db_chapters[0]["id"]
                     
-                    # Link TTS chunks to paragraphs (distribute evenly for now)
-                    # TODO: Smarter mapping based on text overlap
-                    if paragraph_ids and tts_chunk_ids:
-                        chunks_per_para = max(1, len(tts_chunk_ids) // len(paragraph_ids))
-                        chunk_idx = 0
-                        for para_id in paragraph_ids:
-                            para_chunks = tts_chunk_ids[chunk_idx:chunk_idx + chunks_per_para]
-                            if para_chunks:
-                                link_paragraph_tts_chunks(para_id, para_chunks)
-                            chunk_idx += chunks_per_para
+                    # Get paragraph and section data
+                    paragraphs = ch.get("paragraphs", [])
+                    sections = ch.get("sections", [])
+                    
+                    # Write paragraphs to Supabase
+                    paragraph_ids = []
+                    if paragraphs:
+                        paragraph_texts = [p["text"] for p in paragraphs if p.get("text")]
+                        from app.chapters import get_supabase
+                        supabase = get_supabase()
+                        
+                        for idx, text in enumerate(paragraph_texts):
+                            result = supabase.table("paragraphs").insert({
+                                "chapter_id": chapter_id,
+                                "paragraph_index": idx,
+                                "text": text,
+                                "start_ms": None,
+                                "end_ms": None
+                            }).execute()
+                            if result.data:
+                                paragraph_ids.append(result.data[0]["id"])
+                        
+                        total_paragraphs += len(paragraph_ids)
+                        logger.info(f"[V3] Wrote {len(paragraph_ids)} paragraphs")
+                        
+                        # Link paragraphs to book_node
+                        link_node_paragraphs(node_id, paragraph_ids)
+                    
+                    # Write TTS chunks and link to paragraphs
+                    if sections:
+                        section_texts = [s["text"] for s in sections if s.get("text")]
+                        tts_chunk_ids = write_sections_to_supabase(chapter_id, section_texts)
+                        total_tts_chunks += len(tts_chunk_ids)
+                        logger.info(f"[V3] Wrote {len(tts_chunk_ids)} TTS chunks")
+                        
+                        # Link TTS chunks to paragraphs
+                        if paragraph_ids and tts_chunk_ids:
+                            chunks_per_para = max(1, len(tts_chunk_ids) // len(paragraph_ids))
+                            chunk_idx = 0
+                            for para_id in paragraph_ids:
+                                para_chunks = tts_chunk_ids[chunk_idx:chunk_idx + chunks_per_para]
+                                if para_chunks:
+                                    link_paragraph_tts_chunks(para_id, para_chunks)
+                                chunk_idx += chunks_per_para
+        
+        else:
+            # ============================================
+            # LEGACY UPLOAD (auto-detected structure)
+            # ============================================
+            logger.info(f"[V3] Using auto-detected structure (no manual mapping)")
+            
+            # Maps: part_title -> node_id, treatise_title -> node_id
+            part_node_map = {}
+            treatise_node_map = {}
+            
+            # Create Part nodes (root level, no content themselves)
+            for part in parts:
+                node = create_book_node(
+                    book_id=book_id,
+                    node_type="part",
+                    display_title=part.get("title", f"Part {part.get('part_index', 0)}"),
+                    source_title=part.get("title"),
+                    has_content=False
+                )
+                part_node_map[part.get("title")] = node["id"]
+                total_nodes_created += 1
+                logger.info(f"[V3] Created part node: {part.get('title')}")
+            
+            # Create Treatise nodes (can be root or under parts)
+            for treatise in treatises:
+                parent_part = treatise.get("parent_part")
+                parent_id = part_node_map.get(parent_part) if parent_part else None
+                
+                node = create_book_node(
+                    book_id=book_id,
+                    node_type="treatise",
+                    display_title=treatise.get("title", f"Treatise {treatise.get('treatise_index', 0)}"),
+                    source_title=treatise.get("title"),
+                    parent_id=parent_id,
+                    has_content=False
+                )
+                treatise_node_map[treatise.get("title")] = node["id"]
+                total_nodes_created += 1
+                logger.info(f"[V3] Created treatise node: {treatise.get('title')}")
+            
+            # Create chapter nodes and content
+            for ch in chapters:
+                logger.info(f"[V3] Processing chapter {ch['index']+1}/{len(chapters)}: {ch['title']}")
+                
+                # Skip chapters excluded from frontend AND audio
+                if ch.get('exclude_from_frontend') and ch.get('exclude_from_audio'):
+                    logger.info(f"[V3] Skipping excluded chapter: {ch['title']}")
+                    continue
+                
+                # Determine parent node
+                parent_id = None
+                if ch.get("parent_treatise"):
+                    parent_id = treatise_node_map.get(ch["parent_treatise"])
+                elif ch.get("parent_part"):
+                    parent_id = part_node_map.get(ch["parent_part"])
+                
+                # Determine node_type from content_type
+                content_type = ch.get("content_type", "chapter")
+                node_type = map_content_type_to_node_type(content_type)
+                
+                # Use display_title from mapping if set, otherwise clean the raw title
+                raw_title = ch["title"]
+                if ch.get("display_title"):
+                    display_title = ch["display_title"]
+                else:
+                    display_title = clean_display_title(raw_title, node_type)
+                
+                has_content = ch.get("has_content", True)
+                
+                # Create book_node for this chapter
+                chapter_node = create_book_node(
+                    book_id=book_id,
+                    node_type=node_type,
+                    display_title=display_title,
+                    source_title=raw_title,
+                    parent_id=parent_id,
+                    has_content=has_content,
+                    exclude_from_frontend=ch.get('exclude_from_frontend', False),
+                    exclude_from_audio=ch.get('exclude_from_audio', False)
+                )
+                chapter_node_id = chapter_node["id"]
+                total_nodes_created += 1
+                
+                # Create legacy chapter record
+                chapter_data = [{
+                    "chapter_index": ch["index"],
+                    "title": ch["title"],
+                    "text": ch.get("raw_content", ""),
+                    "node_id": chapter_node_id
+                }]
+                
+                db_chapters = write_chapters_to_supabase(book_id, chapter_data)
+                
+                if db_chapters:
+                    chapter_id = db_chapters[0]["id"]
+                    
+                    paragraphs = ch.get("paragraphs", [])
+                    sections = ch.get("sections", [])
+                    
+                    paragraph_ids = []
+                    if paragraphs:
+                        paragraph_texts = [p["text"] for p in paragraphs if p.get("text")]
+                        from app.chapters import get_supabase
+                        supabase = get_supabase()
+                        
+                        for idx, text in enumerate(paragraph_texts):
+                            result = supabase.table("paragraphs").insert({
+                                "chapter_id": chapter_id,
+                                "paragraph_index": idx,
+                                "text": text,
+                                "start_ms": None,
+                                "end_ms": None
+                            }).execute()
+                            if result.data:
+                                paragraph_ids.append(result.data[0]["id"])
+                        
+                        total_paragraphs += len(paragraph_ids)
+                        logger.info(f"[V3] Wrote {len(paragraph_ids)} paragraphs")
+                        
+                        link_node_paragraphs(chapter_node_id, paragraph_ids)
+                    
+                    if sections:
+                        section_texts = [s["text"] for s in sections if s.get("text")]
+                        tts_chunk_ids = write_sections_to_supabase(chapter_id, section_texts)
+                        total_tts_chunks += len(tts_chunk_ids)
+                        logger.info(f"[V3] Wrote {len(tts_chunk_ids)} TTS chunks")
+                        
+                        if paragraph_ids and tts_chunk_ids:
+                            chunks_per_para = max(1, len(tts_chunk_ids) // len(paragraph_ids))
+                            chunk_idx = 0
+                            for para_id in paragraph_ids:
+                                para_chunks = tts_chunk_ids[chunk_idx:chunk_idx + chunks_per_para]
+                                if para_chunks:
+                                    link_paragraph_tts_chunks(para_id, para_chunks)
+                                chunk_idx += chunks_per_para
         
         # Update job state
         state["phase"] = "uploaded"
         state["book_id"] = book_id
         state["upload_stats"] = {
-            "parts": len(parts),
-            "treatises": len(treatises),
-            "chapters": len(chapters),
-            "tts_chunks": total_tts_chunks,  # Renamed from sections
-            "paragraphs": total_paragraphs
-        }
-        save_v3_job_state(job_id, state)
-        
-        parts_info = f"{len(parts)} parts, " if parts else ""
-        treatises_info = f"{len(treatises)} treatises, " if treatises else ""
-        logger.info(f"[V3] ✅ Upload complete: {parts_info}{treatises_info}{len(chapters)} chapters, {total_tts_chunks} TTS chunks, {total_paragraphs} paragraphs")
-        
-        return {
-            "success": True,
-            "book_id": book_id,
+            "book_nodes": total_nodes_created,
             "parts": len(parts),
             "treatises": len(treatises),
             "chapters": len(chapters),
             "tts_chunks": total_tts_chunks,
             "paragraphs": total_paragraphs,
-            "cover_urls": cover_urls
+            "used_manual_mapping": has_manual_mapping
+        }
+        save_v3_job_state(job_id, state)
+        
+        mapping_info = " (with manual mapping)" if has_manual_mapping else ""
+        logger.info(f"[V3] ✅ Upload complete{mapping_info}: {total_nodes_created} nodes, {len(chapters)} chapters, {total_tts_chunks} TTS chunks, {total_paragraphs} paragraphs")
+        
+        return {
+            "success": True,
+            "book_id": book_id,
+            "book_nodes": total_nodes_created,
+            "parts": len(parts),
+            "treatises": len(treatises),
+            "chapters": len(chapters),
+            "tts_chunks": total_tts_chunks,
+            "paragraphs": total_paragraphs,
+            "cover_urls": cover_urls,
+            "used_manual_mapping": has_manual_mapping
         }
         
     except Exception as e:
