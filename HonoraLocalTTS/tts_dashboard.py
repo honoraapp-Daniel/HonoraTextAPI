@@ -88,21 +88,24 @@ def get_books():
 
 @app.route("/api/books/<book_id>/chapters")
 def get_chapters(book_id):
-    """Get chapters for a book"""
+    """Get chapters for a book - ordered by chapter_index"""
     try:
         supabase = get_supabase()
-        result = supabase.table("chapters").select("id, title, chapter_index").eq("book_id", book_id).order("chapter_index").execute()
+        result = supabase.table("chapters").select(
+            "id, title, chapter_index"
+        ).eq("book_id", book_id).order("chapter_index").execute()
         
-        # Get section counts for each chapter
+        # Get paragraph counts for each chapter
         chapters = []
         for ch in result.data:
-            section_count = supabase.table("sections").select("id", count="exact").eq("chapter_id", ch["id"]).execute()
-            audio_count = supabase.table("sections").select("id", count="exact").eq("chapter_id", ch["id"]).neq("audio_url", None).execute()
+            para_count = supabase.table("paragraphs").select("id", count="exact").eq("chapter_id", ch["id"]).execute()
             
             chapters.append({
-                **ch,
-                "section_count": section_count.count or 0,
-                "audio_count": audio_count.count or 0
+                "id": ch["id"],
+                "title": ch["title"],
+                "chapter_index": ch["chapter_index"],
+                "section_count": para_count.count or 0,
+                "audio_count": 0  # Will be updated when audio_url column is added
             })
         
         return jsonify(chapters)
@@ -112,11 +115,24 @@ def get_chapters(book_id):
 
 @app.route("/api/chapters/<chapter_id>/sections")
 def get_sections(chapter_id):
-    """Get sections for a chapter"""
+    """Get paragraphs (sections) for a chapter - ordered by paragraph_index"""
     try:
         supabase = get_supabase()
-        result = supabase.table("sections").select("id, section_index, text_ref, audio_url").eq("chapter_id", chapter_id).order("section_index").execute()
-        return jsonify(result.data)
+        result = supabase.table("paragraphs").select(
+            "id, paragraph_index, text"
+        ).eq("chapter_id", chapter_id).order("paragraph_index").execute()
+        
+        # Map to expected format
+        sections = []
+        for para in result.data:
+            sections.append({
+                "id": para["id"],
+                "section_index": para["paragraph_index"],
+                "text_ref": para["text"],
+                "audio_url": None  # Will be populated when audio is generated
+            })
+        
+        return jsonify(sections)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -197,24 +213,24 @@ def start_tts_job():
     """Start a TTS generation job on RunPod"""
     try:
         data = request.json
-        section_ids = data.get("section_ids", [])
+        section_ids = data.get("section_ids", [])  # These are paragraph IDs
         voice_url = data.get("voice_url")
         
         if not section_ids:
-            return jsonify({"error": "No sections specified"}), 400
+            return jsonify({"error": "No paragraphs specified"}), 400
         if not voice_url:
             return jsonify({"error": "No voice URL specified"}), 400
         
-        # Fetch section texts from Supabase
+        # Fetch paragraph texts from Supabase
         supabase = get_supabase()
         sections = []
         for sid in section_ids:
-            result = supabase.table("sections").select("id, text_ref").eq("id", sid).single().execute()
+            result = supabase.table("paragraphs").select("id, text").eq("id", sid).single().execute()
             if result.data:
-                sections.append({"id": result.data["id"], "text": result.data["text_ref"]})
+                sections.append({"id": result.data["id"], "text": result.data["text"]})
         
         if not sections:
-            return jsonify({"error": "No valid sections found"}), 400
+            return jsonify({"error": "No valid paragraphs found"}), 400
         
         # Start RunPod job
         payload = {
@@ -222,7 +238,8 @@ def start_tts_job():
                 "sections": sections,
                 "voice_url": voice_url,
                 "supabase_url": SUPABASE_URL,
-                "supabase_key": SUPABASE_KEY
+                "supabase_key": SUPABASE_KEY,
+                "table_name": "paragraphs"  # Use paragraphs table
             }
         }
         
@@ -250,47 +267,48 @@ def start_chapter_job():
         data = request.json
         chapter_id = data.get("chapter_id")
         voice_url = data.get("voice_url")
-        limit = data.get("limit")  # Optional: limit number of sections (for testing)
+        limit = data.get("limit")  # Optional: limit number of paragraphs (for testing)
         
         if not chapter_id or not voice_url:
             return jsonify({"error": "chapter_id and voice_url required"}), 400
         
-        # Get all sections for chapter
+        # Get all paragraphs for the chapter (ordered by paragraph_index)
         supabase = get_supabase()
-        query = supabase.table("sections").select("id").eq("chapter_id", chapter_id).order("section_index")
+        query = supabase.table("paragraphs").select("id").eq("chapter_id", chapter_id).order("paragraph_index")
         
         if limit:
             query = query.limit(limit)
         
         result = query.execute()
-        section_ids = [s["id"] for s in result.data]
+        para_ids = [p["id"] for p in result.data]
         
-        if not section_ids:
-            return jsonify({"error": "No sections found for chapter"}), 400
+        if not para_ids:
+            return jsonify({"error": "No paragraphs found for chapter"}), 400
         
         # Reuse start_tts_job logic
-        return start_tts_job_internal(section_ids, voice_url)
+        return start_tts_job_internal(para_ids, voice_url)
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-def start_tts_job_internal(section_ids, voice_url):
+def start_tts_job_internal(para_ids, voice_url):
     """Internal helper to start TTS job"""
     supabase = get_supabase()
     sections = []
     
-    for sid in section_ids:
-        result = supabase.table("sections").select("id, text_ref").eq("id", sid).single().execute()
+    for pid in para_ids:
+        result = supabase.table("paragraphs").select("id, text").eq("id", pid).single().execute()
         if result.data:
-            sections.append({"id": result.data["id"], "text": result.data["text_ref"]})
+            sections.append({"id": result.data["id"], "text": result.data["text"]})
     
     payload = {
         "input": {
             "sections": sections,
             "voice_url": voice_url,
             "supabase_url": SUPABASE_URL,
-            "supabase_key": SUPABASE_KEY
+            "supabase_key": SUPABASE_KEY,
+            "table_name": "paragraphs"  # Use paragraphs table
         }
     }
     
