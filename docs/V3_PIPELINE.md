@@ -99,31 +99,25 @@ Gå til: **http://localhost:8000/v3**
 
 ## Prompts
 
-### Paragraph Prompt (STRENGE REGLER - v2.0)
+### Paragraph Prompt (v3.0 - JSON-First)
 
-**Regel 1: Paragraph 0 = Kapiteltitel**
-- Paragraph 0 er ALTID kapitlets titel (f.eks. "I. Apprentice" eller "Chapter One: The Beginning")
-- Bogens titel (f.eks. "Morals and Dogma") må ALDRIG være Paragraph 0
+**Vigtig ændring:** Chapter titler kommer nu **direkte fra din JSON/mapping** uden ændringer.
 
-**Regel 2: Minimum ordantal**
-- Normale paragraphs SKAL indeholde minimum **20-30 ord** (ca. 3-4 linjer)
-- Enkeltlinjer som "It adds insolency to power." flettes automatisk sammen
-- Undtagelser: Overskrifter, citater ("..."), digte, dialog
+**Paragraph 0 = display_title fra JSON**
+- Præcis som du har skrevet det i JSON filen (f.eks. "Prefatory Note")
+- Gemini rører IKKE titlen - den tilføjes direkte som Paragraph 0
 
-**Regel 3: Lister holdes sammen**
-- A., B., C. lister → én paragraph
-- 1., 2., 3. lister → én paragraph
-- Undtagelse: Lister med 10+ punkter deles i 2
+**Paragraph 1+ = Content behandlet af Gemini:**
+- **Regel 1: Minimum ordantal** - 20-30 ord per paragraph
+- **Regel 2: Lister holdes sammen** - A., B., C. lister → én paragraph
+- **Regel 3: Tal til ord** - "1918" → "Nineteen Eighteen"
+- **Regel 4: Fjern støj** - Sidetal, filstørrelser, navigation
+- **Regel 5: OCR-rettelser** - Ret scanningsfejl
 
-**Regel 4: Tal til ord**
-- Konverterer alle tal til ord
-
-**Regel 5: Fjern støj**
-- Sidetal, filstørrelser, navigation, metadata
-
-**Regel 6: Post-processing validering**
-- Korte paragraphs flettes automatisk efter Gemini-output
-- Output: `[PARAGRAPH]` markers
+**Workflow:**
+1. Du redigerer JSON manuelt (display_title, node_type, etc.)
+2. V3 pipeline bruger din titel præcis som den er
+3. Gemini behandler kun content (tal→ord, rensning, paragraf-opdeling)
 
 ### Section Prompt (TTS)
 - Maks 250-300 tegn per sektion

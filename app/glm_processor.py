@@ -35,34 +35,29 @@ def get_gemini_model():
 # PROMPTS
 # ============================================
 
-PARAGRAPH_PROMPT = """INSTRUKTION TIL TEKST-EDITOR (STRENG PARAGRAF-OPDELING):
+PARAGRAPH_PROMPT = """INSTRUKTION TIL TEKST-EDITOR (CONTENT PARAGRAF-OPDELING):
 
 Du er en teksteditor der forbereder bøger til en lydbogs-app. Din opgave er at opdele kapiteltekst i PARAGRAPHS.
 
-═══════════════════════════════════════════════════════════════
-REGEL 1: PARAGRAPH 0 - KAPITELTITEL (OBLIGATORISK)
-═══════════════════════════════════════════════════════════════
-Det FØRSTE [PARAGRAPH] SKAL være kapitlets titel og eventuelt kapitelnummer.
-- KORREKT: "Chapter One: The Beginning" eller "I. Apprentice" eller "The Fellow-Craft"
-- FORKERT: Bogens titel (f.eks. "Morals and Dogma") må ALDRIG være Paragraph 0
-- Hvis kapitlets titel er f.eks. "I. Apprentice", så skriv det SAMLET som én Paragraph 0
+VIGTIGT: Du modtager KUN kapitlets indhold (content), IKKE titlen. Titlen håndteres separat.
+Start DIREKTE med første paragraph af indholdet.
 
 ═══════════════════════════════════════════════════════════════
-REGEL 2: MINIMUM ORDANTAL FOR NORMALE PARAGRAPHS
+REGEL 1: MINIMUM ORDANTAL FOR PARAGRAPHS
 ═══════════════════════════════════════════════════════════════
-Hver normal paragraph SKAL indeholde MINIMUM 20-30 ord (ca. 3-4 linjer tekst).
+Hver paragraph SKAL indeholde MINIMUM 20-30 ord (ca. 3-4 linjer tekst).
 - ALDRIG enkeltlinjer som "It adds insolency to power." - disse skal SAMLES med næste tekst
 - ALDRIG korte sætninger alene som "It is destruction and ruin." - saml dem!
 - Hvis flere korte sætninger følger hinanden, FLET DEM til én større paragraph
 
 UNDTAGELSER (korte paragraphs tilladt):
-- Kapiteltitler og underoverskrifter
+- Underoverskrifter i teksten
 - Direkte citater markeret med anførselstegn
 - Verslinjer fra digte
 - Korte udbrud eller dialog
 
 ═══════════════════════════════════════════════════════════════
-REGEL 3: LISTER SKAL HOLDES SAMMEN
+REGEL 2: LISTER SKAL HOLDES SAMMEN
 ═══════════════════════════════════════════════════════════════
 Når teksten har punktopstilling, BEHOLD dem i SAMME paragraph:
 - A., B., C. lister → én paragraph
@@ -73,15 +68,15 @@ Når teksten har punktopstilling, BEHOLD dem i SAMME paragraph:
 UNDTAGELSE: Hvis listen har MERE end 10 punkter, del op i 2 paragraphs.
 
 ═══════════════════════════════════════════════════════════════
-REGEL 4: TAL TIL ORD
+REGEL 3: TAL TIL ORD
 ═══════════════════════════════════════════════════════════════
 Konverter alle tal til ord:
-- "Chapter 4" → "Chapter Four"
 - "1918" → "Nineteen Eighteen"
 - "12 men" → "Twelve men"
+- "Chapter 4" → "Chapter Four" (hvis det er i teksten)
 
 ═══════════════════════════════════════════════════════════════
-REGEL 5: FJERN STØJ
+REGEL 4: FJERN STØJ
 ═══════════════════════════════════════════════════════════════
 Fjern ALT der ikke er bogindhold:
 - Sidetal (som "23 / 47")
@@ -90,7 +85,7 @@ Fjern ALT der ikke er bogindhold:
 - Navigation, metadata, forfatterinfo der gentages
 
 ═══════════════════════════════════════════════════════════════
-REGEL 6: OCR-RETTELSER
+REGEL 5: OCR-RETTELSER
 ═══════════════════════════════════════════════════════════════
 Ret scanningsfejl ("lie" → "he", "leas" → "has") men BEVAR forfatterens stil.
 
@@ -99,10 +94,9 @@ OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════
 Start DIREKTE med [PARAGRAPH] - ingen forklaringer.
 Hvert afsnit markeres med [PARAGRAPH] i starten.
+Medtag IKKE kapiteltitlen - den tilføjes automatisk som Paragraph 0.
 
 EKSEMPEL PÅ KORREKT OUTPUT:
-[PARAGRAPH]
-Chapter One: The Beginning
 [PARAGRAPH]
 This is a properly formatted paragraph with sufficient content. It contains multiple sentences that flow naturally together and provides meaningful context for the reader. The minimum word count ensures a smooth reading and listening experience.
 [PARAGRAPH]
@@ -197,7 +191,9 @@ def validate_and_merge_paragraphs(paragraphs: List[Dict], chapter_title: str = N
     """
     Post-process paragraphs to ensure minimum word counts.
     Merges consecutive short paragraphs (under 20 words) unless they're headings/quotes.
-    Ensures paragraph 0 is the chapter title, not the book title.
+    
+    NOTE: chapter_title is added as Paragraph 0 BEFORE this function is called.
+    This function only processes content paragraphs (p1+).
     """
     if not paragraphs:
         return paragraphs
@@ -209,22 +205,6 @@ def validate_and_merge_paragraphs(paragraphs: List[Dict], chapter_title: str = N
     for i, para in enumerate(paragraphs):
         text = para["text"]
         word_count = count_words(text)
-        
-        # First paragraph (index 0) should be chapter title
-        if i == 0:
-            # If chapter_title is provided, use it
-            if chapter_title:
-                validated.append({"id": "p0", "text": chapter_title})
-                # If original p0 was the chapter title, skip it; otherwise keep as p1
-                if text.lower().strip() != chapter_title.lower().strip():
-                    # Original content wasn't the title, add it
-                    if word_count >= MIN_WORDS or is_heading_or_special(text):
-                        validated.append({"id": f"p{len(validated)}", "text": text})
-                    else:
-                        pending_merge = text
-            else:
-                validated.append({"id": "p0", "text": text})
-            continue
         
         # Check if it's a heading/special content
         if is_heading_or_special(text):
@@ -263,7 +243,7 @@ def validate_and_merge_paragraphs(paragraphs: List[Dict], chapter_title: str = N
         else:
             validated.append({"id": "p0", "text": pending_merge})
     
-    # Re-number all paragraphs
+    # Re-number all paragraphs (starting from p0 for content)
     for i, para in enumerate(validated):
         para["id"] = f"p{i}"
     
@@ -276,46 +256,56 @@ def process_chapter_paragraphs(text: str, chapter_title: str = None) -> List[Dic
     
     Args:
         text: Raw chapter text content
-        chapter_title: The chapter title (will be used as Paragraph 0)
+        chapter_title: The chapter title (will be used as Paragraph 0 UNCHANGED)
     
     Returns list of paragraph dicts:
     [{"id": "p0", "text": "Chapter Title"}, {"id": "p1", "text": "..."}, ...]
+    
+    NOTE: The chapter_title is added EXACTLY as provided from the JSON/mapping.
+    Gemini only processes the content, not the title.
     """
+    # Start with empty list - we'll add title as p0 first
+    final_paragraphs = []
+    
+    # Add chapter title as Paragraph 0 (UNCHANGED from JSON)
+    if chapter_title:
+        final_paragraphs.append({"id": "p0", "text": chapter_title})
+    
+    # Process content through Gemini (if any)
     if not text or not text.strip():
-        return []
+        return final_paragraphs
     
     prompt = PARAGRAPH_PROMPT.format(text=text)
     result = call_gemini(prompt)
     
     # Parse [PARAGRAPH] markers
-    paragraphs = []
+    content_paragraphs = []
     parts = re.split(r'\[PARAGRAPH\]', result)
     
-    for i, part in enumerate(parts):
+    for part in parts:
         cleaned = part.strip()
         if cleaned:
-            paragraphs.append({
-                "id": f"p{i}",
-                "text": cleaned
-            })
+            content_paragraphs.append({"id": "", "text": cleaned})
     
     # If no markers found, split by double newlines
-    if len(paragraphs) <= 1 and result:
+    if len(content_paragraphs) <= 1 and result:
         parts = result.split('\n\n')
-        paragraphs = []
-        for i, part in enumerate(parts):
+        content_paragraphs = []
+        for part in parts:
             cleaned = part.strip()
             if cleaned:
-                paragraphs.append({
-                    "id": f"p{i}",
-                    "text": cleaned
-                })
+                content_paragraphs.append({"id": "", "text": cleaned})
     
-    # POST-PROCESSING: Validate and merge short paragraphs
-    paragraphs = validate_and_merge_paragraphs(paragraphs, chapter_title)
+    # POST-PROCESSING: Validate and merge short paragraphs (content only)
+    content_paragraphs = validate_and_merge_paragraphs(content_paragraphs)
     
-    logger.info(f"GLM created {len(paragraphs)} validated paragraphs from {len(text)} chars")
-    return paragraphs
+    # Append content paragraphs after title (renumber starting from p1)
+    for i, para in enumerate(content_paragraphs):
+        para["id"] = f"p{len(final_paragraphs) + i}"
+        final_paragraphs.append(para)
+    
+    logger.info(f"GLM created {len(final_paragraphs)} paragraphs (1 title + {len(content_paragraphs)} content) from {len(text)} chars")
+    return final_paragraphs
 
 
 def process_chapter_sections(text: str) -> List[Dict]:

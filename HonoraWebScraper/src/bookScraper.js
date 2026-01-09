@@ -1284,9 +1284,10 @@ export async function scrapeFullBook(bookUrl, progressCallback = null) {
         source_title: ch.title,
         has_content: true,
         parent_order_key: parentKey,
-        // Keep original chapter data for backwards compatibility
-        chapter_index: ch.index,
-        content: ch.content
+        // Keep chapter_index for linking to chapters array
+        chapter_index: ch.index
+        // NOTE: 'content' is intentionally NOT included here
+        // Content lives in 'chapters' array to avoid duplication
       });
     }
   }
