@@ -51,7 +51,9 @@ def get_supabase():
 def generate_cover_art_prompt(metadata: dict) -> str:
     """
     Generates a creative Nano Banana prompt for book covers.
-    Gives the AI more freedom while maintaining premium aesthetic.
+    
+    IMPORTANT: We ask for FLAT cover art only. The Python code will
+    create the 16:9 version with blurred background automatically.
     """
     metadata = metadata or {}
     title = metadata.get("title", "Untitled")
@@ -72,16 +74,19 @@ def generate_cover_art_prompt(metadata: dict) -> str:
 {book_context}
 
 ARTISTIC DIRECTION:
-Create a masterpiece of cover art. You have full creative freedom with the composition.
-The style should be rich, evocative, and high-quality.
-Use lighting and texture to create depth and atmosphere.
-Avoid generic layouts. Make it look like a bestseller or a classic edition.
+Create a masterpiece of cover art. You have full creative freedom with the artistic style.
+The design should be rich, evocative, and high-quality - like a bestseller or classic edition.
+Use lighting, color, and texture to create depth and atmosphere that matches the book's themes.
 
-COMPOSITION:
-Create the cover art centered in the image. The background should be a blurred, zoomed-in version of the cover art itself, creating a cohesive and premium look.
-Do NOT use a plain white or solid color background. Do NOT show a 3D book - just the flat cover art with the blurred background.
+CRITICAL REQUIREMENTS:
+1. Create FLAT, FULL-BLEED artwork that fills the ENTIRE image edge-to-edge
+2. NO 3D book mockup - just the flat cover art itself
+3. NO blurred background or frame around the art - the artwork IS the entire image
+4. The artwork should seamlessly extend to all edges without borders or margins
+5. Include the title "{title}" and author "{author}" with elegant, integrated typography
 
-The cover MUST include the title "{title}" and author "{author}" integrated naturally into the design, using elegant typography that matches the mood of the artwork.
+The final image should look like you're viewing JUST the front cover of a beautiful book,
+not a book placed on a background. The art and typography should fill the complete canvas.
 """
     return prompt
 
@@ -109,8 +114,13 @@ def crop_to_aspect_ratio(image: Image.Image, target_ratio: float, anchor: str = 
 
 def create_blurred_background_16_9(original: Image.Image) -> Image.Image:
     """
-    Creates a 16:9 image with the original in center and blurred background.
+    Creates a 16:9 image with the original cover art in center and blurred background.
+    
+    The background is a zoomed, blurred, and darkened version of the cover art itself,
+    creating a cohesive premium look while ensuring the cover is clearly visible.
     """
+    from PIL import ImageEnhance
+    
     # Target dimensions (HD)
     target_width = 1920
     target_height = 1080
@@ -118,7 +128,7 @@ def create_blurred_background_16_9(original: Image.Image) -> Image.Image:
     # Create canvas
     canvas = Image.new('RGB', (target_width, target_height), (0, 0, 0))
     
-    # 1. Create Background (Zoomed + Blurred)
+    # 1. Create Background (Zoomed + Blurred + Darkened)
     # Scale original so it fills the width
     bg_scale = target_width / original.width
     bg_width = target_width
@@ -137,12 +147,16 @@ def create_blurred_background_16_9(original: Image.Image) -> Image.Image:
     top = (bg_height - target_height) // 2
     background = background.crop((left, top, left + target_width, top + target_height))
     
-    # Apply heavy blur and darken
-    background = background.filter(ImageFilter.GaussianBlur(radius=50))
+    # Apply heavy blur
+    background = background.filter(ImageFilter.GaussianBlur(radius=60))
     
-    # 2. Place Foreground (Original)
-    # Scale to fit INSIDE height (with padding)
-    fg_height = int(target_height * 0.9) # 90% of height
+    # Darken the background for better cover visibility (reduce brightness to 40%)
+    enhancer = ImageEnhance.Brightness(background)
+    background = enhancer.enhance(0.4)
+    
+    # 2. Place Foreground (Original Cover Art - LARGE)
+    # Scale to fit 95% of height for maximum visibility
+    fg_height = int(target_height * 0.95)
     fg_scale = fg_height / original.height
     fg_width = int(original.width * fg_scale)
     
@@ -153,7 +167,6 @@ def create_blurred_background_16_9(original: Image.Image) -> Image.Image:
     paste_y = (target_height - fg_height) // 2
     
     canvas.paste(background, (0, 0))
-    # Add shadow/dimming to background maybe? skipping for simplicity
     canvas.paste(foreground, (paste_x, paste_y))
     
     return canvas
