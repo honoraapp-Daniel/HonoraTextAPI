@@ -29,8 +29,8 @@ RUN pip install --upgrade pip && \
 COPY HonoraLocalTTS/requirements_runpod.txt requirements.txt
 RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
-# Pre-download XTTS model (faster cold starts)
-RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || echo "Model will download on first use"
+# Pre-download XTTS model (MUST succeed for build to complete)
+RUN python -c "from TTS.api import TTS; print('Downloading XTTS model...'); tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2'); print('Model downloaded successfully!')"
 
 # Copy handler
 COPY HonoraLocalTTS/runpod_handler.py /handler.py
