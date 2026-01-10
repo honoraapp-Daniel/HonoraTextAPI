@@ -2,23 +2,15 @@
 # XTTS v2 with CUDA support
 # Handler Version: simple_mode_v3
 
-ARG GIT_SHA=unknown
-ARG BUILD_TIME=unknown
-
 FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
-
-# Pass build args as env vars for runtime access
-ENV GIT_SHA=${GIT_SHA}
-ENV BUILD_TIME=${BUILD_TIME}
 
 WORKDIR /app
 
-# System dependencies for audio + git
+# System dependencies for audio
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and fix blinker issue
@@ -29,8 +21,8 @@ RUN pip install --upgrade pip && \
 COPY HonoraLocalTTS/requirements_runpod.txt requirements.txt
 RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
-# Pre-download XTTS model (MUST succeed for build to complete)
-RUN python -c "from TTS.api import TTS; print('Downloading XTTS model...'); tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2'); print('Model downloaded successfully!')"
+# NOTE: Model download happens at container startup (handler.py)
+# XTTS model is ~1.5GB and too slow/unreliable for build-time download
 
 # Copy handler
 COPY HonoraLocalTTS/runpod_handler.py /handler.py
@@ -38,5 +30,5 @@ COPY HonoraLocalTTS/runpod_handler.py /handler.py
 # Create voice cache directory
 RUN mkdir -p /tmp/honora_voice_cache
 
-# Run handler
+# Run handler (model downloads on first start)
 CMD ["python", "-u", "/handler.py"]
