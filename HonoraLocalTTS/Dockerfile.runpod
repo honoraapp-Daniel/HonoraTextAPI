@@ -5,7 +5,7 @@ FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 WORKDIR /app
 
-# System dependencies for audio
+# System dependencies for audio + git
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
@@ -13,12 +13,13 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip first
-RUN pip install --upgrade pip
+# Upgrade pip and fix blinker issue
+RUN pip install --upgrade pip && \
+    pip install --ignore-installed blinker
 
-# Install Python dependencies
+# Install Python dependencies (ignore-installed to avoid conflicts)
 COPY HonoraLocalTTS/requirements_runpod.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt
 
 # Pre-download XTTS model (faster cold starts)
 RUN python -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')" || echo "Model will download on first use"
