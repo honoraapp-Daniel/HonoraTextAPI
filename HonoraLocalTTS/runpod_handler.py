@@ -1,9 +1,14 @@
 """
 Honora TTS Worker - RunPod Serverless Handler
-Processes sections using XTTS v2 and uploads audio to Supabase Storage
+Processes text using XTTS v2 and returns audio
+
+Supports two modes:
+1. Simple mode: text + speaker_wav_b64 -> returns audio_b64
+2. Batch mode: sections + voice_url + supabase credentials -> uploads to supabase
 """
 
 import os
+import base64
 import tempfile
 import traceback
 
@@ -39,127 +44,164 @@ def download_voice(voice_url: str) -> str:
     return temp_path
 
 
-def upload_to_supabase(supabase_url: str, supabase_key: str, section_id: str, audio_data: bytes) -> str:
-    """Upload audio to Supabase Storage and update section record"""
-    from supabase import create_client
-    
-    # Ensure URL has no trailing slash
-    supabase_url = supabase_url.rstrip("/")
-    supabase = create_client(supabase_url, supabase_key)
-    
-    # Upload to storage
-    file_path = f"{section_id}.wav"
-    
-    supabase.storage.from_("audio").upload(
-        file_path,
-        audio_data,
-        {"content-type": "audio/wav", "x-upsert": "true"}
-    )
-    
-    # Get public URL
-    audio_url = f"{supabase_url}/storage/v1/object/public/audio/{file_path}"
-    
-    # Update section record
-    supabase.table("sections").update({
-        "audio_url": audio_url
-    }).eq("id", section_id).execute()
-    
-    return audio_url
-
-
 def handler(job):
     """
     RunPod Serverless handler
     
-    Input:
+    Simple Mode Input:
+        text: Text to synthesize
+        speaker_wav_b64: Base64 encoded voice reference WAV
+        language: Language code (default: "en")
+    
+    Simple Mode Output:
+        audio_b64: Base64 encoded audio WAV
+        status: "complete" or "error"
+    
+    Batch Mode Input:
         sections: [{id, text}, ...]
         voice_url: URL to voice reference WAV
         supabase_url: Supabase project URL
         supabase_key: Supabase service role key
         language: Language code (default: "en")
-    
-    Output:
-        processed: number of sections processed
-        status: "complete" or "error"
     """
     import runpod
     
     try:
         job_input = job.get("input", {})
+        
+        # Check which mode we're in
+        text = job_input.get("text")
+        speaker_wav_b64 = job_input.get("speaker_wav_b64")
         sections = job_input.get("sections", [])
-        voice_url = job_input.get("voice_url")
-        supabase_url = job_input.get("supabase_url")
-        supabase_key = job_input.get("supabase_key")
-        language = job_input.get("language", "en")
         
-        if not sections:
-            return {"status": "error", "error": "No sections provided"}
-        
-        if not voice_url:
-            return {"status": "error", "error": "No voice URL provided"}
-        
-        if not supabase_url or not supabase_key:
-            return {"status": "error", "error": "Supabase credentials missing"}
-        
-        # Load model
-        model = get_tts_model()
-        
-        # Download voice reference
-        print(f"Downloading voice from: {voice_url}")
-        voice_path = download_voice(voice_url)
-        print("✅ Voice downloaded")
-        
-        processed = 0
-        errors = []
-        
-        for i, section in enumerate(sections):
-            section_id = section.get("id")
-            text = section.get("text", "").strip()
+        # ========== SIMPLE MODE ==========
+        if text and speaker_wav_b64:
+            language = job_input.get("language", "en")
             
-            if not text:
-                print(f"Skipping empty section: {section_id}")
-                continue
+            print(f"Simple mode: Generating audio for: {text[:50]}...")
             
-            try:
-                print(f"[{i+1}/{len(sections)}] Processing: {text[:50]}...")
+            # Load model
+            model = get_tts_model()
+            
+            # Decode voice reference
+            voice_data = base64.b64decode(speaker_wav_b64)
+            voice_path = tempfile.mktemp(suffix=".wav")
+            with open(voice_path, "wb") as f:
+                f.write(voice_data)
+            print("✅ Voice decoded")
+            
+            # Generate audio
+            output_path = tempfile.mktemp(suffix=".wav")
+            model.tts_to_file(
+                text=text,
+                speaker_wav=voice_path,
+                language=language,
+                file_path=output_path
+            )
+            print("✅ Audio generated")
+            
+            # Read and encode audio
+            with open(output_path, "rb") as f:
+                audio_data = f.read()
+            audio_b64 = base64.b64encode(audio_data).decode()
+            
+            # Cleanup
+            os.unlink(voice_path)
+            os.unlink(output_path)
+            
+            return {
+                "status": "complete",
+                "audio_b64": audio_b64
+            }
+        
+        # ========== BATCH MODE ==========
+        elif sections:
+            voice_url = job_input.get("voice_url")
+            supabase_url = job_input.get("supabase_url")
+            supabase_key = job_input.get("supabase_key")
+            language = job_input.get("language", "en")
+            
+            if not voice_url:
+                return {"status": "error", "error": "No voice URL provided"}
+            
+            if not supabase_url or not supabase_key:
+                return {"status": "error", "error": "Supabase credentials missing"}
+            
+            # Load model
+            model = get_tts_model()
+            
+            # Download voice reference
+            print(f"Downloading voice from: {voice_url}")
+            voice_path = download_voice(voice_url)
+            print("✅ Voice downloaded")
+            
+            processed = 0
+            errors = []
+            
+            from supabase import create_client
+            supabase_url = supabase_url.rstrip("/")
+            supabase = create_client(supabase_url, supabase_key)
+            
+            for i, section in enumerate(sections):
+                section_id = section.get("id")
+                text = section.get("text", "").strip()
                 
-                # Generate audio
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    model.tts_to_file(
-                        text=text,
-                        speaker_wav=voice_path,
-                        language=language,
-                        file_path=tmp.name
+                if not text:
+                    print(f"Skipping empty section: {section_id}")
+                    continue
+                
+                try:
+                    print(f"[{i+1}/{len(sections)}] Processing: {text[:50]}...")
+                    
+                    # Generate audio
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                        model.tts_to_file(
+                            text=text,
+                            speaker_wav=voice_path,
+                            language=language,
+                            file_path=tmp.name
+                        )
+                        
+                        # Read audio data
+                        with open(tmp.name, "rb") as f:
+                            audio_data = f.read()
+                        
+                        os.unlink(tmp.name)
+                    
+                    # Upload to Supabase
+                    file_path = f"{section_id}.wav"
+                    supabase.storage.from_("audio").upload(
+                        file_path,
+                        audio_data,
+                        {"content-type": "audio/wav", "x-upsert": "true"}
                     )
                     
-                    # Read audio data
-                    with open(tmp.name, "rb") as f:
-                        audio_data = f.read()
+                    audio_url = f"{supabase_url}/storage/v1/object/public/audio/{file_path}"
+                    supabase.table("sections").update({
+                        "audio_url": audio_url
+                    }).eq("id", section_id).execute()
                     
-                    # Clean up temp file
-                    os.unlink(tmp.name)
-                
-                # Upload to Supabase
-                audio_url = upload_to_supabase(supabase_url, supabase_key, section_id, audio_data)
-                print(f"✅ Section complete: {audio_url}")
-                
-                processed += 1
-                
-            except Exception as e:
-                error_msg = f"Section {section_id}: {str(e)}"
-                print(f"❌ Error: {error_msg}")
-                errors.append(error_msg)
+                    print(f"✅ Section complete: {audio_url}")
+                    processed += 1
+                    
+                except Exception as e:
+                    error_msg = f"Section {section_id}: {str(e)}"
+                    print(f"❌ Error: {error_msg}")
+                    errors.append(error_msg)
+            
+            # Clean up voice file
+            if os.path.exists(voice_path):
+                os.unlink(voice_path)
+            
+            return {
+                "status": "complete",
+                "processed": processed,
+                "total": len(sections),
+                "errors": errors if errors else None
+            }
         
-        # Clean up voice file
-        if os.path.exists(voice_path):
-            os.unlink(voice_path)
-        
-        return {
-            "status": "complete",
-            "processed": processed,
-            "total": len(sections),
-            "errors": errors if errors else None
-        }
+        else:
+            return {"status": "error", "error": "No text or sections provided"}
         
     except Exception as e:
         traceback.print_exc()
