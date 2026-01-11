@@ -39,3 +39,6 @@ docs/*FIXES*.md
 
 # Agent artifacts (local planning)
 .agent/
+
+# Local data storage
+data/

@@ -149,8 +149,10 @@ def load_json_data(state: dict) -> dict:
         # Normalize excessive newlines in chapter content
         if data and "chapters" in data:
             for chapter in data["chapters"]:
-                if chapter.get("content"):
-                    chapter["content"] = normalize_whitespace(chapter["content"])
+                # Use content or text field
+                content = chapter.get("content") or chapter.get("text")
+                if content:
+                    chapter["content"] = normalize_whitespace(content)
         
         return data
     except Exception as e:
@@ -261,7 +263,7 @@ async def phase_metadata(job_id: str) -> dict:
             # Generate synopsis and category from chapter content
             print("[PIPELINE_V2] Generating synopsis and category from chapter content...")
             chapter_sample = "\n\n".join([
-                ch.get("content", "")[:2000] 
+                (ch.get("content") or ch.get("text") or "")[:2000] 
                 for ch in json_data.get("chapters", [])[:3]
             ])
             source_url = json_data.get("sourceUrl")
@@ -360,7 +362,8 @@ async def phase_detect_chapters(job_id: str) -> dict:
             
             # Extract chapters directly from JSON
             for ch in json_data.get("chapters", []):
-                content = ch.get("content", "")
+                # Use content or text field
+                content = ch.get("content") or ch.get("text") or ""
                 chapters.append({
                     "index": ch.get("index", len(chapters) + 1),
                     "title": ch.get("title", f"Chapter {len(chapters) + 1}"),

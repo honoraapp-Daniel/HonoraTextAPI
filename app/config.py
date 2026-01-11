@@ -51,6 +51,10 @@ class Config:
     @classmethod
     def load(cls) -> None:
         """Load configuration from environment variables."""
+        # Load .env file if present
+        from dotenv import load_dotenv
+        load_dotenv()
+
         # API Keys - Required
         cls.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         cls.NANO_BANANA_API_KEY = os.getenv("NANO_BANANA_API_KEY")

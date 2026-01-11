@@ -327,7 +327,7 @@ async def v3_extract_chapters(job_id: str) -> Dict:
                 chapter_data = {
                     "index": ch.get("index", len(chapters)),
                     "title": ch.get("title", f"Chapter {len(chapters)+1}"),
-                    "raw_content": ch.get("content", ""),
+                    "raw_content": ch.get("content") or ch.get("text") or "",
                     "content_type": ch.get("content_type", "chapter"),  # prefatory, chapter, book, appendix
                     "paragraphs": [],
                     "sections": [],
