@@ -14,6 +14,11 @@ import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================

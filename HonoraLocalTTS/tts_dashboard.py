@@ -11,6 +11,12 @@ import threading
 import queue
 import logging
 from flask import Flask, render_template, request, jsonify, send_from_directory
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()  # Load from .env in current directory
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))  # Also try parent directory
+
 from supabase import create_client
 
 # Import our engine manager
