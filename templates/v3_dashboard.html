@@ -529,7 +529,7 @@
                         </div>
                         <div class="status-item">
                             <span class="status-label">Year</span>
-                            <input type="text" class="meta-input" id="meta-year" value="—" style="width: 100px;">
+                            <input type="text" class="meta-input" id="meta-year" value="—">
                         </div>
                         <div class="status-item">
                             <span class="status-label">Publisher</span>
@@ -537,16 +537,15 @@
                         </div>
                         <div class="status-item">
                             <span class="status-label">Language</span>
-                            <input type="text" class="meta-input" id="meta-language" value="—" style="width: 120px;">
+                            <input type="text" class="meta-input" id="meta-language" value="—">
                         </div>
                         <div class="status-item">
-                            <span class="status-label">Original Language</span>
-                            <input type="text" class="meta-input" id="meta-original-language" value="—"
-                                style="width: 120px;">
+                            <span class="status-label">Original Lang.</span>
+                            <input type="text" class="meta-input" id="meta-original-language" value="—">
                         </div>
-                        <div class="status-item">
+                        <div class="status-item" style="grid-column: span 2;">
                             <span class="status-label">Category</span>
-                            <select class="meta-input" id="meta-category" style="width: 180px;">
+                            <select class="meta-input" id="meta-category">
                                 <option value="">— Select —</option>
                                 <option value="Philosophy">Philosophy</option>
                                 <option value="Religion">Religion</option>
@@ -564,34 +563,18 @@
                         </div>
                     </div>
                     <div style="margin-top: 12px;">
-                        <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">Synopsis</div>
-                        <textarea id="meta-synopsis" class="meta-input"
-                            style="width: 100%; height: 80px; resize: vertical; background: var(--bg); padding: 12px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5;"
-                            placeholder="Enter book synopsis..."></textarea>
+                        <textarea id="meta-synopsis" class="meta-input" style="height: 80px;"
+                            placeholder="Synopsis..."></textarea>
                     </div>
                     <div style="margin-top: 12px;">
-                        <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 4px;">📜 Quote of the Day
-                        </div>
-                        <textarea id="meta-quote" class="meta-input"
-                            style="width: 100%; height: 60px; resize: vertical; background: var(--bg); padding: 12px; border-radius: 8px; font-style: italic; font-size: 0.9rem; border-left: 3px solid var(--accent);"
-                            placeholder="Enter a memorable quote from the book..."></textarea>
+                        <textarea id="meta-quote" class="meta-input" style="height: 60px; font-style: italic;"
+                            placeholder="Quote of the day..."></textarea>
                     </div>
                     <button class="btn" id="save-metadata-btn" style="background: #f59e0b; margin-top: 12px;">💾 Save
                         Metadata</button>
                 </div>
-            </div>
-
-            <!-- Log Card -->
-            <div class="card">
-                <h2>📋 Activity Log</h2>
-                <div class="log" id="log">
-                    <div class="log-entry">
-                        <span class="log-time">—</span>
-                        Ready to process...
-                    </div>
-                </div>
-            </div>
-        </div>
+            </div> <!-- End Right Column -->
+        </div> <!-- End Grid -->
     </div>
 
     <script>
@@ -672,11 +655,13 @@
                 }
 
                 currentJobId = data.job_id;
-                document.getElementById('job-id').textContent = data.job_id.substring(0, 8) + '...';
-                updatePhase('created');
+                // Update Log instead of visible job ID field which was removed
                 addLog(`✅ Job created: ${data.job_id.substring(0, 8)}...`);
+                updatePhase('created');
 
-                uploadBtn.textContent = '✅ Uploaded';
+                // Switch buttons: Hide Upload, Show Run
+                uploadBtn.style.display = 'none';
+                runBtn.style.display = 'block';
                 runBtn.disabled = false;
 
             } catch (e) {
@@ -706,7 +691,7 @@
                 } else {
                     addLog('✅ Pipeline complete!');
                     updateResults(data);
-                    // Enable upload button
+                    // Enable upload to supabase button
                     document.getElementById('upload-supabase-btn').disabled = false;
                 }
             } catch (e) {
@@ -714,7 +699,7 @@
             }
 
             clearInterval(pollInterval);
-            runBtn.textContent = '✅ Complete';
+            runBtn.textContent = '✅ Pipeline Finished';
             await pollStatus(); // Final update
         });
 
@@ -733,17 +718,18 @@
 
                 if (data.error) {
                     addLog(`❌ ${data.error}`, 'error');
-                    uploadSupabaseBtn.textContent = '📤 Upload to Supabase';
+                    uploadSupabaseBtn.textContent = '📤 Push to Supabase';
                     uploadSupabaseBtn.disabled = false;
                 } else {
                     addLog(`✅ Uploaded to Supabase! Book ID: ${data.book_id?.substring(0, 8)}...`);
                     addLog(`📊 ${data.chapters} chapters, ${data.sections} sections, ${data.paragraphs} paragraphs`);
-                    uploadSupabaseBtn.textContent = '✅ Uploaded';
-                    uploadSupabaseBtn.style.background = '#22c55e';
+                    
+                    uploadSupabaseBtn.style.display = 'none'; // Hide button on success
+                    document.getElementById('upload-success-msg').style.display = 'block'; // Show big success message
                 }
             } catch (e) {
                 addLog(`❌ Upload error: ${e.message}`, 'error');
-                uploadSupabaseBtn.textContent = '📤 Upload to Supabase';
+                uploadSupabaseBtn.textContent = '📤 Push to Supabase';
                 uploadSupabaseBtn.disabled = false;
             }
         });
@@ -765,33 +751,35 @@
                 document.getElementById('progress-text').textContent = `${processed}/${total}`;
                 document.getElementById('progress-fill').style.width =
                     total > 0 ? `${(processed / total) * 100}%` : '0%';
-                document.getElementById('current-chapter').textContent =
-                    progress.current_chapter || '—';
+                
+                // Update Current Chapter if element exists
+                const currChEl = document.getElementById('current-chapter');
+                if (currChEl) currChEl.textContent = progress.current_chapter || '—';
+                
                 document.getElementById('chapters-count').textContent = data.chapters_count || 0;
 
                 if (data.cover_urls?.cover_art_url) {
-                    document.getElementById('cover-preview').innerHTML =
-                        `<img src="${data.cover_urls.cover_art_url}" alt="Cover">`;
+                    // document.getElementById('cover-preview').innerHTML =
+                    //    `<img src="${data.cover_urls.cover_art_url}" alt="Cover">`;
                 }
 
                 if (data.metadata?.author) {
                     document.getElementById('metadata-status').textContent = '✅';
 
-                    // Show metadata details
-                    document.getElementById('metadata-details').style.display = 'block';
-                    document.getElementById('meta-title').value = data.metadata.title || '';
-                    document.getElementById('meta-author').value = data.metadata.author || '';
-                    document.getElementById('meta-year').value = data.metadata.publishing_year || data.metadata.year || '';
-                    document.getElementById('meta-publisher').value = data.metadata.publisher || '';
-                    document.getElementById('meta-language').value = data.metadata.language || 'English';
-                    document.getElementById('meta-original-language').value = data.metadata.original_language || 'English';
-                    document.getElementById('meta-category').value = data.metadata.category || '';
-
-                    // Set synopsis
-                    document.getElementById('meta-synopsis').value = data.metadata.synopsis || '';
-
-                    // Set quote
-                    document.getElementById('meta-quote').value = data.metadata.book_of_the_day_quote || '';
+                    // Show metadata card
+                    document.getElementById('metadata-card').style.display = 'block';
+                    
+                    if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                        document.getElementById('meta-title').value = data.metadata.title || '';
+                        document.getElementById('meta-author').value = data.metadata.author || '';
+                        document.getElementById('meta-year').value = data.metadata.publishing_year || data.metadata.year || '';
+                        document.getElementById('meta-publisher').value = data.metadata.publisher || '';
+                        document.getElementById('meta-language').value = data.metadata.language || 'English';
+                        document.getElementById('meta-original-language').value = data.metadata.original_language || 'English';
+                        document.getElementById('meta-category').value = data.metadata.category || '';
+                        document.getElementById('meta-synopsis').value = data.metadata.synopsis || '';
+                        document.getElementById('meta-quote').value = data.metadata.book_of_the_day_quote || '';
+                    }
                 }
 
             } catch (e) {
