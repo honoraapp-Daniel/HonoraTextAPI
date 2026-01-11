@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir flask gunicorn supabase python-dotenv requests
 
 # Copy dashboard files
 COPY HonoraLocalTTS/tts_dashboard.py .
+COPY HonoraLocalTTS/tts_engines.py .
 COPY HonoraLocalTTS/templates templates/
 
 # Railway uses $PORT env var
