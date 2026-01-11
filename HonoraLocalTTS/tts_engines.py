@@ -502,6 +502,164 @@ class XTTSRunPodEngine(TTSEngine):
 
 
 # =============================================================================
+# XTTS REPLICATE ENGINE (Paid, Fast, High Quality, Simple!)
+# =============================================================================
+
+class XTTSReplicateEngine(TTSEngine):
+    """
+    XTTS-v2 via Replicate.com API
+    
+    Much simpler than RunPod - no Docker builds, just API calls.
+    Uses lucataco/xtts-v2 model.
+    Cost: ~$0.015 per run
+    """
+    
+    MODEL = "lucataco/xtts-v2:684bc3855b37866c0c65add2ff39c78f3dea3f4ff103a436465326e0f438d55e"
+    
+    def __init__(self):
+        self.api_token = os.getenv("REPLICATE_API_TOKEN", "")
+        self._voice_folder = "AI Stemmer Honora"
+        self._supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        self._supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    
+    @property
+    def name(self) -> str:
+        return "XTTS-Replicate"
+    
+    @property
+    def description(self) -> str:
+        return "High-quality voice cloning on GPU via Replicate (~$0.015/run)"
+    
+    def is_configured(self) -> bool:
+        return bool(self.api_token)
+    
+    def get_voices(self) -> list:
+        """Get available voices from local folder"""
+        voices = []
+        if os.path.exists(self._voice_folder):
+            for f in os.listdir(self._voice_folder):
+                if f.endswith(".wav"):
+                    voices.append({
+                        "id": f,
+                        "name": f.replace("AI_Voice_Honora_", "").replace(".wav", ""),
+                        "path": os.path.join(self._voice_folder, f),
+                        "source": "xtts-replicate"
+                    })
+        return voices
+    
+    def _get_voice_url(self, voice: str) -> str:
+        """Get Supabase URL for voice file"""
+        # Find local voice file
+        voice_path = None
+        for v in self.get_voices():
+            if v["id"] == voice or v["name"].lower() == voice.lower():
+                voice_path = v["path"]
+                break
+        
+        if not voice_path:
+            voices = self.get_voices()
+            if voices:
+                voice_path = voices[0]["path"]
+            else:
+                return None
+        
+        voice_filename = os.path.basename(voice_path)
+        
+        # Upload to Supabase if configured
+        if self._supabase_url and self._supabase_key:
+            try:
+                from supabase import create_client
+                supabase = create_client(self._supabase_url, self._supabase_key)
+                
+                with open(voice_path, "rb") as f:
+                    voice_data = f.read()
+                
+                supabase.storage.from_("voices").upload(
+                    voice_filename,
+                    voice_data,
+                    {"content-type": "audio/wav", "x-upsert": "true"}
+                )
+                logger.info(f"Voice uploaded to Supabase: {voice_filename}")
+            except Exception as e:
+                logger.debug(f"Voice upload note: {e}")
+        
+        return f"{self._supabase_url}/storage/v1/object/public/voices/{voice_filename}"
+    
+    def generate(self, text: str, voice: str, language: str, output_path: str) -> bool:
+        """Generate audio using Replicate XTTS API"""
+        if not self.is_configured():
+            logger.error("Replicate not configured. Set REPLICATE_API_TOKEN")
+            return False
+        
+        request_id = str(uuid.uuid4())[:8]
+        
+        try:
+            import replicate
+            import requests
+            from replicate.exceptions import ReplicateError
+            
+            # Get voice URL
+            voice_url = self._get_voice_url(voice)
+            if not voice_url:
+                logger.error("No voice files found")
+                return False
+            
+            logger.info(f"[{request_id}] XTTS-Replicate: Generating...")
+            logger.info(f"[{request_id}] Voice URL: {voice_url}")
+            start = time.time()
+            
+            # Call Replicate API with rate limit retry
+            max_retries = 15  # More tolerant of rate limiting
+            output = None
+            
+            for attempt in range(1, max_retries + 1):
+                try:
+                    output = replicate.run(
+                        self.MODEL,
+                        input={
+                            "text": text,
+                            "speaker": voice_url,
+                            "language": language or "en",
+                            "cleanup_voice": True
+                        }
+                    )
+                    break  # Success, exit retry loop
+                    
+                except ReplicateError as e:
+                    if "429" in str(e) or "rate limit" in str(e).lower():
+                        wait_time = 3 * attempt  # 3s, 6s, 9s, etc.
+                        logger.warning(f"[{request_id}] Rate limited, waiting {wait_time}s (attempt {attempt}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        raise  # Re-raise non-rate-limit errors
+            
+            # Output is a URL to the generated audio
+            if output:
+                audio_url = str(output)
+                logger.info(f"[{request_id}] Audio generated: {audio_url}")
+                
+                # Download the audio file
+                response = requests.get(audio_url, timeout=60)
+                response.raise_for_status()
+                
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+                
+                elapsed = time.time() - start
+                logger.info(f"[{request_id}] ✅ XTTS-Replicate: Generated in {elapsed:.1f}s")
+                return os.path.exists(output_path)
+            else:
+                logger.error(f"[{request_id}] No output from Replicate after {max_retries} attempts")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[{request_id}] XTTS-Replicate error: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+
+# =============================================================================
 # ENGINE MANAGER
 # =============================================================================
 
@@ -513,6 +671,7 @@ class TTSEngineManager:
             "piper": PiperEngine(),
             "xtts-local": XTTSLocalEngine(),
             "xtts-runpod": XTTSRunPodEngine(),
+            "xtts-replicate": XTTSReplicateEngine(),
         }
         self._default = "piper"  # Default to fastest free option
     
@@ -533,8 +692,12 @@ class TTSEngineManager:
                 "available": True
             }
             
-            # Check if RunPod is configured
+            # Check if engines are configured
             if key == "xtts-runpod":
+                status["available"] = engine.is_configured()
+                if not status["available"]:
+                    status["description"] += " (not configured)"
+            elif key == "xtts-replicate":
                 status["available"] = engine.is_configured()
                 if not status["available"]:
                     status["description"] += " (not configured)"
@@ -549,3 +712,4 @@ class TTSEngineManager:
 
 # Global instance
 engine_manager = TTSEngineManager()
+

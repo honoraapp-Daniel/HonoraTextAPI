@@ -16,6 +16,17 @@ from app.logger import get_logger
 from app.glm_processor import process_full_chapter
 from app.cover_art import generate_cover_image
 from app.metadata import extract_metadata_with_gemini
+from app.audio_segments import (
+    process_segments,
+    group_segments,
+    get_audio_duration_ms,
+    concat_group_audio,
+    upload_group_audio,
+    save_groups_to_supabase,
+    update_chapter_audio_version,
+    create_chapter_build,          # TTS-First v3.1
+    generate_paragraph_spans       # TTS-First v3.1
+)
 
 logger = get_logger(__name__)
 
@@ -585,6 +596,280 @@ async def v3_generate_metadata_and_cover(job_id: str) -> Dict:
 
 
 # ============================================
+# TTS AUDIO GENERATION (v3.1 Architecture)
+# ============================================
+
+async def v3_generate_tts_audio(
+    job_id: str,
+    engine: str = "runpod",  # "runpod", "local", "piper"
+    voice: str = "default",
+    language: str = "en"
+) -> Dict:
+    """
+    Generate TTS audio for all chapters using the v3.1 segment/group architecture.
+    
+    This phase:
+    1. Takes sections from GLM processing
+    2. Merges short segments (<60 chars) and clamps long ones (>420 chars)
+    3. Generates TTS audio for each segment
+    4. Measures actual audio duration
+    5. Groups segments into ~35 second audio_groups
+    6. Concatenates group audio files
+    7. Uploads to Supabase (tts_segments, audio_groups tables)
+    
+    Args:
+        job_id: Pipeline job ID
+        engine: TTS engine to use ("runpod", "local", "piper")
+        voice: Voice to use for TTS
+        language: Language code (e.g., "en", "da")
+    
+    Returns:
+        Dict with success status and stats
+    """
+    import tempfile
+    import sys
+    
+    # Add HonoraLocalTTS to path for TTS engines
+    tts_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "HonoraLocalTTS")
+    if tts_path not in sys.path:
+        sys.path.insert(0, tts_path)
+    
+    from tts_engines import XTTSRunPodEngine, XTTSLocalEngine, PiperEngine
+    
+    state = get_v3_job_state(job_id)
+    if not state:
+        raise ValueError(f"Job not found: {job_id}")
+    
+    if state["phase"] not in ["chapters_processed", "complete", "uploaded"]:
+        raise ValueError(f"Chapters not processed yet. Current phase: {state['phase']}")
+    
+    state["phase"] = "generating_tts"
+    save_v3_job_state(job_id, state)
+    
+    # Initialize TTS engine
+    if engine == "runpod":
+        tts_engine = XTTSRunPodEngine()
+    elif engine == "local":
+        tts_engine = XTTSLocalEngine()
+    elif engine == "piper":
+        tts_engine = PiperEngine()
+    else:
+        raise ValueError(f"Unknown TTS engine: {engine}")
+    
+    logger.info(f"[V3.1] Starting TTS generation with {engine} engine")
+    
+    # Stats
+    total_segments = 0
+    total_groups = 0
+    total_chapters_processed = 0
+    errors = []
+    
+    chapters = state.get("chapters", [])
+    
+    # Create temp directory for audio files
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for ch_idx, chapter in enumerate(chapters):
+            chapter_title = chapter.get("title", f"Chapter {ch_idx + 1}")
+            
+            # Skip if no sections
+            sections = chapter.get("sections", [])
+            if not sections:
+                logger.warning(f"[V3.1] No sections for chapter: {chapter_title}")
+                continue
+            
+            # Skip if excluded from audio
+            if chapter.get("exclude_from_audio"):
+                logger.info(f"[V3.1] Skipping excluded chapter: {chapter_title}")
+                continue
+            
+            logger.info(f"[V3.1] Processing chapter {ch_idx + 1}/{len(chapters)}: {chapter_title}")
+            
+            try:
+                # Step 1: Process sections into segments (merge short, clamp long)
+                section_texts = [s.get("text", "") for s in sections if s.get("text")]
+                segments = process_segments(section_texts)
+                
+                logger.info(f"[V3.1] {len(section_texts)} sections -> {len(segments)} segments")
+                
+                # Step 2: Generate TTS for each segment
+                for seg_idx, segment in enumerate(segments):
+                    seg_text = segment["text"]
+                    audio_path = os.path.join(temp_dir, f"seg_{ch_idx}_{seg_idx}.wav")
+                    
+                    # Generate TTS
+                    success = tts_engine.generate(
+                        text=seg_text,
+                        voice=voice,
+                        language=language,
+                        output_path=audio_path
+                    )
+                    
+                    if success and os.path.exists(audio_path):
+                        # Measure actual duration
+                        duration_ms = get_audio_duration_ms(audio_path)
+                        segment["audio_path"] = audio_path
+                        segment["duration_ms"] = duration_ms
+                        logger.debug(f"[V3.1] Segment {seg_idx}: {duration_ms}ms")
+                    else:
+                        logger.error(f"[V3.1] TTS failed for segment {seg_idx}")
+                        segment["duration_ms"] = 5000  # Fallback estimate
+                
+                # Step 3: Group segments by duration (~35 sec per group)
+                groups = group_segments(segments)
+                
+                logger.info(f"[V3.1] Created {len(groups)} audio groups")
+                
+                # Step 4: Concatenate each group's audio
+                chapter_id = chapter.get("db_chapter_id")  # Will be set during upload
+                
+                for group in groups:
+                    try:
+                        group_audio_path = concat_group_audio(group, temp_dir)
+                        group["local_audio_path"] = group_audio_path
+                        
+                        # Measure final group duration
+                        group["duration_ms"] = get_audio_duration_ms(group_audio_path)
+                    except Exception as e:
+                        logger.error(f"[V3.1] Failed to concat group {group['group_index']}: {e}")
+                
+                # Store groups in chapter for later upload
+                chapter["audio_groups"] = groups
+                chapter["segments"] = segments
+                total_segments += len(segments)
+                total_groups += len(groups)
+                total_chapters_processed += 1
+                
+            except Exception as e:
+                logger.error(f"[V3.1] Error processing chapter {chapter_title}: {e}")
+                errors.append({"chapter": chapter_title, "error": str(e)})
+        
+        # Save state with TTS data
+        state["chapters"] = chapters
+        state["phase"] = "tts_generated"
+        state["tts_stats"] = {
+            "engine": engine,
+            "voice": voice,
+            "language": language,
+            "total_segments": total_segments,
+            "total_groups": total_groups,
+            "chapters_processed": total_chapters_processed,
+            "errors": errors
+        }
+        save_v3_job_state(job_id, state)
+    
+    logger.info(f"[V3.1] TTS generation complete: {total_segments} segments, {total_groups} groups")
+    
+    return {
+        "success": len(errors) == 0,
+        "total_segments": total_segments,
+        "total_groups": total_groups,
+        "chapters_processed": total_chapters_processed,
+        "errors": errors
+    }
+
+
+async def v3_upload_audio_to_supabase(job_id: str) -> Dict:
+    """
+    Upload generated TTS audio groups to Supabase.
+    
+    TTS-First v3.1: Now creates chapter_build and paragraph_spans.
+    
+    This uploads:
+    - Audio files to Supabase Storage (audio bucket)
+    - Creates chapter_build (atomic versioning)
+    - tts_segments records (with build_id)
+    - audio_groups records (with build_id)
+    - paragraph_spans records (links paragraphs to segments)
+    - Updates chapter.audio_version to "v2"
+    
+    Should be called after v3_generate_tts_audio.
+    """
+    state = get_v3_job_state(job_id)
+    if not state:
+        raise ValueError(f"Job not found: {job_id}")
+    
+    if state["phase"] != "tts_generated":
+        raise ValueError(f"TTS not generated yet. Current phase: {state['phase']}")
+    
+    state["phase"] = "uploading_audio"
+    save_v3_job_state(job_id, state)
+    
+    chapters = state.get("chapters", [])
+    total_groups_uploaded = 0
+    total_segments_saved = 0
+    total_spans_created = 0
+    
+    for chapter in chapters:
+        groups = chapter.get("audio_groups", [])
+        if not groups:
+            continue
+        
+        chapter_id = chapter.get("db_chapter_id")
+        if not chapter_id:
+            logger.warning(f"[V3.1] No chapter_id for {chapter.get('title')}, skipping audio upload")
+            continue
+        
+        logger.info(f"[V3.1] Uploading audio for: {chapter.get('title')}")
+        
+        # Upload each group's audio file
+        for group in groups:
+            local_path = group.get("local_audio_path")
+            if local_path and os.path.exists(local_path):
+                audio_url = upload_group_audio(local_path, chapter_id, group["group_index"])
+                group["audio_url"] = audio_url
+                total_groups_uploaded += 1
+        
+        # TTS-First v3.1: Create chapter_build for atomic versioning
+        segments = chapter.get("segments", [])
+        build_id = create_chapter_build(chapter_id, segments)
+        
+        # Build paragraph_id_map (segment_index -> paragraph_id)
+        paragraphs = chapter.get("paragraphs", [])
+        paragraph_id_map = {}
+        
+        # Simple 1:1 mapping if same count, otherwise proportional
+        if len(paragraphs) == len(segments):
+            for i, p in enumerate(paragraphs):
+                if p.get("db_paragraph_id"):
+                    paragraph_id_map[i] = p["db_paragraph_id"]
+        else:
+            # Proportional mapping
+            if paragraphs and segments:
+                for seg_idx in range(len(segments)):
+                    para_idx = int(seg_idx * len(paragraphs) / len(segments))
+                    if para_idx < len(paragraphs) and paragraphs[para_idx].get("db_paragraph_id"):
+                        paragraph_id_map[seg_idx] = paragraphs[para_idx]["db_paragraph_id"]
+        
+        # Save to Supabase tables (with build_id)
+        group_ids = save_groups_to_supabase(chapter_id, build_id, groups, paragraph_id_map)
+        total_segments_saved += sum(len(g.get("segments", [])) for g in groups)
+        
+        # TTS-First v3.1: Generate paragraph_spans
+        span_ids = generate_paragraph_spans(chapter_id, build_id, paragraphs, segments)
+        total_spans_created += len(span_ids)
+        
+        # Update chapter audio_version (with build_id link)
+        update_chapter_audio_version(chapter_id, build_id, "v2")
+    
+    state["phase"] = "audio_uploaded"
+    state["audio_upload_stats"] = {
+        "groups_uploaded": total_groups_uploaded,
+        "segments_saved": total_segments_saved,
+        "spans_created": total_spans_created
+    }
+    save_v3_job_state(job_id, state)
+    
+    logger.info(f"[V3.1] Audio upload complete: {total_groups_uploaded} groups, {total_segments_saved} segments, {total_spans_created} spans")
+    
+    return {
+        "success": True,
+        "groups_uploaded": total_groups_uploaded,
+        "segments_saved": total_segments_saved,
+        "spans_created": total_spans_created
+    }
+
+
+# ============================================
 # FULL PIPELINE EXECUTION
 # ============================================
 
@@ -819,6 +1104,9 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
                 if db_chapters:
                     chapter_id = db_chapters[0]["id"]
                     
+                    # Store chapter_id for TTS audio upload
+                    ch["db_chapter_id"] = chapter_id
+                    
                     # Get paragraph and section data
                     paragraphs = ch.get("paragraphs", [])
                     sections = ch.get("sections", [])
@@ -960,6 +1248,9 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
                 if db_chapters:
                     chapter_id = db_chapters[0]["id"]
                     
+                    # Store chapter_id for TTS audio upload
+                    ch["db_chapter_id"] = chapter_id
+                    
                     paragraphs = ch.get("paragraphs", [])
                     sections = ch.get("sections", [])
                     
@@ -1003,6 +1294,7 @@ async def v3_upload_to_supabase(job_id: str) -> Dict:
         # Update job state
         state["phase"] = "uploaded"
         state["book_id"] = book_id
+        state["chapters"] = chapters  # Store updated chapters with db_chapter_id
         state["upload_stats"] = {
             "book_nodes": total_nodes_created,
             "parts": len(parts),

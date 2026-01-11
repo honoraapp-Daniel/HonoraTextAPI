@@ -2044,3 +2044,194 @@ async def v3_update_metadata_endpoint(job_id: str, request: Request):
         import logging
         logging.error(f"V3 metadata update error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================
+# V3.1 TTS AUDIO GENERATION ENDPOINTS
+# ============================================
+
+@app.post("/v3/generate-tts/{job_id}", tags=["V3 TTS"])
+async def v3_generate_tts_endpoint(job_id: str, request: Request):
+    """
+    Generate TTS audio for all chapters using the v3.1 segment/group architecture.
+    
+    This phase:
+    1. Merges short segments (<60 chars) and clamps long ones (>420 chars)
+    2. Generates TTS audio for each segment
+    3. Groups segments into ~35 second audio_groups
+    4. Concatenates group audio files
+    
+    payload (optional):
+    {
+        "engine": "runpod" | "local" | "piper",  (default: "runpod")
+        "voice": "default",                       (voice name/path)
+        "language": "en"                          (language code)
+    }
+    
+    Note: Job must be in 'uploaded' phase (after Supabase upload).
+    """
+    from app.pipeline_v3 import v3_generate_tts_audio
+    
+    try:
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    except:
+        body = {}
+    
+    engine = body.get("engine", "runpod")
+    voice = body.get("voice", "default")
+    language = body.get("language", "en")
+    
+    try:
+        result = await v3_generate_tts_audio(job_id, engine=engine, voice=voice, language=language)
+        return result
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        import logging
+        import traceback
+        logging.error(f"V3 TTS generation error: {e}")
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v3/upload-audio/{job_id}", tags=["V3 TTS"])
+async def v3_upload_audio_endpoint(job_id: str):
+    """
+    Upload generated TTS audio to Supabase.
+    
+    This uploads:
+    - Audio files to Supabase Storage (audio bucket)
+    - tts_segments records
+    - audio_groups records
+    - Updates chapter.audio_version to "v2"
+    
+    Note: Call after v3/generate-tts completes.
+    """
+    from app.pipeline_v3 import v3_upload_audio_to_supabase
+    
+    try:
+        result = await v3_upload_audio_to_supabase(job_id)
+        return result
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        import logging
+        logging.error(f"V3 audio upload error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/v3/tts-status/{job_id}", tags=["V3 TTS"])
+async def v3_tts_status(job_id: str):
+    """
+    Get TTS generation status for a job.
+    
+    Returns:
+    - Current TTS phase
+    - TTS stats (segments, groups, errors)
+    - Audio upload stats if completed
+    """
+    from app.pipeline_v3 import get_v3_job_state
+    
+    state = get_v3_job_state(job_id)
+    if not state:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    
+    return {
+        "job_id": job_id,
+        "phase": state.get("phase"),
+        "tts_stats": state.get("tts_stats"),
+        "audio_upload_stats": state.get("audio_upload_stats"),
+        "chapters_with_audio": sum(1 for ch in state.get("chapters", []) if ch.get("audio_groups"))
+    }
+
+
+@app.get("/v3/list-voices", tags=["V3 TTS"])
+async def v3_list_voices(engine: str = "runpod"):
+    """
+    List available TTS voices for the specified engine.
+    
+    Query params:
+    - engine: "runpod" | "local" | "piper"
+    """
+    import sys
+    tts_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "HonoraLocalTTS")
+    if tts_path not in sys.path:
+        sys.path.insert(0, tts_path)
+    
+    try:
+        if engine == "runpod":
+            from tts_engines import XTTSRunPodEngine
+            tts_engine = XTTSRunPodEngine()
+        elif engine == "local":
+            from tts_engines import XTTSLocalEngine
+            tts_engine = XTTSLocalEngine()
+        elif engine == "piper":
+            from tts_engines import PiperEngine
+            tts_engine = PiperEngine()
+        else:
+            return JSONResponse({"error": f"Unknown engine: {engine}"}, status_code=400)
+        
+        voices = tts_engine.get_voices()
+        return {
+            "engine": engine,
+            "voices": voices
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/v3/full-tts-pipeline/{job_id}", tags=["V3 TTS"])
+async def v3_full_tts_pipeline(job_id: str, request: Request):
+    """
+    Run the complete TTS pipeline: generate + upload in one call.
+    
+    payload (optional):
+    {
+        "engine": "runpod" | "local" | "piper",
+        "voice": "default",
+        "language": "en"
+    }
+    
+    This is a convenience endpoint that runs both:
+    1. v3/generate-tts
+    2. v3/upload-audio
+    """
+    from app.pipeline_v3 import v3_generate_tts_audio, v3_upload_audio_to_supabase
+    
+    try:
+        body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    except:
+        body = {}
+    
+    engine = body.get("engine", "runpod")
+    voice = body.get("voice", "default")
+    language = body.get("language", "en")
+    
+    try:
+        # Step 1: Generate TTS
+        tts_result = await v3_generate_tts_audio(job_id, engine=engine, voice=voice, language=language)
+        
+        if not tts_result.get("success"):
+            return JSONResponse({
+                "error": "TTS generation failed",
+                "details": tts_result
+            }, status_code=500)
+        
+        # Step 2: Upload audio
+        upload_result = await v3_upload_audio_to_supabase(job_id)
+        
+        return {
+            "success": True,
+            "tts_generation": tts_result,
+            "audio_upload": upload_result
+        }
+        
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        import logging
+        import traceback
+        logging.error(f"V3 full TTS pipeline error: {e}")
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+

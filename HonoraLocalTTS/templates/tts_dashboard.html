@@ -84,7 +84,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: 320px 1fr 400px;
+            grid-template-columns: 340px 1fr 400px;
             gap: 16px;
         }
 
@@ -96,7 +96,9 @@
         }
 
         select,
-        input[type="file"] {
+        input[type="file"],
+        input[type="text"],
+        textarea {
             width: 100%;
             padding: 10px 12px;
             border-radius: 8px;
@@ -106,6 +108,11 @@
             font-family: inherit;
             font-size: 14px;
             margin-bottom: 12px;
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
         }
 
         select option {
@@ -163,7 +170,43 @@
             margin-top: 12px;
         }
 
-        .chapter-list {
+        .engine-card {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: all 0.15s;
+        }
+
+        .engine-card:hover {
+            border-color: var(--accent);
+        }
+
+        .engine-card.selected {
+            border-color: var(--accent);
+            background: rgba(125, 211, 252, 0.1);
+        }
+
+        .engine-card.unavailable {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .engine-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .engine-desc {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+
+        .chapter-list,
+        .section-list {
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -238,14 +281,6 @@
         .chapter-meta {
             font-size: 12px;
             color: var(--muted);
-        }
-
-        .section-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-height: 500px;
-            overflow-y: auto;
         }
 
         .section-item {
@@ -333,26 +368,12 @@
             overflow-y: auto;
         }
 
-        .upload-box {
-            display: block;
-            width: 100%;
-            box-sizing: border-box;
-            border: 2px dashed rgba(255, 255, 255, 0.18);
+        .test-box {
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.2);
             border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin: 12px 0;
-        }
-
-        .upload-box:hover {
-            border-color: var(--accent);
-            background: rgba(125, 211, 252, 0.05);
-        }
-
-        .upload-box input {
-            display: none;
+            border: 1px solid var(--border);
         }
     </style>
 </head>
@@ -361,12 +382,12 @@
     <main class="page">
         <!-- Hero -->
         <section class="hero">
-            <span class="badge">🎙️ TTS Dashboard · RunPod GPU</span>
+            <span class="badge">🎙️ TTS Dashboard · Multi-Engine</span>
             <h1>Honora Audio Generator</h1>
-            <p class="muted">Generate audiobook audio from Supabase sections using XTTS v2 on RunPod Serverless.</p>
+            <p class="muted">Generate audiobook audio with multiple TTS engines. Choose based on your needs.</p>
             <div id="status-bar" style="margin-top: 12px; display: flex; gap: 16px; flex-wrap: wrap;">
                 <span id="status-supabase" class="badge" style="opacity: 0.5;">⏳ Supabase</span>
-                <span id="status-runpod" class="badge" style="opacity: 0.5;">⏳ RunPod</span>
+                <span id="status-queue" class="badge" style="opacity: 0.5;">⏳ Queue</span>
             </div>
         </section>
 
@@ -374,20 +395,18 @@
         <div class="grid">
             <!-- Left: Controls -->
             <div class="card">
-                <h2>📚 Select Book</h2>
+                <h2>🔧 TTS Engine</h2>
+                <div id="engine-list"></div>
+
+                <h2 style="margin-top: 16px;">📚 Select Book</h2>
                 <select id="book-select">
                     <option value="">Loading books...</option>
                 </select>
 
-                <h2 style="margin-top: 16px;">🎤 Voice Reference</h2>
+                <h2 style="margin-top: 16px;">🎤 Voice</h2>
                 <select id="voice-select">
                     <option value="">Select voice...</option>
                 </select>
-
-                <label class="upload-box" id="voice-upload">
-                    <input type="file" id="voice-file" accept=".wav">
-                    <div>📂 Upload new voice (.wav)</div>
-                </label>
 
                 <h2 style="margin-top: 16px;">🌍 Language</h2>
                 <select id="language-select">
@@ -396,23 +415,21 @@
                     <option value="de">Deutsch</option>
                     <option value="es">Español</option>
                     <option value="fr">Français</option>
-                    <option value="it">Italiano</option>
-                    <option value="nl">Nederlands</option>
-                    <option value="pl">Polski</option>
-                    <option value="pt">Português</option>
-                    <option value="ru">Русский</option>
-                    <option value="zh-cn">中文</option>
                 </select>
 
-                <h2 style="margin-top: 16px;">🎚️ Test Controls</h2>
+                <h2 style="margin-top: 16px;">🎚️ Generate</h2>
                 <div class="btn-group">
                     <button class="secondary" id="test-1-btn">Test 1</button>
                     <button class="secondary" id="test-3-btn">Test 3</button>
                     <button class="primary" id="chapter-btn" disabled>Full Chapter</button>
                 </div>
 
-                <div class="btn-group" style="margin-top: 8px;">
-                    <button class="success" id="book-btn" disabled>📖 Full Book</button>
+                <!-- Quick Test Box -->
+                <div class="test-box">
+                    <h2>🧪 Quick Test</h2>
+                    <textarea id="test-text"
+                        placeholder="Enter test text here...">Welcome to Honora. This is a test of the text to speech system.</textarea>
+                    <button class="primary" id="quick-test-btn" style="width: 100%;">Generate Test Audio</button>
                 </div>
 
                 <!-- Progress -->
@@ -423,6 +440,7 @@
                     </div>
                     <div id="progress-text" class="muted">0 / 0 sections</div>
                     <div class="log" id="log"></div>
+                    <div id="audio-preview" style="margin-top: 12px;"></div>
                 </div>
             </div>
 
@@ -440,22 +458,73 @@
                 <div class="section-list" id="section-list"></div>
             </div>
         </div>
+
+        <!-- Job History Panel -->
+        <div class="card" style="margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>📋 Job History</h2>
+                <div>
+                    <span id="history-succeeded" class="badge" style="background: var(--success); color: #0b1020;">✓
+                        0</span>
+                    <span id="history-failed" class="badge" style="background: var(--error); color: white;">✗ 0</span>
+                    <button class="secondary" onclick="loadHistory()" style="margin-left: 8px; padding: 6px 12px;">↻
+                        Refresh</button>
+                </div>
+            </div>
+            <div id="job-history" style="max-height: 300px; overflow-y: auto; margin-top: 12px;">
+                <div class="muted">No jobs yet</div>
+            </div>
+        </div>
+
+        <!-- Segments & Spans Panel (TTS-First v3.1) -->
+        <div class="card" style="margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>🔊 Segments & Spans</h2>
+                <div>
+                    <span id="segments-count" class="badge">0 segments</span>
+                    <span id="spans-count" class="badge" style="background: var(--accent-2);">0 spans</span>
+                    <button class="secondary" onclick="loadSegments()" style="margin-left: 8px; padding: 6px 12px;">↻
+                        Refresh</button>
+                </div>
+            </div>
+            <div id="segments-info" class="muted" style="margin: 12px 0;">Select a chapter to view segments</div>
+
+            <!-- Build selector -->
+            <div id="build-selector" style="display: none; margin-bottom: 12px;">
+                <label class="muted">Build Version: </label>
+                <select id="build-select" style="width: auto; display: inline-block; margin-bottom: 0;">
+                    <option value="">Loading...</option>
+                </select>
+            </div>
+
+            <!-- Segments list with span grouping -->
+            <div id="segments-container" style="max-height: 400px; overflow-y: auto;">
+                <div class="muted">No segments loaded</div>
+            </div>
+
+            <!-- Audio groups summary -->
+            <div id="audio-groups-summary" style="margin-top: 12px; display: none;">
+                <div class="muted">Audio Groups:</div>
+                <div id="audio-groups-list" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;"></div>
+            </div>
+        </div>
     </main>
 
     <script>
         // State
+        let selectedEngine = 'piper';
         let selectedBook = null;
         let selectedChapter = null;
-        let selectedVoice = null;
+        let selectedVoice = '';
         let selectedLanguage = 'en';
         let chapters = [];
         let sections = [];
-        let currentJobId = null;
+        let engines = [];
 
         // Elements
+        const engineList = document.getElementById('engine-list');
         const bookSelect = document.getElementById('book-select');
         const voiceSelect = document.getElementById('voice-select');
-        const voiceFile = document.getElementById('voice-file');
         const languageSelect = document.getElementById('language-select');
         const chapterList = document.getElementById('chapter-list');
         const sectionList = document.getElementById('section-list');
@@ -465,15 +534,44 @@
         const progressFill = document.getElementById('progress-fill');
         const progressText = document.getElementById('progress-text');
         const logDiv = document.getElementById('log');
+        const audioPreview = document.getElementById('audio-preview');
 
-        // Check configuration status
+        // Load engines
+        async function loadEngines() {
+            try {
+                const res = await fetch('/api/engines');
+                engines = await res.json();
+
+                engineList.innerHTML = engines.map(e => `
+                    <div class="engine-card ${e.id === selectedEngine ? 'selected' : ''} ${!e.available ? 'unavailable' : ''}" 
+                         data-id="${e.id}" ${!e.available ? 'disabled' : ''}>
+                        <div class="engine-name">${e.name} ${!e.available ? '🔒' : ''}</div>
+                        <div class="engine-desc">${e.description}</div>
+                    </div>
+                `).join('');
+
+                // Add click handlers
+                document.querySelectorAll('.engine-card:not(.unavailable)').forEach(el => {
+                    el.addEventListener('click', () => {
+                        document.querySelectorAll('.engine-card').forEach(e => e.classList.remove('selected'));
+                        el.classList.add('selected');
+                        selectedEngine = el.dataset.id;
+                        loadVoices(); // Reload voices for this engine
+                    });
+                });
+            } catch (e) {
+                engineList.innerHTML = '<div class="muted">Error loading engines</div>';
+            }
+        }
+
+        // Check status
         async function checkStatus() {
             try {
                 const res = await fetch('/api/status');
                 const status = await res.json();
 
                 const supabaseEl = document.getElementById('status-supabase');
-                const runpodEl = document.getElementById('status-runpod');
+                const queueEl = document.getElementById('status-queue');
 
                 if (status.supabase_configured) {
                     supabaseEl.textContent = '✅ Supabase';
@@ -483,19 +581,14 @@
                     supabaseEl.style.opacity = '1';
                 }
 
-                if (status.runpod_configured) {
-                    runpodEl.textContent = '✅ RunPod';
-                    runpodEl.style.opacity = '1';
-                } else {
-                    runpodEl.textContent = '⚠️ RunPod (missing)';
-                    runpodEl.style.opacity = '1';
-                }
+                queueEl.textContent = `📋 Queue: ${status.queue_size}`;
+                queueEl.style.opacity = '1';
             } catch (e) {
                 console.error('Status check failed:', e);
             }
         }
 
-        // Load books on start
+        // Load books
         async function loadBooks() {
             try {
                 const res = await fetch('/api/books');
@@ -511,46 +604,42 @@
         async function loadVoices() {
             try {
                 const res = await fetch('/api/voices');
-                const data = await res.json();
-                const voices = data.voices || data;
-                if (voices.length > 0) {
-                    voiceSelect.innerHTML = voices.map(v =>
-                        `<option value="${v.url}">${v.name}</option>`
+                const voices = await res.json();
+
+                // Filter voices for current engine (or show all)
+                const filtered = voices.filter(v => !v.engine || v.engine === selectedEngine || selectedEngine === 'xtts-local');
+
+                if (filtered.length > 0) {
+                    voiceSelect.innerHTML = filtered.map(v =>
+                        `<option value="${v.id || v.url}">${v.name} (${v.source || v.engine})</option>`
                     ).join('');
-                    selectedVoice = voices[0].url;
+                    selectedVoice = filtered[0].id || filtered[0].url;
                 } else {
-                    voiceSelect.innerHTML = '<option value="">No voices - upload one</option>';
+                    voiceSelect.innerHTML = '<option value="">No voices available</option>';
                 }
             } catch (e) {
-                voiceSelect.innerHTML = '<option value="">Upload a voice file</option>';
+                voiceSelect.innerHTML = '<option value="">Error loading voices</option>';
             }
         }
 
-        // Load chapters for book
+        // Load chapters
         async function loadChapters(bookId) {
             try {
                 const res = await fetch(`/api/books/${bookId}/chapters`);
                 chapters = await res.json();
 
-                const totalSections = chapters.reduce((a, c) => a + (c.section_count || 0), 0);
-                const totalAudio = chapters.reduce((a, c) => a + (c.audio_count || 0), 0);
-                chaptersSummary.textContent = `${chapters.length} chapters · ${totalAudio}/${totalSections} audio generated`;
+                chaptersSummary.textContent = `${chapters.length} chapters`;
 
-                chapterList.innerHTML = chapters.map(ch => {
-                    const status = ch.audio_count === ch.section_count && ch.section_count > 0 ? 'complete' :
-                        ch.audio_count > 0 ? 'partial' : '';
-                    return `
-            <div class="chapter-item ${status}" data-id="${ch.id}">
-              <div class="chapter-status"></div>
-              <div class="chapter-info">
-                <div class="chapter-title">${ch.title || `Chapter ${ch.chapter_index}`}</div>
-                <div class="chapter-meta">${ch.audio_count || 0}/${ch.section_count || 0} sections</div>
-              </div>
-            </div>
-          `;
-                }).join('');
+                chapterList.innerHTML = chapters.map(ch => `
+                    <div class="chapter-item" data-id="${ch.id}">
+                        <div class="chapter-status"></div>
+                        <div class="chapter-info">
+                            <div class="chapter-title">${ch.title || `Chapter ${ch.chapter_index}`}</div>
+                            <div class="chapter-meta">${ch.section_count || 0} sections</div>
+                        </div>
+                    </div>
+                `).join('');
 
-                // Add click handlers
                 document.querySelectorAll('.chapter-item').forEach(el => {
                     el.addEventListener('click', () => {
                         document.querySelectorAll('.chapter-item').forEach(e => e.classList.remove('selected'));
@@ -558,37 +647,29 @@
                         loadSections(el.dataset.id);
                     });
                 });
-
-                document.getElementById('book-btn').disabled = false;
             } catch (e) {
                 chapterList.innerHTML = '<div class="muted">Error loading chapters</div>';
             }
         }
 
-        // Load sections for chapter
+        // Load sections
         async function loadSections(chapterId) {
             selectedChapter = chapterId;
             try {
                 const res = await fetch(`/api/chapters/${chapterId}/sections`);
                 sections = await res.json();
 
-                const withAudio = sections.filter(s => s.audio_url).length;
-                sectionsSummary.textContent = `${sections.length} sections · ${withAudio} with audio`;
+                sectionsSummary.textContent = `${sections.length} sections`;
 
                 sectionList.innerHTML = sections.map((s, i) => `
-          <div class="section-item ${s.audio_url ? 'has-audio' : ''} ${i === 0 ? 'title' : ''}">
-            <div class="section-header">
-              <span class="section-index">${i === 0 ? '🎬 Title' : `Section ${s.section_index}`}</span>
-              <span class="section-chars">${(s.text_ref || '').length} chars</span>
-            </div>
-            <div class="section-text">${s.text_ref || ''}</div>
-            ${s.audio_url ? `
-              <div class="section-audio">
-                <audio controls src="${s.audio_url}"></audio>
-              </div>
-            ` : ''}
-          </div>
-        `).join('');
+                    <div class="section-item ${i === 0 ? 'title' : ''}">
+                        <div class="section-header">
+                            <span class="section-index">${i === 0 ? '🎬 Title' : `Section ${s.section_index}`}</span>
+                            <span class="section-chars">${(s.full_text || s.text || '').length} chars</span>
+                        </div>
+                        <div class="section-text">${s.text || ''}</div>
+                    </div>
+                `).join('');
 
                 document.getElementById('chapter-btn').disabled = false;
             } catch (e) {
@@ -596,76 +677,104 @@
             }
         }
 
-        // Current job tracking
-        let currentJobTotal = 0;
-
         // Start TTS job
         async function startTTS(sectionIds) {
-            if (!selectedVoice) {
-                alert('Please select or upload a voice first');
-                return;
-            }
-
-            // Track how many sections we're processing
-            currentJobTotal = sectionIds.length;
-
             try {
                 progressContainer.classList.add('active');
                 progressFill.style.width = '0%';
-                progressText.textContent = `Starting job for ${sectionIds.length} section${sectionIds.length > 1 ? 's' : ''}...`;
+                progressText.textContent = `Starting ${selectedEngine}...`;
                 logDiv.textContent = '';
+                audioPreview.innerHTML = '';
 
                 const res = await fetch('/api/tts/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ section_ids: sectionIds, voice_url: selectedVoice })
+                    body: JSON.stringify({
+                        section_ids: sectionIds,
+                        engine: selectedEngine,
+                        voice: selectedVoice,
+                        language: selectedLanguage
+                    })
                 });
 
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
 
-                currentJobId = data.job_id;
-                log(`Job started: ${currentJobId} (${currentJobTotal} section${currentJobTotal > 1 ? 's' : ''})`);
-                pollStatus();
+                log(`Job started: ${data.count} sections with ${data.engine}`);
+
+                // Poll first job
+                if (data.job_ids && data.job_ids.length > 0) {
+                    pollStatus(data.job_ids[0]);
+                }
             } catch (e) {
                 log(`Error: ${e.message}`);
-                progressContainer.classList.remove('active');
+            }
+        }
+
+        // Quick test
+        async function quickTest() {
+            const text = document.getElementById('test-text').value;
+            if (!text) {
+                alert('Please enter some text');
+                return;
+            }
+
+            try {
+                progressContainer.classList.add('active');
+                progressFill.style.width = '0%';
+                progressText.textContent = `Testing ${selectedEngine}...`;
+                logDiv.textContent = '';
+                audioPreview.innerHTML = '';
+
+                const res = await fetch('/api/tts/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        engine: selectedEngine,
+                        voice: selectedVoice,
+                        language: selectedLanguage
+                    })
+                });
+
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                log(`Test started with ${data.engine}`);
+                pollStatus(data.job_id);
+            } catch (e) {
+                log(`Error: ${e.message}`);
             }
         }
 
         // Poll job status
-        async function pollStatus() {
-            if (!currentJobId) return;
-
+        async function pollStatus(jobId) {
             try {
-                const res = await fetch(`/api/tts/status/${currentJobId}`);
+                const res = await fetch(`/api/tts/status/${jobId}`);
                 const data = await res.json();
 
-                if (data.status === 'COMPLETED') {
+                if (data.status === 'succeeded') {
                     progressFill.style.width = '100%';
-                    progressText.textContent = `✅ Complete! (${currentJobTotal} section${currentJobTotal > 1 ? 's' : ''})`;
-                    log('✅ Job completed!');
-                    currentJobId = null;
-                    // Reload sections to show new audio
-                    if (selectedChapter) loadSections(selectedChapter);
-                    if (selectedBook) loadChapters(selectedBook);
-                } else if (data.status === 'FAILED') {
-                    log(`❌ Job failed: ${data.error || 'Unknown error'}`);
+                    progressText.textContent = `✅ Complete in ${data.duration?.toFixed(1) || '?'}s with ${data.engine}`;
+                    log('✅ Audio generated!');
+
+                    // Show audio player
+                    if (data.output) {
+                        audioPreview.innerHTML = `<audio controls src="${data.output}" style="width: 100%;"></audio>`;
+                    }
+                } else if (data.status === 'failed') {
+                    progressFill.style.width = '100%';
                     progressText.textContent = '❌ Failed';
-                    currentJobId = null;
+                    log(`Error: ${data.error}`);
                 } else {
-                    // Still in progress - use currentJobTotal for accurate count
-                    const output = data.output || {};
-                    const processed = output.processed || 0;
-                    const total = output.total || currentJobTotal || 1;
-                    const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
-                    progressFill.style.width = `${pct}%`;
-                    progressText.textContent = `${processed} / ${total} section${total > 1 ? 's' : ''}`;
-                    setTimeout(pollStatus, 2000);
+                    // Still processing
+                    progressFill.style.width = '50%';
+                    progressText.textContent = `⏳ ${data.status}...`;
+                    setTimeout(() => pollStatus(jobId), 1000);
                 }
             } catch (e) {
                 log(`Poll error: ${e.message}`);
-                setTimeout(pollStatus, 5000);
+                setTimeout(() => pollStatus(jobId), 2000);
             }
         }
 
@@ -684,25 +793,8 @@
             selectedVoice = voiceSelect.value;
         });
 
-        voiceFile.addEventListener('change', async () => {
-            const file = voiceFile.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const res = await fetch('/api/voices/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.success) {
-                    alert('Voice uploaded!');
-                    loadVoices();
-                } else {
-                    alert('Upload failed: ' + data.error);
-                }
-            } catch (e) {
-                alert('Upload error: ' + e.message);
-            }
+        languageSelect.addEventListener('change', () => {
+            selectedLanguage = languageSelect.value;
         });
 
         document.getElementById('test-1-btn').addEventListener('click', () => {
@@ -719,30 +811,232 @@
             if (ids.length > 0) startTTS(ids);
         });
 
-        document.getElementById('book-btn').addEventListener('click', async () => {
-            if (!selectedVoice) {
-                alert('Please select or upload a voice first');
+        document.getElementById('quick-test-btn').addEventListener('click', quickTest);
+
+        // Job History Functions
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+
+                document.getElementById('history-succeeded').textContent = `✓ ${data.succeeded}`;
+                document.getElementById('history-failed').textContent = `✗ ${data.failed}`;
+
+                const container = document.getElementById('job-history');
+
+                if (data.jobs.length === 0) {
+                    container.innerHTML = '<div class="muted">No jobs yet</div>';
+                    return;
+                }
+
+                container.innerHTML = data.jobs.map(job => {
+                    const isSuccess = job.status === 'succeeded';
+                    const statusIcon = isSuccess ? '✅' : '❌';
+                    const statusColor = isSuccess ? 'var(--success)' : 'var(--error)';
+                    const time = new Date(job.timestamp).toLocaleTimeString();
+
+                    let retryBtn = '';
+                    if (!isSuccess && job.paragraph_id) {
+                        retryBtn = `<button class="secondary" onclick="retryJob('${job.paragraph_id}')" style="padding: 4px 10px; font-size: 12px;">🔄 Retry</button>`;
+                    }
+
+                    return `
+                        <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 8px; border-left: 3px solid ${statusColor};">
+                            <span>${statusIcon}</span>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${job.text_preview || 'Unknown'}</div>
+                                <div class="muted" style="font-size: 11px;">${job.engine} · ${time}${job.duration ? ` · ${job.duration}s` : ''}${job.error ? ` · ${job.error}` : ''}</div>
+                            </div>
+                            ${retryBtn}
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error('Failed to load history:', e);
+            }
+        }
+
+        async function retryJob(paragraphId) {
+            try {
+                log(`🔄 Retrying paragraph ${paragraphId}...`);
+
+                const res = await fetch(`/api/retry/${paragraphId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        engine: selectedEngine,
+                        voice: selectedVoice,
+                        language: selectedLanguage
+                    })
+                });
+
+                const data = await res.json();
+
+                if (data.job_id) {
+                    log(`✅ Retry queued: ${data.job_id}`);
+                    // Poll for this job
+                    pollJob(data.job_id, paragraphId);
+                } else {
+                    log(`❌ Retry failed: ${data.error}`);
+                }
+
+            } catch (e) {
+                log(`❌ Retry error: ${e}`);
+            }
+        }
+
+        async function pollJob(jobId, label) {
+            const poll = setInterval(async () => {
+                const res = await fetch(`/api/tts/status/${jobId}`);
+                const data = await res.json();
+
+                if (data.status === 'succeeded') {
+                    clearInterval(poll);
+                    log(`✅ ${label}: Complete!`);
+                    loadHistory();
+                } else if (data.status === 'failed') {
+                    clearInterval(poll);
+                    log(`❌ ${label}: ${data.error}`);
+                    loadHistory();
+                }
+            }, 2000);
+        }
+
+        // =========================================
+        // Segments & Spans Functions (TTS-First v3.1)
+        // =========================================
+
+        let currentSegments = [];
+        let currentSpans = [];
+        let currentBuilds = [];
+
+        async function loadSegments() {
+            if (!selectedChapter) {
+                document.getElementById('segments-info').textContent = 'Select a chapter first';
                 return;
             }
-            // Get all section IDs for entire book
-            let allIds = [];
-            for (const ch of chapters) {
-                const res = await fetch(`/api/chapters/${ch.id}/sections`);
-                const secs = await res.json();
-                allIds = allIds.concat(secs.map(s => s.id));
-            }
-            if (allIds.length > 0) startTTS(allIds);
-        });
 
-        // Language selector
-        languageSelect.addEventListener('change', () => {
-            selectedLanguage = languageSelect.value;
-        });
+            try {
+                // Load segments, spans, builds, and audio groups in parallel
+                const [segRes, spanRes, buildRes, groupRes] = await Promise.all([
+                    fetch(`/api/chapters/${selectedChapter}/segments`),
+                    fetch(`/api/chapters/${selectedChapter}/spans`),
+                    fetch(`/api/chapters/${selectedChapter}/builds`),
+                    fetch(`/api/chapters/${selectedChapter}/audio_groups`)
+                ]);
+
+                const segData = await segRes.json();
+                const spanData = await spanRes.json();
+                const buildData = await buildRes.json();
+                const groupData = await groupRes.json();
+
+                currentSegments = segData.segments || [];
+                currentSpans = spanData.spans || [];
+                currentBuilds = buildData.builds || [];
+
+                // Update counts
+                document.getElementById('segments-count').textContent = `${currentSegments.length} segments`;
+                document.getElementById('spans-count').textContent = `${currentSpans.length} spans`;
+
+                // Update info
+                const buildInfo = segData.build_id ? `Build: v${buildData.builds?.find(b => b.id === segData.build_id)?.canonical_version || '?'}` : 'No build';
+                document.getElementById('segments-info').textContent =
+                    `Audio version: ${segData.audio_version || 'v1'} · ${buildInfo}`;
+
+                // Show build selector if multiple builds
+                const buildSelector = document.getElementById('build-selector');
+                const buildSelect = document.getElementById('build-select');
+                if (currentBuilds.length > 1) {
+                    buildSelector.style.display = 'block';
+                    buildSelect.innerHTML = currentBuilds.map(b =>
+                        `<option value="${b.id}" ${b.id === buildData.current_build_id ? 'selected' : ''}>
+                            Version ${b.canonical_version} (${new Date(b.created_at).toLocaleDateString()})
+                        </option>`
+                    ).join('');
+                } else {
+                    buildSelector.style.display = 'none';
+                }
+
+                // Render segments grouped by spans
+                renderSegmentsWithSpans(currentSegments, currentSpans);
+
+                // Show audio groups
+                if (groupData.groups && groupData.groups.length > 0) {
+                    document.getElementById('audio-groups-summary').style.display = 'block';
+                    const totalDuration = Math.round(groupData.total_duration_ms / 1000);
+                    document.getElementById('audio-groups-list').innerHTML =
+                        `<span class="badge">${groupData.count} groups · ${totalDuration}s total</span>` +
+                        groupData.groups.map(g =>
+                            `<span class="badge" style="background: rgba(0,0,0,0.3);">
+                                Group ${g.group_index}: ${Math.round(g.duration_ms / 1000)}s
+                            </span>`
+                        ).join('');
+                } else {
+                    document.getElementById('audio-groups-summary').style.display = 'none';
+                }
+
+            } catch (e) {
+                document.getElementById('segments-info').textContent = `Error: ${e.message}`;
+            }
+        }
+
+        function renderSegmentsWithSpans(segments, spans) {
+            const container = document.getElementById('segments-container');
+
+            if (segments.length === 0) {
+                container.innerHTML = '<div class="muted">No segments for this chapter</div>';
+                return;
+            }
+
+            // Create span lookup: segment_index -> paragraph_index
+            const spanLookup = {};
+            const spanColors = ['#7dd3fc', '#a855f7', '#34d399', '#fbbf24', '#f87171', '#818cf8'];
+            spans.forEach((span, i) => {
+                for (let idx = span.start_segment_index; idx <= span.end_segment_index; idx++) {
+                    spanLookup[idx] = { paragraphIndex: span.paragraph_index, color: spanColors[i % spanColors.length] };
+                }
+            });
+
+            // Render segments with span coloring
+            container.innerHTML = segments.map((seg, i) => {
+                const spanInfo = spanLookup[seg.segment_index];
+                const borderColor = spanInfo ? spanInfo.color : 'var(--border)';
+                const paragraphBadge = spanInfo ?
+                    `<span style="background: ${spanInfo.color}20; color: ${spanInfo.color}; padding: 2px 6px; border-radius: 4px; font-size: 10px;">¶${spanInfo.paragraphIndex}</span>` : '';
+
+                return `
+                    <div style="padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; 
+                                border-left: 3px solid ${borderColor}; margin-bottom: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-weight: 600; font-size: 12px; color: var(--accent);">
+                                Segment ${seg.segment_index} ${paragraphBadge}
+                            </span>
+                            <span class="muted" style="font-size: 11px;">
+                                ${seg.duration_ms || 0}ms · ${(seg.text || '').length} chars
+                            </span>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.4; color: var(--text);">
+                            ${(seg.text || '').substring(0, 150)}${seg.text?.length > 150 ? '...' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update loadSections to also load segments
+        const originalLoadSections = loadSections;
+        loadSections = async function (chapterId) {
+            await originalLoadSections(chapterId);
+            loadSegments();
+        };
 
         // Init
+        loadEngines();
         checkStatus();
         loadBooks();
         loadVoices();
+        loadHistory();  // Load history on startup
     </script>
 </body>
 

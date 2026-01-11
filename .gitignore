@@ -1,2 +1,4 @@
 .env
 Honora Data Test/
+HonoraLocalTTS/.venv-tts/
+HonoraLocalTTS/piper_models/
