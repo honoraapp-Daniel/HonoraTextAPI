@@ -1,4 +1,41 @@
+# Environment
 .env
+.env.local
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+app/__pycache__/
+tests/__pycache__/
+
+# Local data folders
 Honora Data Test/
-HonoraLocalTTS/.venv-tts/
+HonoraLocalTTS/.venv*/
 HonoraLocalTTS/piper_models/
+HonoraLocalTTS/generated_audio/
+HonoraLocalTTS/output/
+HonoraLocalTTS/uploads/
+HonoraLocalTTS/train_*/
+
+# Large model files
+*.dylib
+*.so
+*.onnx
+*.bin
+*.pt
+*.pth
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Documentation (local-only plans)
+docs/migrations/
+docs/*PLAN*.md
+docs/*FIXES*.md
+
+# Agent artifacts (local planning)
+.agent/
