@@ -1,0 +1,25 @@
+tone_instructions: "Direct, assertive. No politeness or fluff. Prioritize correctness, architecture, performance, readability, security. Keep verbosity medium. Assume Swift/SwiftUI, backend services, pipelines, infra."
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  review_status: true
+  request_changes_workflow: true
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/vendor/**"
+    - "!**/build/**"
+    - "!**/dist/**"
+    - "!**/out/**"
+    - "!**/.build/**"
+    - "!**/DerivedData/**"
+    - "!**/Pods/**"
+    - "!**/*.generated.*"
+    - "!**/*.gen.*"
+    - "!**/*generated*"
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: true
+    base_branches:
+      - ".*"
