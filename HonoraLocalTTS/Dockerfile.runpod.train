@@ -1,0 +1,27 @@
+# RunPod GPU Training Dockerfile
+# XTTS v2 training service
+
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+
+WORKDIR /app
+
+# System dependencies for audio + git
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libsndfile1 \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --ignore-installed flask && \
+    pip install --no-cache-dir --ignore-installed torchaudio
+
+COPY HonoraLocalTTS/requirements_runpod.txt /tmp/requirements_runpod.txt
+RUN pip install --no-cache-dir --ignore-installed -r /tmp/requirements_runpod.txt
+
+# Copy training app + scripts
+COPY HonoraLocalTTS /app/HonoraLocalTTS
+
+CMD ["python", "-u", "HonoraLocalTTS/training_app.py"]
