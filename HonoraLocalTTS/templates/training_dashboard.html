@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Honora Training Dashboard</title>
+    <style>
+        :root {
+            --bg: #0a0f0d;
+            --panel: rgba(30, 40, 35, 0.6);
+            --panel-strong: rgba(30, 40, 35, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #f0fdf4;
+            --muted: rgba(255, 255, 255, 0.5);
+            --accent: #4ade80;
+            --accent-dim: rgba(74, 222, 128, 0.2);
+            --success: #22c55e;
+            --warning: #fbbf24;
+            --error: #ef4444;
+            --radius: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+            padding: 32px 16px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .page {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .hero {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            margin-bottom: 16px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: var(--accent-dim);
+            border: 1px solid var(--border);
+            font-size: 12px;
+        }
+
+        h1 {
+            margin: 12px 0 8px;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .muted {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--panel-strong);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .nav a {
+            padding: 10px 16px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 13px;
+            border: 1px solid var(--border);
+            transition: all 0.15s;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s;
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #000;
+        }
+
+        button.primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        button.primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        button.danger {
+            background: var(--error);
+            color: white;
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 16px;
+            transition: all 0.15s;
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .upload-zone input[type="file"] {
+            display: none;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .log-box {
+            background: #000;
+            border-radius: 8px;
+            padding: 12px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Menlo', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #aaa;
+        }
+
+        .log-box .line {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.3s;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .status-running {
+            background: var(--accent);
+            color: #000;
+            animation: pulse 1s infinite;
+        }
+
+        .status-completed {
+            background: var(--success);
+            color: #000;
+        }
+
+        .status-failed {
+            background: var(--error);
+        }
+
+        .status-cancelled {
+            background: var(--warning);
+            color: #000;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .voice-list,
+        .run-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .voice-item,
+        .run-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 14px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+
+        .voice-item:hover,
+        .run-item:hover {
+            border-color: var(--accent);
+        }
+
+        .item-info {
+            flex: 1;
+        }
+
+        .item-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .item-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .tip {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+            line-height: 1.4;
+        }
+
+        .tip strong {
+            color: var(--accent);
+        }
+
+        .tip-detail {
+            opacity: 0.7;
+            font-size: 10px;
+        }
+
+        .guide-section {
+            margin: 16px 0;
+        }
+
+        .guide-section h3 {
+            font-size: 14px;
+            margin: 16px 0 8px;
+            color: var(--accent);
+        }
+
+        .guide-section p,
+        .guide-section li {
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .guide-section ul,
+        .guide-section ol {
+            padding-left: 20px;
+            margin: 8px 0;
+        }
+
+        .guide-section code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .guide-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+
+        .guide-table th,
+        .guide-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+
+        .guide-table th {
+            background: rgba(0, 0, 0, 0.3);
+            font-weight: 600;
+        }
+
+        .guide-table tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .warning {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        .guide-section a {
+            color: var(--accent);
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <!-- Hero -->
+        <section class="hero">
+            <span class="badge">🎤 Training Dashboard</span>
+            <h1>Honora Voice Training</h1>
+            <p class="muted">Fine-tune XTTS-v2 voices for audiobook narration</p>
+        </section>
+
+        <!-- Navigation -->
+        <nav class="nav">
+            <a href="/voices" id="nav-voices">📚 Voices</a>
+            <a href="/new-training" id="nav-new">➕ New Training</a>
+            <a href="/guide" id="nav-guide">📖 Guide</a>
+        </nav>
+
+        <!-- Content -->
+        <div id="content"></div>
+    </main>
+
+    <script>
+        const page = "{{ page }}";
+        const runId = "{{ run_id or '' }}";
+
+        // Highlight current nav
+        if (page === 'voices') document.getElementById('nav-voices').classList.add('active');
+        if (page === 'new-training') document.getElementById('nav-new').classList.add('active');
+        if (page === 'guide') document.getElementById('nav-guide').classList.add('active');
+
+        // =====================================================================
+        // VOICES PAGE
+        // =====================================================================
+        async function renderVoicesPage() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="card">
+                    <h2>🎙️ Trained Voices</h2>
+                    <div id="voice-list" class="voice-list"><div class="muted">Loading...</div></div>
+                </div>
+                <div class="card">
+                    <h2>📋 Training Runs</h2>
+                    <div id="run-list" class="run-list"><div class="muted">Loading...</div></div>
+                </div>
+            `;
+
+            // Load voices
+            const voices = await fetch('/api/voices').then(r => r.json());
+            const voiceList = document.getElementById('voice-list');
+            if (voices.length === 0) {
+                voiceList.innerHTML = '<div class="muted">No trained voices yet. Start a new training!</div>';
+            } else {
+                voiceList.innerHTML = voices.map(v => `
+                    <div class="voice-item">
+                        <div class="item-info">
+                            <div class="item-name">${v.name}</div>
+                            <div class="item-meta">Created: ${new Date(v.created_at).toLocaleDateString()}</div>
+                        </div>
+                        <span class="status-badge status-completed">Ready</span>
+                    </div>
+                `).join('');
+            }
+
+            // Load runs
+            const runs = await fetch('/api/runs').then(r => r.json());
+            const runList = document.getElementById('run-list');
+            if (runs.length === 0) {
+                runList.innerHTML = '<div class="muted">No training runs yet</div>';
+            } else {
+                runList.innerHTML = runs.map(r => `
+                    <div class="run-item" onclick="location.href='/runs/${r.id}'">
+                        <div class="item-info">
+                            <div class="item-name">${r.voice_name}</div>
+                            <div class="item-meta">${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</div>
+                        </div>
+                        <span class="status-badge status-${r.status}">${r.status}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // =====================================================================
+        // NEW TRAINING PAGE
+        // =====================================================================
+        let uploadedDataset = null;
+
+        async function renderNewTrainingPage() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="card">
+                    <h2>📁 Upload Dataset</h2>
+                    <p class="muted">Upload a ZIP file containing WAV audio files and matching TXT transcripts.</p>
+                    <div class="upload-zone" id="upload-zone">
+                        <input type="file" id="file-input" accept=".zip">
+                        <p>📦 Drag & drop ZIP file here or <a href="#" onclick="document.getElementById('file-input').click(); return false;">browse</a></p>
+                    </div>
+                    <div id="upload-status"></div>
+                </div>
+                
+                <div class="card" id="config-card" style="display: none;">
+                    <h2>⚙️ Configuration</h2>
+                    <label class="muted">Voice Name</label>
+                    <input type="text" id="voice-name" value="Custom Voice">
+                    
+                    <div class="form-row">
+                        <div>
+                            <label class="muted">Epochs</label>
+                            <input type="number" id="num-epochs" value="10" min="1" max="100">
+                            <div class="tip">💡 <strong>Tip:</strong> More epochs ≠ better voice. Too many → robotic sound.<br>
+                            <span class="tip-detail">5–10 for small datasets, 3–8 for 2+ hours of audio.</span></div>
+                        </div>
+                        <div>
+                            <label class="muted">Batch Size</label>
+                            <input type="number" id="batch-size" value="2" min="1" max="8">
+                            <div class="tip">💡 <strong>Tip:</strong> XTTS is heavy. Keep it low to avoid crashes.<br>
+                            <span class="tip-detail">GPU 8–12GB: 2 | Larger GPU: 4 | CPU: 1</span></div>
+                        </div>
+                    </div>
+                    
+                    <label class="muted">Language</label>
+                    <select id="language">
+                        <option value="en">English</option>
+                        <option value="da">Danish</option>
+                        <option value="de">German</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                    </select>
+                    
+                    <button class="primary" id="start-btn" style="width: 100%; margin-top: 12px;">
+                        ▶️ Start Training
+                    </button>
+                </div>
+            `;
+
+            // Upload zone handlers
+            const zone = document.getElementById('upload-zone');
+            const fileInput = document.getElementById('file-input');
+
+            zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+            zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+            zone.addEventListener('drop', e => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+            });
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) uploadFile(fileInput.files[0]);
+            });
+
+            // Start button
+            document.getElementById('start-btn').addEventListener('click', startTraining);
+        }
+
+        async function uploadFile(file) {
+            const status = document.getElementById('upload-status');
+            status.innerHTML = '<div class="muted">⏳ Uploading and extracting...</div>';
+
+            const voiceName = document.getElementById('voice-name')?.value || 'Custom Voice';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('voice_name', voiceName);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (data.error) {
+                    status.innerHTML = `<div style="color: var(--error);">❌ ${data.error}</div>`;
+                    return;
+                }
+
+                uploadedDataset = data;
+                status.innerHTML = `
+                    <div style="color: var(--success);">
+                        ✅ Found ${data.total_pairs} WAV+TXT pairs (${data.train_count} train, ${data.eval_count} eval)
+                    </div>
+                `;
+                document.getElementById('config-card').style.display = 'block';
+                document.getElementById('voice-name').value = data.voice_name;
+            } catch (e) {
+                status.innerHTML = `<div style="color: var(--error);">❌ Upload failed: ${e.message}</div>`;
+            }
+        }
+
+        async function startTraining() {
+            if (!uploadedDataset) {
+                alert('Please upload a dataset first');
+                return;
+            }
+
+            const btn = document.getElementById('start-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Starting...';
+
+            try {
+                const res = await fetch('/api/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        voice_name: document.getElementById('voice-name').value,
+                        dataset_path: uploadedDataset.dataset_path,
+                        train_csv: uploadedDataset.train_csv,
+                        eval_csv: uploadedDataset.eval_csv,
+                        num_epochs: parseInt(document.getElementById('num-epochs').value),
+                        batch_size: parseInt(document.getElementById('batch-size').value),
+                        language: document.getElementById('language').value
+                    })
+                });
+
+                const data = await res.json();
+                if (data.error) {
+                    alert(data.error);
+                    btn.disabled = false;
+                    btn.textContent = '▶️ Start Training';
+                    return;
+                }
+
+                // Redirect to run page
+                location.href = `/runs/${data.run_id}`;
+            } catch (e) {
+                alert('Failed to start training: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '▶️ Start Training';
+            }
+        }
+
+        // =====================================================================
+        // RUN DETAIL PAGE
+        // =====================================================================
+        let eventSource = null;
+
+        async function renderRunDetailPage() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h2 id="run-title">Training Run</h2>
+                            <span class="status-badge" id="run-status">Loading...</span>
+                        </div>
+                        <div>
+                            <button class="secondary" id="download-btn" style="margin-right: 8px;">📥 Download Logs</button>
+                            <button class="danger" id="cancel-btn" style="display: none;">⏹️ Cancel</button>
+                        </div>
+                    </div>
+                    
+                    <div id="progress-section" style="margin-top: 16px;">
+                        <div class="muted">Progress: <span id="progress-text">-</span></div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>📋 Logs</h2>
+                    <div class="log-box" id="log-box"></div>
+                </div>
+                
+                <a href="/voices" class="nav" style="display: inline-block; margin-top: 8px;">← Back to Voices</a>
+            `;
+
+            document.getElementById('cancel-btn').addEventListener('click', cancelTraining);
+            document.getElementById('download-btn').addEventListener('click', () => {
+                location.href = `/api/runs/${runId}/logs/download`;
+            });
+
+            // Load initial status
+            await updateStatus();
+
+            // Start SSE log stream
+            startLogStream();
+        }
+
+        async function updateStatus() {
+            try {
+                const run = await fetch(`/api/runs/${runId}`).then(r => r.json());
+                if (run.error) return;
+
+                document.getElementById('run-title').textContent = run.voice_name || 'Training Run';
+
+                const statusEl = document.getElementById('run-status');
+                statusEl.textContent = run.status;
+                statusEl.className = `status-badge status-${run.status}`;
+
+                const cancelBtn = document.getElementById('cancel-btn');
+                if (run.status === 'running') {
+                    cancelBtn.style.display = 'inline-block';
+                } else {
+                    cancelBtn.style.display = 'none';
+                }
+
+                // Progress
+                const step = run.progress_step || 0;
+                const total = run.progress_total || 0;
+                const epoch = run.current_epoch || 0;
+                const totalEpochs = run.total_epochs || 0;
+                const loss = run.current_loss;
+
+                let progressText = '';
+                let progressPct = 0;
+
+                if (total > 0) {
+                    progressPct = Math.round((step / total) * 100);
+                    progressText = `Step ${step}/${total}`;
+                }
+                if (totalEpochs > 0) {
+                    progressText += ` | Epoch ${epoch}/${totalEpochs}`;
+                    if (total === 0) progressPct = Math.round((epoch / totalEpochs) * 100);
+                }
+                if (loss !== null && loss !== undefined) {
+                    progressText += ` | Loss: ${loss.toFixed(4)}`;
+                }
+
+                document.getElementById('progress-text').textContent = progressText || 'Starting...';
+                document.getElementById('progress-fill').style.width = `${progressPct}%`;
+            } catch (e) {
+                console.error('Status update error:', e);
+            }
+        }
+
+        function startLogStream() {
+            const logBox = document.getElementById('log-box');
+
+            eventSource = new EventSource(`/api/runs/${runId}/logs`);
+
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+
+                    if (data.line) {
+                        const line = document.createElement('p');
+                        line.className = 'line';
+                        line.textContent = data.line;
+                        logBox.appendChild(line);
+                        logBox.scrollTop = logBox.scrollHeight;
+                    }
+
+                    if (data.status) {
+                        updateStatus();
+                    }
+
+                    if (data.done) {
+                        eventSource.close();
+                        updateStatus();
+                    }
+                } catch (err) {
+                    console.error('Parse error:', err);
+                }
+            };
+
+            eventSource.onerror = () => {
+                updateStatus();
+            };
+
+            // Poll status periodically
+            setInterval(updateStatus, 2000);
+        }
+
+        async function cancelTraining() {
+            if (!confirm('Cancel training?')) return;
+
+            try {
+                await fetch(`/api/runs/${runId}/cancel`, { method: 'POST' });
+                updateStatus();
+            } catch (e) {
+                alert('Failed to cancel: ' + e.message);
+            }
+        }
+
+        // =====================================================================
+        // GUIDE PAGE
+        // =====================================================================
+        function renderGuidePage() {
+            const content = document.getElementById('content');
+            content.innerHTML = `
+                <div class="card">
+                    <h2>📖 Complete Training Guide</h2>
+                    <p class="muted">Everything you need to know about training custom XTTS-v2 voices for audiobook narration.</p>
+                </div>
+
+                <div class="card">
+                    <h2>🎯 Overview</h2>
+                    <p>This dashboard fine-tunes the <strong>XTTS-v2</strong> voice cloning model on your custom audio recordings. 
+                    After training, the new voice appears in the TTS Dashboard (port 5001) where you can use it to narrate audiobooks.</p>
+                    
+                    <div class="guide-section">
+                        <h3>The Process</h3>
+                        <ol>
+                            <li><strong>Prepare Dataset</strong> – Record audio clips with matching transcripts</li>
+                            <li><strong>Upload ZIP</strong> – Contains WAV files + TXT files</li>
+                            <li><strong>Configure & Train</strong> – Set epochs, batch size, start training</li>
+                            <li><strong>Monitor</strong> – Watch live logs and progress</li>
+                            <li><strong>Use Voice</strong> – New voice auto-registers to TTS Dashboard</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📁 Dataset Requirements</h2>
+                    <div class="guide-section">
+                        <h3>File Format</h3>
+                        <p>Upload a <strong>.ZIP file</strong> containing:</p>
+                        <ul>
+                            <li><code>sample_001.wav</code> – Audio file (WAV format)</li>
+                            <li><code>sample_001.txt</code> – Matching transcript</li>
+                            <li><code>sample_002.wav</code></li>
+                            <li><code>sample_002.txt</code></li>
+                            <li>... and so on</li>
+                        </ul>
+                        
+                        <h3>Audio Guidelines</h3>
+                        <ul>
+                            <li><strong>Length:</strong> 2–11 seconds per clip (ideal: 4–8 seconds)</li>
+                            <li><strong>Quality:</strong> Clear recording, minimal background noise</li>
+                            <li><strong>Sample Rate:</strong> 22050 Hz or 24000 Hz preferred</li>
+                            <li><strong>Format:</strong> WAV (mono or stereo)</li>
+                        </ul>
+                        
+                        <h3>How Much Data?</h3>
+                        <table class="guide-table">
+                            <tr><th>Dataset Size</th><th>Quality</th><th>Recommended Epochs</th></tr>
+                            <tr><td>1–10 min</td><td>Basic cloning</td><td>5–10</td></tr>
+                            <tr><td>30–60 min</td><td>Good quality</td><td>10–20</td></tr>
+                            <tr><td>2–10 hours</td><td>Best results</td><td>3–8</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>⚙️ Training Settings Explained</h2>
+                    
+                    <div class="guide-section">
+                        <h3>Epochs</h3>
+                        <p>Number of times the model sees your entire dataset.</p>
+                        <ul>
+                            <li><strong>Too few:</strong> Voice sounds flat, unfinished</li>
+                            <li><strong>Too many:</strong> Overfitting – voice becomes robotic, aggressive</li>
+                            <li><strong>Sweet spot:</strong> Depends on dataset size (see table above)</li>
+                        </ul>
+                        <p class="warning">⚠️ More epochs ≠ better voice! Start low and adjust.</p>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>Batch Size</h3>
+                        <p>How many audio clips are processed simultaneously.</p>
+                        <ul>
+                            <li><strong>Lower (1-2):</strong> More stable, slower, works on limited hardware</li>
+                            <li><strong>Higher (4+):</strong> Faster, but needs more GPU memory</li>
+                        </ul>
+                        <table class="guide-table">
+                            <tr><th>Hardware</th><th>Recommended Batch</th></tr>
+                            <tr><td>CPU only</td><td>1</td></tr>
+                            <tr><td>GPU 8–12 GB</td><td>2</td></tr>
+                            <tr><td>GPU 16+ GB</td><td>4</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="guide-section">
+                        <h3>Language</h3>
+                        <p>Select the primary language of your audio. XTTS-v2 supports multilingual training but works best when you specify the correct language.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 During Training</h2>
+                    <div class="guide-section">
+                        <h3>What the Logs Mean</h3>
+                        <ul>
+                            <li><strong>Step X/Y:</strong> Current training step out of total</li>
+                            <li><strong>Epoch X/Y:</strong> Current epoch (full pass over data)</li>
+                            <li><strong>Loss:</strong> Error measure – should decrease over time, but may fluctuate</li>
+                        </ul>
+                        
+                        <h3>Training Time</h3>
+                        <p>Depends heavily on hardware and dataset size:</p>
+                        <ul>
+                            <li><strong>GPU:</strong> ~5–30 minutes for small datasets</li>
+                            <li><strong>CPU:</strong> Can take hours – be patient!</li>
+                        </ul>
+                        
+                        <h3>Cancel Button</h3>
+                        <p>Stops training immediately. No partial voice is saved.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>✅ After Training</h2>
+                    <div class="guide-section">
+                        <h3>What Happens Automatically</h3>
+                        <ol>
+                            <li>Model checkpoint is saved to <code>train_output/</code></li>
+                            <li>Voice is registered to <code>voice_registry.json</code></li>
+                            <li>TTS Dashboard (port 5001) can now see the new voice</li>
+                        </ol>
+                        
+                        <h3>Using Your Trained Voice</h3>
+                        <ol>
+                            <li>Open <a href="http://localhost:5001" target="_blank">TTS Dashboard</a></li>
+                            <li>Select <strong>XTTS-Local</strong> engine</li>
+                            <li>Find your voice in the dropdown (prefixed with <code>[Trained]</code>)</li>
+                            <li>Generate audio!</li>
+                        </ol>
+                        
+                        <h3>Voice Quality Tips</h3>
+                        <ul>
+                            <li>Test with short sentences first</li>
+                            <li>If voice sounds robotic: train with fewer epochs</li>
+                            <li>If voice sounds generic: need more training data</li>
+                            <li>Best results come from clean, consistent recordings</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>❓ Troubleshooting</h2>
+                    <div class="guide-section">
+                        <table class="guide-table">
+                            <tr><th>Problem</th><th>Solution</th></tr>
+                            <tr><td>Training crashes</td><td>Lower batch size to 1</td></tr>
+                            <tr><td>Out of memory</td><td>Reduce audio clip length, lower batch size</td></tr>
+                            <tr><td>Voice sounds robotic</td><td>Fewer epochs, more varied data</td></tr>
+                            <tr><td>Voice doesn't appear in TTS</td><td>Refresh TTS dashboard page</td></tr>
+                            <tr><td>Upload fails</td><td>Check ZIP contains WAV+TXT pairs with matching names</td></tr>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        // =====================================================================
+        // INIT
+        // =====================================================================
+        if (page === 'voices') renderVoicesPage();
+        else if (page === 'new-training') renderNewTrainingPage();
+        else if (page === 'run-detail') renderRunDetailPage();
+        else if (page === 'guide') renderGuidePage();
+    </script>
+</body>
+
+</html>

@@ -33,12 +33,10 @@ HonoraLocalTTS/train_*/
 *.swp
 
 # Documentation (local-only plans)
-docs/migrations/
-docs/*PLAN*.md
-docs/*FIXES*.md
 
 # Agent artifacts (local planning)
 .agent/
 
 # Local data storage
 data/
+*.db

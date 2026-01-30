@@ -1,0 +1,21 @@
+# Honora V2 Training Dashboard & Runner Requirements
+
+# Dashboard (Flask)
+flask>=2.3.0
+gunicorn>=21.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# Database / Storage
+supabase>=2.0.0
+
+# Training (XTTS v2)
+# Note: These are heavy dependencies. If running only dashboard, these might be optional 
+# but are required for the local runner to function.
+TTS>=0.21.0,<0.23.0
+transformers>=4.33.0,<4.40.0
+torch
+torchaudio
+
+# RunPod Integration (if using RunPod features directly)
+runpod>=1.6.0
